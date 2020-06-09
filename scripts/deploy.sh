@@ -4,7 +4,7 @@ SERVER_URL=$1
 USERNAME=admin
 TARGET_DIR=/home/admin/docassemble/
 
-rsync -r --delete-after --exclude=README* --exclude=.git --exclude=scripts --quiet $TRAVIS_BUILD_DIR/ $USERNAME@$SERVER_URL:$TARGET_DIR
+rsync -r --delete-after --exclude=.git --exclude=scripts --quiet $TRAVIS_BUILD_DIR/ $USERNAME@$SERVER_URL:$TARGET_DIR
 ssh -t $USERNAME@$SERVER_URL \
 	'cd docassemble
 	sudo docker rmi -f $(docker images | grep "^<none>" | awk "{print $3}")
