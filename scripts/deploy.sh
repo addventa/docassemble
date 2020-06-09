@@ -1,8 +1,8 @@
 #!/bin/bash
 
 SERVER_URL=$1
-USERNAME=admin
-TARGET_DIR=/home/admin/docassemble/
+USERNAME=ubuntu
+TARGET_DIR=/home/ubuntu/docassemble/
 
 rsync -r --delete-after --exclude=.git --exclude=scripts --quiet $TRAVIS_BUILD_DIR/ $USERNAME@$SERVER_URL:$TARGET_DIR
 ssh -t $USERNAME@$SERVER_URL \
