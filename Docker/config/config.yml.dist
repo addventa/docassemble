@@ -53,7 +53,6 @@ locale: en_US.utf8
 os locale: {{LOCALE}}
 timezone: {{TIMEZONE}}
 redis: {{REDIS}}
-rabbitmq: {{RABBITMQ}}
 voicerss:
   enable: False
   key: ae8734983948ebc98239e9898f998432
