@@ -9,7 +9,7 @@ import zipfile
 from six import string_types, text_type, PY2
 import collections.abc as abc
 from PIL import Image, ImageEnhance
-from twilio.rest import Client as TwilioRestClient
+# from twilio.rest import Client as TwilioRestClient
 import pycountry
 import docassemble.base.ocr
 import pickle
@@ -2338,7 +2338,7 @@ def send_sms(to=None, body=None, template=None, task=None, attachments=None, con
         logmessage("send_sms: more than 10 attachments were provided; not sending message")
         success = False
     if success:
-        twilio_client = TwilioRestClient(tconfig['account sid'], tconfig['auth token'])
+        # twilio_client = TwilioRestClient(tconfig['account sid'], tconfig['auth token'])
         for recipient in to:
             phone_number = phone_string(recipient)
             if phone_number is not None:

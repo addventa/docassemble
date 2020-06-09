@@ -749,10 +749,10 @@ lm = LoginManager()
 lm.init_app(app)
 lm.login_view = 'custom_login'
 
-from twilio.rest import Client as TwilioRestClient
-import twilio.twiml
-import twilio.twiml.messaging_response
-import twilio.twiml.voice_response
+# from twilio.rest import Client as TwilioRestClient
+# import twilio.twiml
+# import twilio.twiml.messaging_response
+# import twilio.twiml.voice_response
 from PIL import Image
 import socket
 import copy
@@ -20261,7 +20261,7 @@ def fax_callback():
 @app.route("/voice", methods=['POST', 'GET'])
 @csrf.exempt
 def voice():
-    resp = twilio.twiml.voice_response.VoiceResponse()
+    # resp = twilio.twiml.voice_response.VoiceResponse()
     if twilio_config is None:
         logmessage("voice: ignoring call to voice because Twilio not enabled")
         return Response(str(resp), mimetype='text/xml')
@@ -20295,7 +20295,7 @@ def voice():
 @app.route("/digits", methods=['POST', 'GET'])
 @csrf.exempt
 def digits():
-    resp = twilio.twiml.voice_response.VoiceResponse()
+    # resp = twilio.twiml.voice_response.VoiceResponse()
     if twilio_config is None:
         logmessage("digits: ignoring call to digits because Twilio not enabled")
         return Response(str(resp), mimetype='text/xml')
@@ -20414,7 +20414,7 @@ def sms():
     return Response(str(resp), mimetype='text/xml')
 
 def do_sms(form, base_url, url_root, config='default', save=True):
-    resp = twilio.twiml.messaging_response.MessagingResponse()
+    # resp = twilio.twiml.messaging_response.MessagingResponse()
     special_messages = list()
     if twilio_config is None:
         logmessage("do_sms: ignoring message to sms because Twilio not enabled")
