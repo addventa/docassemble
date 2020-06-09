@@ -3,14 +3,17 @@ language: generic
 branches:
   only:
   - dev-robin
+  - dev-fabien
 
 env:
   global:
   - URL_DA_ROBIN: ec2-54-229-211-245.eu-west-1.compute.amazonaws.com
+  - URL_DA_FABIEN: ec2-3-249-220-197.eu-west-1.compute.amazonaws.com
 
 addons:
   ssh_known_hosts:
   - ec2-54-229-211-245.eu-west-1.compute.amazonaws.com # robin
+  - ec2-3-249-220-197.eu-west-1.compute.amazonaws.com # fabien
 
 before_deploy:
 - openssl aes-256-cbc -K $encrypted_459d78462fa3_key -iv $encrypted_459d78462fa3_iv
@@ -25,3 +28,8 @@ deploy:
     script: bash scripts/deploy.sh $URL_DA_ROBIN
     on:
       branch: dev-robin
+  - provider: script
+    skip_cleanup: true
+    script: bash scripts/deploy.sh $URL_DA_FABIEN
+    on:
+      branch: dev-fabien
