@@ -33,7 +33,6 @@ install_requires = [
     "boto3==1.10.2",
     "botocore==1.13.2",
     "cachetools==3.1.1",
-    "celery[redis]==4.3.0",
     "certifi==2019.9.11",
     "cffi==1.13.1",
     "chardet==3.0.4",
