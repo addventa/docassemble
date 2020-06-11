@@ -88,6 +88,9 @@ def check_for_updates(doing_startup=False):
     num_deleted = Package.query.filter_by(name='pdfminer').delete()
     if num_deleted > 0:
         db.session.commit()
+    num_deleted = Package.query.filter_by(name='pdfminer3k').delete()
+    if num_deleted > 0:
+        db.session.commit()
     num_deleted = Package.query.filter_by(name='py-bcrypt').delete()
     if num_deleted > 0:
         db.session.commit()
@@ -105,10 +108,6 @@ def check_for_updates(doing_startup=False):
     for package in installed_packages:
         here_already[package.key] = package.version
     changed = False
-    if 'pdfminer.six' not in here_already:
-        sys.stderr.write("check_for_updates: installing pdfminer.six\n")
-        install_package(DummyPackage('pdfminer.six'))
-        changed = True
     if 'psycopg2' in here_already:
         sys.stderr.write("check_for_updates: uninstalling psycopg2\n")
         uninstall_package(DummyPackage('psycopg2'))
@@ -148,6 +147,14 @@ def check_for_updates(doing_startup=False):
     if 'pdfminer3k' in here_already:
         sys.stderr.write("check_for_updates: uninstalling pdfminer3k\n")
         uninstall_package(DummyPackage('pdfminer3k'))
+        changed = True
+    if 'pdfminer.six' in here_already:
+        sys.stderr.write("check_for_updates: reinstalling pdfminer.six\n")
+        uninstall_package(DummyPackage('pdfminer.six'))
+        install_package(DummyPackage('pdfminer.six'))
+    else:
+        sys.stderr.write("check_for_updates: installing pdfminer.six\n")
+        install_package(DummyPackage('pdfminer.six'))
         changed = True
     if 'py-bcrypt' in here_already:
         sys.stderr.write("check_for_updates: uninstalling py-bcrypt\n")
