@@ -74,7 +74,6 @@ install_requires = [
     "google-cloud-translate==2.0.0",
     "google-reauth==0.1.0",
     "google-resumable-media==0.4.1",
-    "googleapis-common-protos==1.6.0",
     "greenlet==0.4.15",
     "grpcio==1.24.3",
     "gspread==3.3.0",
