@@ -65,7 +65,6 @@ install_requires = [
     "geographiclib==1.50",
     "geopy==1.20.0",
     "google-api-core==1.14.3",
-    "google-api-python-client==1.7.11",
     "google-cloud-core==1.0.3",
     "google-cloud-storage==1.20.0",
     "google-cloud-translate==2.0.0",
