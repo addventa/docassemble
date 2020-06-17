@@ -64,7 +64,6 @@ install_requires = [
     "gcs-oauth2-boto-plugin==2.5",
     "geographiclib==1.50",
     "geopy==1.20.0",
-    "google-api-core==1.14.3",
     "google-cloud-core==1.0.3",
     "google-cloud-storage==1.20.0",
     "google-cloud-translate==2.0.0",
