@@ -182,7 +182,6 @@ install_requires = [
     "textstat==0.5.6",
     "titlecase==0.12.0",
     "tqdm==4.36.1",
-    "twilio==6.32.0",
     "twine==" + twine_version,
     "tzlocal==2.0.0",
     "ua-parser==0.8.0",
