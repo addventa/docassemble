@@ -36,7 +36,6 @@ else:
 
 REQUIRE_IDEMPOTENT = not daconfig.get('allow non-idempotent questions', True)
 STRICT_MODE = daconfig.get('restrict input variables', False)
-
 PACKAGE_PROTECTION = daconfig.get('package protection', True)
 
 HTTP_TO_HTTPS = daconfig.get('behind https load balancer', False)
@@ -182,6 +181,10 @@ UPLOAD_DIRECTORY = daconfig.get('uploads', '/usr/share/docassemble/files')
 PACKAGE_DIRECTORY = daconfig.get('packages', '/usr/share/docassemble/local' + str(sys.version_info.major) + '.' + str(sys.version_info.minor))
 FULL_PACKAGE_DIRECTORY = os.path.join(PACKAGE_DIRECTORY, 'lib', 'python' + str(sys.version_info.major) + '.' + str(sys.version_info.minor), 'site-packages')
 LOG_DIRECTORY = daconfig.get('log', '/usr/share/docassemble/log')
+
+PAGINATION_LIMIT = daconfig.get('pagination limit', 100)
+PAGINATION_LIMIT_PLUS_ONE = PAGINATION_LIMIT + 1
+
 #PLAYGROUND_MODULES_DIRECTORY = daconfig.get('playground_modules', )
 
 init_py_file = """try:
@@ -1085,7 +1088,7 @@ def initiate_sms_session(phone_number, yaml_filename=None, uid=None, secret=None
     if config not in twilio_config['name']:
         raise DAError("get_sms_session: Invalid twilio configuration")
     tconfig = twilio_config['name'][config]
-    current_info = docassemble.base.functions.get_current_info()
+    current_info = docassemble.base.functions.get_current_info(secret=secret)
     if yaml_filename is None:
         yaml_filename = current_info.get('yaml_filename', None)
         if yaml_filename is None:
@@ -1432,16 +1435,12 @@ def substitute_secret(oldsecret, newsecret, user=None, to_convert=None):
         #logmessage("substitute_secret: returning new secret without doing anything")
         return newsecret
     #logmessage("substitute_secret: continuing")
-    updated = False
-    for object_entry in GlobalObjectStorage.query.filter_by(user_id=user.id).with_for_update().all():
-        if object_entry.encrypted:
-            try:
-                object_entry.value = encrypt_object(decrypt_object(object_entry.value, oldsecret), newsecret)
-            except Exception as err:
-                logmessage("Failure to change encryption of object " + object_entry.key + str(err))
-            updated = True
-    if updated:
-        db.session.commit()
+    for object_entry in GlobalObjectStorage.query.filter_by(user_id=user.id, encrypted=True).with_for_update().all():
+        try:
+            object_entry.value = encrypt_object(decrypt_object(object_entry.value, oldsecret), newsecret)
+        except Exception as err:
+            logmessage("Failure to change encryption of object " + object_entry.key + str(err))
+    db.session.commit()
     if to_convert is None:
         to_do = set()
         if 'i' in session and 'uid' in session: #TEMPORARY
@@ -1463,6 +1462,12 @@ def substitute_secret(oldsecret, newsecret, user=None, to_convert=None):
                 phrase = decrypt_phrase(record.phrase, oldsecret)
                 record.phrase = encrypt_phrase(phrase, newsecret)
                 changed = True
+            except:
+                pass
+        db.session.commit()
+        for object_entry in GlobalObjectStorage.query.filter(and_(GlobalObjectStorage.key.like('da:uid:' + user_code + ':i:' + filename + ':%'), GlobalObjectStorage.encrypted == True)).with_for_update().all():
+            try:
+                object_entry.value = encrypt_object(decrypt_object(object_entry.value, oldsecret), newsecret)
             except:
                 pass
         db.session.commit()
@@ -2045,20 +2050,14 @@ def sub_temp_user_dict_key(temp_user_id, user_id):
 
 def sub_temp_other(user):
     if 'tempuser' in session:
-        something_changed = False
         for chat_entry in ChatLog.query.filter_by(temp_user_id=int(session['tempuser'])).with_for_update().all():
             chat_entry.user_id = user.id
             chat_entry.temp_user_id = None
-            something_changed = True
-        if something_changed:
-            db.session.commit()
-        something_changed = False
+        db.session.commit()
         for chat_entry in ChatLog.query.filter_by(temp_owner_id=int(session['tempuser'])).with_for_update().all():
             chat_entry.owner_id = user.id
             chat_entry.temp_owner_id = None
-            something_changed = True
-        if something_changed:
-            db.session.commit()
+        db.session.commit()
         keys_in_use = dict()
         for object_entry in GlobalObjectStorage.query.filter_by(user_id=user.id).all():
             if object_entry.key.startswith('da:userid:{:d}:'.format(user.id)):
@@ -2066,9 +2065,7 @@ def sub_temp_other(user):
                     keys_in_use[object_entry.key] = list()
                 keys_in_use[object_entry.key].append(object_entry.id)
         ids_to_delete = list()
-        something_changed = False
         for object_entry in GlobalObjectStorage.query.filter_by(temp_user_id=int(session['tempuser'])).with_for_update().all():
-            something_changed = True
             object_entry.user_id = user.id
             object_entry.temp_user_id = None
             if object_entry.key.startswith('da:userid:t{:d}:'.format(session['tempuser'])):
@@ -2083,15 +2080,11 @@ def sub_temp_other(user):
                     logmessage("Failure to change encryption of object " + object_entry.key + ": " + str(err))
         for the_id in ids_to_delete:
             GlobalObjectStorage.query.filter_by(id=the_id).delete()
-        if something_changed:
-            db.session.commit()
-        something_changed = False
+        db.session.commit()
         for auth_entry in UploadsUserAuth.query.filter_by(temp_user_id=int(session['tempuser'])).with_for_update().all():
             auth_entry.user_id = user.id
             auth_entry.temp_user_id = None
-            something_changed = True
-        if something_changed:
-            db.session.commit()
+        db.session.commit()
         del session['tempuser']
 
 def save_user_dict_key(session_id, filename, priors=False, user=None):
@@ -3690,15 +3683,24 @@ def restart_this():
 def restart_others():
     logmessage("restart_others: starting")
     if USING_SUPERVISOR:
+        cron_key = 'da:cron_restart'
+        cron_url = None
         for host in Supervisors.query.all():
-            if host.url:
-                if host.hostname != hostname:
-                    restart_on(host)
-            #else:
-            #    logmessage("restart_others: unable to get host url")
+            if host.url and host.hostname != hostname and ':cron:' in str(host.role):
+                pipe = r.pipeline()
+                pipe.set(cron_key, 1)
+                pipe.expire(cron_key, 5)
+                pipe.execute()
+                restart_on(host)
+                while r.get(cron_key) is not None:
+                    time.sleep(1)
+                cron_url = host.url
+        for host in Supervisors.query.all():
+            if host.url and host.url != cron_url and host.hostname != hostname:
+                restart_on(host)
     return
 
-def current_info(yaml=None, req=None, action=None, location=None, interface='web', session_info=None):
+def current_info(yaml=None, req=None, action=None, location=None, interface='web', session_info=None, secret=None):
     #logmessage("interface is " + str(interface))
     if current_user.is_authenticated and not current_user.is_anonymous:
         ext = dict(email=current_user.email, roles=[role.name for role in current_user.roles], the_user_id=current_user.id, theid=current_user.id, firstname=current_user.first_name, lastname=current_user.last_name, nickname=current_user.nickname, country=current_user.country, subdivisionfirst=current_user.subdivisionfirst, subdivisionsecond=current_user.subdivisionsecond, subdivisionthird=current_user.subdivisionthird, organization=current_user.organization, timezone=current_user.timezone, language=current_user.language)
@@ -3708,14 +3710,14 @@ def current_info(yaml=None, req=None, action=None, location=None, interface='web
     if req is None:
         url_root = daconfig.get('url root', 'http://localhost') + ROOT
         url = url_root + 'interview'
-        secret = None
         clientip = None
         method = None
         unique_id = '0'
     else:
         url_root = url_for('rootindex', _external=True)
         url = url_root + 'interview'
-        secret = req.cookies.get('secret', None)
+        if secret is None:
+            secret = req.cookies.get('secret', None)
         for key, value in req.headers.items():
             headers[key] = value
         clientip = req.remote_addr
@@ -3728,7 +3730,7 @@ def current_info(yaml=None, req=None, action=None, location=None, interface='web
             if current_user.is_authenticated and not current_user.is_anonymous and current_user.email:
                 unique_id = str(current_user.email)
             else:
-                unique_id = random_string(10)
+                unique_id = app.session_interface.manual_save_session(app, session).decode()[5:15]
         #logmessage("unique id is " + unique_id)
     if secret is not None:
         secret = str(secret)
@@ -4962,7 +4964,7 @@ def health_check():
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
 
-@app.route("/checkout", methods=['POST', 'GET'])
+@app.route("/checkout", methods=['POST'])
 def checkout():
     try:
         manual_checkout(manual_filename=request.args['i'])
@@ -5055,6 +5057,8 @@ def checkin():
     if secret is not None:
         secret = str(secret)
     if current_user.is_anonymous:
+        if 'tempuser' not in session:
+            return jsonify(success=False)
         the_user_id = 't' + str(session['tempuser'])
         auth_user_id = None
         temp_user_id = int(session['tempuser'])
@@ -5084,7 +5088,7 @@ def checkin():
             #sys.stderr.write("checkin: fetch_user_dict2\n")
             steps, user_dict, is_encrypted = fetch_user_dict(session_id, yaml_filename, secret=secret)
             interview = docassemble.base.interview_cache.get_interview(yaml_filename)
-            interview_status = docassemble.base.parse.InterviewStatus(current_info=current_info(yaml=yaml_filename, req=request, action=dict(action=do_action, arguments=parameters), session_info=session_info))
+            interview_status = docassemble.base.parse.InterviewStatus(current_info=current_info(yaml=yaml_filename, req=request, action=dict(action=do_action, arguments=parameters), session_info=session_info, secret=secret))
             interview_status.checkin = True
             interview.assemble(user_dict, interview_status=interview_status)
             if interview_status.question.question_type == "backgroundresponse":
@@ -5774,7 +5778,7 @@ def index(action_argument=None):
     else:
         the_location = None
     interview = docassemble.base.interview_cache.get_interview(yaml_filename)
-    interview_status = docassemble.base.parse.InterviewStatus(current_info=current_info(yaml=yaml_filename, req=request, action=None, location=the_location, interface=the_interface, session_info=session_info), tracker=user_dict['_internal']['tracker'])
+    interview_status = docassemble.base.parse.InterviewStatus(current_info=current_info(yaml=yaml_filename, req=request, action=None, location=the_location, interface=the_interface, session_info=session_info, secret=secret), tracker=user_dict['_internal']['tracker'])
     old_user_dict = None
     if '_back_one' in post_data and steps > 1:
         ok_to_go_back = True
@@ -5789,7 +5793,7 @@ def index(action_argument=None):
                 encrypted = is_encrypted
                 update_session(yaml_filename, encrypted=encrypted)
             action = None
-            interview_status = docassemble.base.parse.InterviewStatus(current_info=current_info(yaml=yaml_filename, req=request, action=action, location=the_location, interface=the_interface, session_info=session_info), tracker=user_dict['_internal']['tracker'])
+            interview_status = docassemble.base.parse.InterviewStatus(current_info=current_info(yaml=yaml_filename, req=request, action=action, location=the_location, interface=the_interface, session_info=session_info, secret=secret), tracker=user_dict['_internal']['tracker'])
             post_data = dict()
             disregard_input = True
     known_varnames = dict()
@@ -6096,6 +6100,7 @@ def index(action_argument=None):
                         break
     else:
         the_question = None
+    key_to_orig_key = dict()
     for orig_key in copy.deepcopy(post_data):
         if orig_key in ('_checkboxes', '_empties', '_ml_info', '_back_one', '_files', '_files_inline', '_question_name', '_the_image', '_save_as', '_success', '_datatypes', '_event', '_visible', '_tracker', '_track_location', '_varnames', '_next_action', '_next_action_to_set', 'ajax', 'json', 'informed', 'csrf_token', '_action', '_order_changes', '_collect', '_collect_delete', '_list_collect_list') or orig_key.startswith('_ignore'):
             continue
@@ -6107,12 +6112,15 @@ def index(action_argument=None):
             if orig_key in known_varnames:
                 if not (known_varnames[orig_key] in post_data and post_data[known_varnames[orig_key]] != '' and post_data[orig_key] == ''):
                     post_data[known_varnames[orig_key]] = post_data[orig_key]
+                    key_to_orig_key[from_safeid(known_varnames[orig_key])] = orig_key
             else:
                 m = re.search(r'^(_field_[0-9]+)(\[.*\])', key)
                 if m:
                     base_orig_key = safeid(m.group(1))
                     if base_orig_key in known_varnames:
-                        full_key = safeid(myb64unquote(known_varnames[base_orig_key]) + m.group(2))
+                        the_key = myb64unquote(known_varnames[base_orig_key]) + m.group(2)
+                        key_to_orig_key[the_key] = orig_key
+                        full_key = safeid(the_key)
                         post_data[full_key] = post_data[orig_key]
         if key.endswith('.gathered'):
             objname = re.sub(r'\.gathered$', '', key)
@@ -6270,7 +6278,7 @@ def index(action_argument=None):
                 else:
                     data = "False"
                     test_data = False
-            elif known_datatypes[real_key] in ('date', 'datetime'):
+            elif known_datatypes[real_key] in ('date', 'datetime', 'datetime-local'):
                 if isinstance(data, str):
                     data = data.strip()
                     if data != '':
@@ -6559,6 +6567,8 @@ def index(action_argument=None):
         if is_object:
             if '__DANEWOBJECT' in user_dict:
                 del user_dict['__DANEWOBJECT']
+        if key not in key_to_orig_key:
+            key_to_orig_key[key] = orig_key
     if validated and special_question is None and not disregard_input:
         for orig_key in empty_fields:
             key = myb64unquote(orig_key)
@@ -6714,6 +6724,7 @@ def index(action_argument=None):
                                 inline_files_processed.append(file_field)
                             else:
                                 the_string = file_field + " = None"
+                            key_to_orig_key[file_field] = orig_file_field
                             process_set_variable(file_field, user_dict, vars_set, old_values)
                             try:
                                 exec(the_string, user_dict)
@@ -6736,6 +6747,7 @@ def index(action_argument=None):
                             error_messages.append(("error", "Error: Invalid character in file_field: " + str(file_field)))
                             break
                         the_string = file_field + " = None"
+                        key_to_orig_key[file_field] = orig_file_field
                         process_set_variable(file_field, user_dict, vars_set, old_values)
                         try:
                             exec(the_string, user_dict)
@@ -6769,6 +6781,7 @@ def index(action_argument=None):
                     break
                 if key_requires_preassembly.search(file_field):
                     should_assemble_now = True
+                key_to_orig_key[file_field] = orig_file_field
             if not has_invalid_fields:
                 initial_string = 'import docassemble.base.core'
                 try:
@@ -6947,7 +6960,10 @@ def index(action_argument=None):
                 logmessage(the_error_message)
                 if the_error_message == '':
                     the_error_message = word("Please enter a valid value.")
-                error_messages.append(("error", the_error_message))
+                if isinstance(validation_error, DAValidationError) and isinstance(validation_error.field, str) and validation_error.field in key_to_orig_key:
+                    field_error[key_to_orig_key[validation_error.field]] = the_error_message
+                else:
+                    error_messages.append(("error", the_error_message))
                 validated = False
                 steps, user_dict, is_encrypted = fetch_user_dict(user_code, yaml_filename, secret=secret)
     if validated:
@@ -6975,7 +6991,7 @@ def index(action_argument=None):
         user_dict = fresh_dictionary()
         user_dict['url_args'] = url_args
         user_dict['_internal']['referer'] = referer
-        interview_status = docassemble.base.parse.InterviewStatus(current_info=current_info(yaml=yaml_filename, req=request, interface=the_interface, session_info=session_info))
+        interview_status = docassemble.base.parse.InterviewStatus(current_info=current_info(yaml=yaml_filename, req=request, interface=the_interface, session_info=session_info, secret=secret))
         reset_user_dict(user_code, yaml_filename)
         if 'visitor_secret' not in request.cookies:
             save_user_dict_key(user_code, yaml_filename)
@@ -6987,7 +7003,7 @@ def index(action_argument=None):
         manual_checkout(manual_filename=yaml_filename)
         url_args = user_dict['url_args']
         referer = user_dict['_internal'].get('referer', None)
-        interview_status = docassemble.base.parse.InterviewStatus(current_info=current_info(yaml=yaml_filename, req=request, interface=the_interface, session_info=session_info))
+        interview_status = docassemble.base.parse.InterviewStatus(current_info=current_info(yaml=yaml_filename, req=request, interface=the_interface, session_info=session_info, secret=secret))
         release_lock(user_code, yaml_filename)
         user_code, user_dict = reset_session(yaml_filename, secret)
         user_dict['url_args'] = url_args
@@ -7292,6 +7308,13 @@ def index(action_argument=None):
       var daCheckinCode = null;
       var daCheckingIn = 0;
       var daShowingHelp = 0;
+      var daIframeEmbed;
+      if ( window.location !== window.parent.location ) {
+        daIframeEmbed = true;
+      }
+      else {
+        daIframeEmbed = false;
+      }
       var daJsEmbed = """ + (json.dumps(js_target) if is_js else 'false') + """;
       var daAllowGoingBack = """ + ('true' if allow_going_back else 'false') + """;
       var daSteps = """ + str(steps) + """;
@@ -7353,6 +7376,7 @@ def index(action_argument=None):
         }
         return allFields;
       }
+      var daGetFields = getFields;
       function getField(fieldName){
         if (typeof daValLookup[fieldName] == "undefined"){
           var fieldNameEscaped = btoa(fieldName).replace(/[\\n=]/g, '');//.replace(/(:|\.|\[|\]|,|=)/g, "\\\\$1");
@@ -7379,8 +7403,9 @@ def index(action_argument=None):
         }
         return elem;
       }
+      var daGetField = getField;
       function setField(fieldName, val){
-        var elem = getField(fieldName);
+        var elem = daGetField(fieldName);
         if (elem == null){
           console.log('setField: reference to non-existent field ' + fieldName);
           return;
@@ -7423,8 +7448,9 @@ def index(action_argument=None):
           }
         }
       }
+      var daSetField = setField;
       function val(fieldName){
-        var elem = getField(fieldName);
+        var elem = daGetField(fieldName);
         if (elem == null){
           return null;
         }
@@ -7460,6 +7486,7 @@ def index(action_argument=None):
         }
         return theVal;
       }
+      var da_val = val;
       function daFormAsJSON(){
         var formData = $("#daform").serializeArray();
         var data = Object();
@@ -7514,6 +7541,7 @@ def index(action_argument=None):
           }
         }
       }
+      var da_flash = flash;
       function url_action(action, args){
         if (args == null){
           args = {};
@@ -7528,6 +7556,7 @@ def index(action_argument=None):
         }
         return url;
       }
+      var da_url_action = url_action;
       function action_call(action, args, callback){
         if (args == null){
             args = {};
@@ -7558,6 +7587,7 @@ def index(action_argument=None):
           }
         });
       }
+      var da_action_call = action_call;
       var url_action_call = action_call;
       function action_perform(action, args){
         if (args == null){
@@ -7586,6 +7616,7 @@ def index(action_argument=None):
           dataType: 'json'
         });
       }
+      var da_action_perform = action_perform;
       var url_action_perform = action_perform;
       function action_perform_with_next(action, args, next_data){
         //console.log("action_perform_with_next: " + action + " | " + next_data)
@@ -7615,6 +7646,7 @@ def index(action_argument=None):
           dataType: 'json'
         });
       }
+      var da_action_perform_with_next = action_perform_with_next;
       var url_action_perform_with_next = action_perform_with_next;
       function get_interview_variables(callback){
         if (callback == null){
@@ -7635,6 +7667,7 @@ def index(action_argument=None):
           }
         });
       }
+      var da_get_interview_variables = get_interview_variables;
       function daInformAbout(subject, chatMessage){
         if (subject in daInformed || (subject != 'chatmessage' && !daIsUser)){
           return;
@@ -8449,6 +8482,9 @@ def index(action_argument=None):
           clearTimeout(daDisable);
         }
         daCsrf = data.csrf_token;
+        if (data.question_data){
+          daQuestionData = data.question_data;
+        }
         if (data.action == 'body'){""" + forceFullScreen + """
           if ("activeElement" in document){
             document.activeElement.blur();
@@ -8471,7 +8507,7 @@ def index(action_argument=None):
           daChatPartnerRoles = data.livehelp.partner_roles;
           daSteps = data.steps;
           //console.log("daProcessAjax: pushing " + daSteps);
-          if (!daJsEmbed){
+          if (!daJsEmbed && !daIframeEmbed){
             if (history.state != null && daSteps > history.state.steps){
               history.pushState({steps: daSteps}, data.browser_title + " - page " + daSteps, locationBar + "#page" + daSteps);
             }
@@ -8593,7 +8629,7 @@ def index(action_argument=None):
       function daReviewAction(e){
         //action_perform_with_next($(this).data('action'), null, daNextAction);
         var info = $.parseJSON(atob($(this).data('action')));
-        action_perform(info['action'], info['arguments']);
+        da_action_perform(info['action'], info['arguments']);
         e.preventDefault();
         return false;
       }
@@ -8761,7 +8797,7 @@ def index(action_argument=None):
               else if (command.extra == 'fields'){
                 for (var key in command.value){
                   if (command.value.hasOwnProperty(key)){
-                    setField(key, command.value[key]);
+                    daSetField(key, command.value[key]);
                   }
                 }
               }
@@ -8975,10 +9011,10 @@ def index(action_argument=None):
             globalEval(message.message);
           }
           else if (message.priority == 'success' || message.priority == 'warning' || message.priority == 'danger' || message.priority == 'secondary' || message.priority == 'info' || message.priority == 'secondary' || message.priority == 'dark' || message.priority == 'light' || message.priority == 'primary'){
-            flash(message.message, message.priority);
+            da_flash(message.message, message.priority);
           }
           else{
-            flash(message.message, 'info');
+            da_flash(message.message, 'info');
           }
         }
       }
@@ -9077,7 +9113,7 @@ def index(action_argument=None):
           daFetchAjaxTimeoutRunning = true;
           daFetchAjaxTimeoutFetchAfter = false;
         }
-        action_call(cb.$source.data('action'), {wordstart: wordStart}, function(data){
+        da_action_call(cb.$source.data('action'), {wordstart: wordStart}, function(data){
           wordStart = $(elem).val();
           if (typeof data == "object"){
             var upperWordStart = wordStart.toUpperCase()
@@ -9305,7 +9341,9 @@ def index(action_argument=None):
           if (theVal.indexOf('.') >= 0 || theVal.indexOf(',') >= 0){
             var num = parseFloat(theVal);
             var cleanNum = num.toFixed(""" + str(daconfig.get('currency decimal places', 2)) + """);
-            $(this).val(cleanNum);
+            if (cleanNum != 'NaN') {
+              $(this).val(cleanNum);
+            }
           }
         });
         if (navigator.userAgent.match(/(iPad|iPhone|iPod touch);/i)) {
@@ -9497,7 +9535,7 @@ def index(action_argument=None):
         });
         $(".danavlinks a.daclickable").click(function(e){
           var the_key = $(this).data('key');
-          action_perform("_da_priority_action", {_action: the_key});
+          da_action_perform("_da_priority_action", {_action: the_key});
           e.preventDefault();
           return false;
         });
@@ -9969,7 +10007,7 @@ def index(action_argument=None):
       $(document).ready(function(){
         daInitialize(1);
         //console.log("ready: replaceState " + daSteps);
-        if (!daJsEmbed){
+        if (!daJsEmbed && !daIframeEmbed){
           history.replaceState({steps: daSteps}, "", locationBar + "#page" + daSteps);
         }
         var daReloadAfter = """ + str(int(reload_after)) + """;
@@ -10189,6 +10227,8 @@ def index(action_argument=None):
         for info in docassemble.base.functions.custom_types.values():
             if isinstance(info['javascript'], str):
                 the_js += "\n" + indent_by(info['javascript'].strip(), 6).rstrip()
+        if interview_status.question.interview.options.get('send question data', False):
+            the_js += "\n      daQuestionData = " + json.dumps(interview_status.as_data(user_dict))
         scripts += """
     <script type="text/javascript" charset="utf-8">
 """ + the_js + """
@@ -10479,7 +10519,10 @@ def index(action_argument=None):
             do_action = interview_status.question.checkin
         else:
             do_action = None
-        response = jsonify(action='body', body=output, extra_scripts=interview_status.extra_scripts, extra_css=interview_status.extra_css, browser_title=interview_status.tabtitle, lang=interview_language, bodyclass=bodyclass, reload_after=reload_after, livehelp=user_dict['_internal']['livehelp'], csrf_token=generate_csrf(), do_action=do_action, steps=steps, allow_going_back=allow_going_back, message_log=docassemble.base.functions.get_message_log(), id_dict=question_id_dict)
+        if interview_status.question.interview.options.get('send question data', False):
+            response = jsonify(action='body', body=output, extra_scripts=interview_status.extra_scripts, extra_css=interview_status.extra_css, browser_title=interview_status.tabtitle, lang=interview_language, bodyclass=bodyclass, reload_after=reload_after, livehelp=user_dict['_internal']['livehelp'], csrf_token=generate_csrf(), do_action=do_action, steps=steps, allow_going_back=allow_going_back, message_log=docassemble.base.functions.get_message_log(), id_dict=question_id_dict, question_data=interview_status.as_data(user_dict))
+        else:
+            response = jsonify(action='body', body=output, extra_scripts=interview_status.extra_scripts, extra_css=interview_status.extra_css, browser_title=interview_status.tabtitle, lang=interview_language, bodyclass=bodyclass, reload_after=reload_after, livehelp=user_dict['_internal']['livehelp'], csrf_token=generate_csrf(), do_action=do_action, steps=steps, allow_going_back=allow_going_back, message_log=docassemble.base.functions.get_message_log(), id_dict=question_id_dict)
         if response_wrapper:
             response_wrapper(response)
         if return_fake_html:
@@ -10595,14 +10638,15 @@ def get_history(interview, interview_status):
     else:
         has_question = False
     index = 0
-    if len(interview_status.seeking):
+    seeking_len = len(interview_status.seeking)
+    if seeking_len:
         starttime = interview_status.seeking[0]['time']
         for stage in interview_status.seeking:
             index += 1
-            if index < len(interview_status.seeking) and 'reason' in interview_status.seeking[index] and interview_status.seeking[index]['reason'] == 'asking' and interview_status.seeking[index]['question'] is stage['question']:
+            if index < seeking_len and 'reason' in interview_status.seeking[index] and interview_status.seeking[index]['reason'] in ('asking', 'running') and interview_status.seeking[index]['question'] is stage['question'] and 'question' in stage and 'reason' in stage and stage['reason'] == 'considering':
                 continue
             the_time = " at %.5fs" % (stage['time'] - starttime)
-            if 'question' in stage and 'reason' in stage and (has_question is False or stage['question'] is not interview_status.question):
+            if 'question' in stage and 'reason' in stage and (has_question is False or index < (seeking_len - 1) or stage['question'] is not interview_status.question):
                 if stage['reason'] == 'initial':
                     output += "          <h5>Ran initial code" + the_time + "</h5>\n"
                 elif stage['reason'] == 'mandatory question':
@@ -10611,8 +10655,10 @@ def get_history(interview, interview_status):
                     output += "          <h5>Tried to run mandatory code" + the_time + "</h5>\n"
                 elif stage['reason'] == 'asking':
                     output += "          <h5>Tried to ask question" + the_time + "</h5>\n"
+                elif stage['reason'] == 'running':
+                    output += "          <h5>Tried to run block" + the_time + "</h5>\n"
                 elif stage['reason'] == 'considering':
-                    output += "          <h5>Considered asking question" + the_time + "</h5>\n"
+                    output += "          <h5>Considered using block" + the_time + "</h5>\n"
                 elif stage['reason'] == 'objects from file':
                     output += "          <h5>Tried to load objects from file" + the_time + "</h5>\n"
                 elif stage['reason'] == 'data':
@@ -10864,7 +10910,8 @@ def redirect_to_interview(dispatch):
     for arg in request.args:
         arguments[arg] = request.args[arg]
     arguments['i'] = yaml_filename
-    arguments['new_session'] = '1'
+    if 'session' not in arguments:
+        arguments['new_session'] = '1'
     request.args = arguments
     return index()
 
@@ -11273,6 +11320,7 @@ def observer():
         }
         return allFields;
       }
+      var daGetFields = getFields;
       function getField(fieldName){
         if (typeof daValLookup[fieldName] == "undefined"){
           var fieldNameEscaped = btoa(fieldName).replace(/[\\n=]/g, '');//.replace(/(:|\.|\[|\]|,|=)/g, "\\\\$1");
@@ -11299,8 +11347,9 @@ def observer():
         }
         return elem;
       }
+      var daGetField = getField;
       function setField(fieldName, val){
-        var elem = getField(fieldName);
+        var elem = daGetField(fieldName);
         if (elem == null){
           console.log('setField: reference to non-existent field ' + fieldName);
           return;
@@ -11343,6 +11392,7 @@ def observer():
           }
         }
       }
+      var daSetField = setField;
       function val(fieldName){
         var elem = getField(fieldName);
         if (elem == null){
@@ -11380,6 +11430,7 @@ def observer():
         }
         return theVal;
       }
+      var da_val = val;
       window.daTurnOnControl = function(){
         //console.log("Turning on control");
         daSendChanges = true;
@@ -11565,6 +11616,7 @@ def observer():
           }
         }
       }
+      var da_flash = flash;
       function JSON_stringify(s){
          var json = JSON.stringify(s);
          return json.replace(/[\\u007f-\\uffff]/g,
@@ -11588,6 +11640,7 @@ def observer():
         }
         return url;
       }
+      var da_url_action = url_action;
       function action_call(action, args, callback){
         //redo?
         if (args == null){
@@ -11615,6 +11668,7 @@ def observer():
           }
         });
       }
+      var da_action_call = action_call;
       var url_action_call = action_call;
       function action_perform(action, args){
         //redo
@@ -11640,6 +11694,7 @@ def observer():
           dataType: 'json'
         });
       }
+      var da_action_perform = action_perform;
       var url_action_perform = action_perform;
       function action_perform_with_next(action, args, next_data){
         //redo
@@ -11666,6 +11721,7 @@ def observer():
           dataType: 'json'
         });
       }
+      var da_action_perform_with_next = action_perform_with_next;
       var url_action_perform_with_next = action_perform_with_next;
       function get_interview_variables(callback){
         if (callback == null){
@@ -11682,6 +11738,7 @@ def observer():
           }
         });
       }
+      var da_get_interview_variables = get_interview_variables;
       function daInitialize(doScroll){
         if (daSpinnerTimeout != null){
           clearTimeout(daSpinnerTimeout);
@@ -11998,7 +12055,6 @@ def observer():
                 var scripts = tempDiv.getElementsByTagName('script');
                 for (var i = 0; i < scripts.length; i++){
                   if (scripts[i].src != ""){
-                    //console.log("Added script to head");
                     daAddScriptToHead(scripts[i].src);
                   }
                   else{
@@ -16160,6 +16216,8 @@ def playground_files():
             mode = 'null'
     if mode != 'markdown':
         active_file = None
+    if section == 'modules':
+        mode = 'python'
     formtwo.original_file_name.data = the_file
     formtwo.file_name.data = the_file
     if the_file != '' and os.path.isfile(os.path.join(the_directory, the_file)):
@@ -18770,6 +18828,7 @@ def server_error(the_error):
           }, 3000);
         }
       }
+      var da_flash = flash;
       function daShowNotifications(){
         var n = daMessageLog.length;
         for (var i = 0; i < n; i++){
@@ -18781,10 +18840,10 @@ def server_error(the_error):
             globalEval(message.message);
           }
           else if (message.priority == 'success' || message.priority == 'warning' || message.priority == 'danger' || message.priority == 'secondary' || message.priority == 'info' || message.priority == 'secondary' || message.priority == 'dark' || message.priority == 'light' || message.priority == 'primary'){
-            flash(message.message, message.priority);
+            da_flash(message.message, message.priority);
           }
           else{
-            flash(message.message, 'info');
+            da_flash(message.message, 'info');
           }
         }
       }
@@ -19790,7 +19849,7 @@ def train():
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
         return response
 
-def user_interviews(user_id=None, secret=None, exclude_invalid=True, action=None, filename=None, session=None, tag=None, include_dict=True, delete_shared=False, admin=False):
+def user_interviews(user_id=None, secret=None, exclude_invalid=True, action=None, filename=None, session=None, tag=None, include_dict=True, delete_shared=False, admin=False, start_id=None):
     # logmessage("user_interviews: user_id is " + str(user_id) + " and secret is " + str(secret))
     if user_id is None and (current_user.is_anonymous or not current_user.has_role('admin', 'advocate')):
         raise Exception('user_interviews: only administrators and advocates can access information about other users')
@@ -19805,8 +19864,13 @@ def user_interviews(user_id=None, secret=None, exclude_invalid=True, action=None
     if action == 'delete_all':
         sessions_to_delete = set()
         if tag:
-            for interview_info in user_interviews(user_id=user_id, secret=secret, tag=tag, include_dict=False):
-                sessions_to_delete.add((interview_info['session'], interview_info['filename'], interview_info['user_id']))
+            start_id = None
+            while True:
+                (the_list, start_id) = user_interviews(user_id=user_id, secret=secret, tag=tag, include_dict=False, start_id=start_id)
+                for interview_info in the_list:
+                    sessions_to_delete.add((interview_info['session'], interview_info['filename'], interview_info['user_id']))
+                if start_id is None:
+                    break
         else:
             if user_id is None:
                 if filename is None:
@@ -19852,174 +19916,182 @@ def user_interviews(user_id=None, secret=None, exclude_invalid=True, action=None
         the_timezone = pytz.timezone(current_user.timezone)
     else:
         the_timezone = pytz.timezone(get_default_timezone())
-    subq = db.session.query(db.func.max(UserDict.indexno).label('indexno'), UserDict.filename, UserDict.key).group_by(UserDict.filename, UserDict.key).subquery()
-    if user_id is not None:
-        if include_dict:
-            if filename is not None:
-                if session is not None:
-                    interview_query = db.session.query(UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDictKeys.filename, UserDictKeys.key, UserDict.dictionary, UserDict.encrypted, UserModel.email).join(subq, and_(subq.c.filename == UserDictKeys.filename, subq.c.key == UserDictKeys.key)).join(UserDict, and_(UserDict.indexno == subq.c.indexno, UserDict.key == UserDictKeys.key, UserDict.filename == UserDictKeys.filename)).join(UserModel, UserModel.id == UserDictKeys.user_id).filter(UserDictKeys.user_id == user_id, UserDictKeys.filename == filename, UserDictKeys.key == session).group_by(UserModel.email, UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDictKeys.filename, UserDictKeys.key, UserDict.dictionary, UserDict.encrypted, UserDictKeys.indexno).order_by(UserDictKeys.indexno)
-                else:
-                    interview_query = db.session.query(UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDictKeys.filename, UserDictKeys.key, UserDict.dictionary, UserDict.encrypted, UserModel.email).join(subq, and_(subq.c.filename == UserDictKeys.filename, subq.c.key == UserDictKeys.key)).join(UserDict, and_(UserDict.indexno == subq.c.indexno, UserDict.key == UserDictKeys.key, UserDict.filename == UserDictKeys.filename)).join(UserModel, UserModel.id == UserDictKeys.user_id).filter(UserDictKeys.user_id == user_id, UserDictKeys.filename == filename).group_by(UserModel.email, UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDictKeys.filename, UserDictKeys.key, UserDict.dictionary, UserDict.encrypted, UserDictKeys.indexno).order_by(UserDictKeys.indexno)
-            else:
-                if session is not None:
-                    interview_query = db.session.query(UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDictKeys.filename, UserDictKeys.key, UserDict.dictionary, UserDict.encrypted, UserModel.email).join(subq, and_(subq.c.filename == UserDictKeys.filename, subq.c.key == UserDictKeys.key)).join(UserDict, and_(UserDict.indexno == subq.c.indexno, UserDict.key == UserDictKeys.key, UserDict.filename == UserDictKeys.filename)).join(UserModel, UserModel.id == UserDictKeys.user_id).filter(UserDictKeys.user_id == user_id, UserDictKeys.key == session).group_by(UserModel.email, UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDictKeys.filename, UserDictKeys.key, UserDict.dictionary, UserDict.encrypted, UserDictKeys.indexno).order_by(UserDictKeys.indexno)
-                else:
-                    interview_query = db.session.query(UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDictKeys.filename, UserDictKeys.key, UserDict.dictionary, UserDict.encrypted, UserModel.email).join(subq, and_(subq.c.filename == UserDictKeys.filename, subq.c.key == UserDictKeys.key)).join(UserDict, and_(UserDict.indexno == subq.c.indexno, UserDict.key == UserDictKeys.key, UserDict.filename == UserDictKeys.filename)).join(UserModel, UserModel.id == UserDictKeys.user_id).filter(UserDictKeys.user_id == user_id).group_by(UserModel.email, UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDictKeys.filename, UserDictKeys.key, UserDict.dictionary, UserDict.encrypted, UserDictKeys.indexno).order_by(UserDictKeys.indexno)
-        else:
-            if filename is not None:
-                if session is not None:
-                    interview_query = db.session.query(UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDictKeys.filename, UserDictKeys.key, UserDict.modtime, UserModel.email).join(subq, and_(subq.c.filename == UserDictKeys.filename, subq.c.key == UserDictKeys.key)).join(UserDict, and_(UserDict.indexno == subq.c.indexno, UserDict.key == UserDictKeys.key, UserDict.filename == UserDictKeys.filename)).join(UserModel, UserModel.id == UserDictKeys.user_id).filter(UserDictKeys.user_id == user_id, UserDictKeys.filename == filename, UserDictKeys.key == session).group_by(UserModel.email, UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDictKeys.filename, UserDictKeys.key, UserDictKeys.indexno, UserDict.modtime).order_by(UserDictKeys.indexno)
-                else:
-                    interview_query = db.session.query(UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDictKeys.filename, UserDictKeys.key, UserDict.modtime, UserModel.email).join(subq, and_(subq.c.filename == UserDictKeys.filename, subq.c.key == UserDictKeys.key)).join(UserDict, and_(UserDict.indexno == subq.c.indexno, UserDict.key == UserDictKeys.key, UserDict.filename == UserDictKeys.filename)).join(UserModel, UserModel.id == UserDictKeys.user_id).filter(UserDictKeys.user_id == user_id, UserDictKeys.filename == filename).group_by(UserModel.email, UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDictKeys.filename, UserDictKeys.key, UserDictKeys.indexno, UserDict.modtime).order_by(UserDictKeys.indexno)
-            else:
-                if session is not None:
-                    interview_query = db.session.query(UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDictKeys.filename, UserDictKeys.key, UserDict.modtime, UserModel.email).join(subq, and_(subq.c.filename == UserDictKeys.filename, subq.c.key == UserDictKeys.key)).join(UserDict, and_(UserDict.indexno == subq.c.indexno, UserDict.key == UserDictKeys.key, UserDict.filename == UserDictKeys.filename)).join(UserModel, UserModel.id == UserDictKeys.user_id).filter(UserDictKeys.user_id == user_id, UserDictKeys.key == session).group_by(UserModel.email, UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDictKeys.filename, UserDictKeys.key, UserDictKeys.indexno, UserDict.modtime).order_by(UserDictKeys.indexno)
-                else:
-                    interview_query = db.session.query(UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDictKeys.filename, UserDictKeys.key, UserDict.modtime, UserModel.email).join(subq, and_(subq.c.filename == UserDictKeys.filename, subq.c.key == UserDictKeys.key)).join(UserDict, and_(UserDict.indexno == subq.c.indexno, UserDict.key == UserDictKeys.key, UserDict.filename == UserDictKeys.filename)).join(UserModel, UserModel.id == UserDictKeys.user_id).filter(UserDictKeys.user_id == user_id).group_by(UserModel.email, UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDictKeys.filename, UserDictKeys.key, UserDictKeys.indexno, UserDict.modtime).order_by(UserDictKeys.indexno)
-    else:
-        if include_dict:
-            if filename is not None:
-                if session is not None:
-                    interview_query = db.session.query(UserDict).join(subq, and_(UserDict.indexno == subq.c.indexno, UserDict.key == subq.c.key, UserDict.filename == subq.c.filename)).outerjoin(UserDictKeys, and_(UserDict.filename == UserDictKeys.filename, UserDict.key == UserDictKeys.key)).outerjoin(UserModel, and_(UserDictKeys.user_id == UserModel.id, UserModel.active == True)).filter(UserDict.filename == filename, UserDict.key == session).group_by(UserModel.email, UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDict.filename, UserDict.key, UserDict.dictionary, UserDict.encrypted, UserDictKeys.indexno, UserDict.modtime).order_by(UserDictKeys.indexno).with_entities(UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDict.filename, UserDict.key, UserDict.dictionary, UserDict.encrypted, UserDict.modtime, UserModel.email)
-                else:
-                    interview_query = db.session.query(UserDict).join(subq, and_(UserDict.indexno == subq.c.indexno, UserDict.key == subq.c.key, UserDict.filename == subq.c.filename)).outerjoin(UserDictKeys, and_(UserDict.filename == UserDictKeys.filename, UserDict.key == UserDictKeys.key)).outerjoin(UserModel, and_(UserDictKeys.user_id == UserModel.id, UserModel.active == True)).filter(UserDict.filename == filename).group_by(UserModel.email, UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDict.filename, UserDict.key, UserDict.dictionary, UserDict.encrypted, UserDictKeys.indexno, UserDict.modtime).order_by(UserDictKeys.indexno).with_entities(UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDict.filename, UserDict.key, UserDict.dictionary, UserDict.encrypted, UserDict.modtime, UserModel.email)
-            else:
-                if session is not None:
-                    interview_query = db.session.query(UserDict).join(subq, and_(UserDict.indexno == subq.c.indexno, UserDict.key == subq.c.key, UserDict.filename == subq.c.filename)).outerjoin(UserDictKeys, and_(UserDict.filename == UserDictKeys.filename, UserDict.key == UserDictKeys.key)).outerjoin(UserModel, and_(UserDictKeys.user_id == UserModel.id, UserModel.active == True)).filter(UserDict.key == session).group_by(UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDict.filename, UserDict.key, UserDict.dictionary, UserDict.encrypted, UserDictKeys.indexno, UserModel.email, UserDict.modtime).order_by(UserDictKeys.indexno).with_entities(UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDict.filename, UserDict.key, UserDict.dictionary, UserDict.encrypted, UserDict.modtime, UserModel.email)
-                else:
-                    interview_query = db.session.query(UserDict).join(subq, and_(UserDict.indexno == subq.c.indexno, UserDict.key == subq.c.key, UserDict.filename == subq.c.filename)).outerjoin(UserDictKeys, and_(UserDict.filename == UserDictKeys.filename, UserDict.key == UserDictKeys.key)).outerjoin(UserModel, and_(UserDictKeys.user_id == UserModel.id, UserModel.active == True)).group_by(UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDict.filename, UserDict.key, UserDict.dictionary, UserDict.encrypted, UserDictKeys.indexno, UserModel.email, UserDict.modtime).order_by(UserDictKeys.indexno).with_entities(UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDict.filename, UserDict.key, UserDict.dictionary, UserDict.encrypted, UserDict.modtime, UserModel.email)
-        else:
-            if filename is not None:
-                if session is not None:
-                    interview_query = db.session.query(UserDict).join(subq, and_(UserDict.indexno == subq.c.indexno, UserDict.key == subq.c.key, UserDict.filename == subq.c.filename)).outerjoin(UserDictKeys, and_(UserDict.filename == UserDictKeys.filename, UserDict.key == UserDictKeys.key)).outerjoin(UserModel, and_(UserDictKeys.user_id == UserModel.id, UserModel.active == True)).filter(UserDict.filename == filename, UserDict.key == session).group_by(UserModel.email, UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDict.filename, UserDict.key, UserDictKeys.indexno, UserDict.modtime).order_by(UserDictKeys.indexno).with_entities(UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDict.filename, UserDict.key, UserDict.modtime, UserModel.email)
-                else:
-                    interview_query = db.session.query(UserDict).join(subq, and_(UserDict.indexno == subq.c.indexno, UserDict.key == subq.c.key, UserDict.filename == subq.c.filename)).outerjoin(UserDictKeys, and_(UserDict.filename == UserDictKeys.filename, UserDict.key == UserDictKeys.key)).outerjoin(UserModel, and_(UserDictKeys.user_id == UserModel.id, UserModel.active == True)).filter(UserDict.filename == filename).group_by(UserModel.email, UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDict.filename, UserDict.key, UserDictKeys.indexno, UserDict.modtime).order_by(UserDictKeys.indexno).with_entities(UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDict.filename, UserDict.key, UserDict.modtime, UserModel.email)
-            else:
-                if session is not None:
-                    interview_query = db.session.query(UserDict).join(subq, and_(UserDict.indexno == subq.c.indexno, UserDict.key == subq.c.key, UserDict.filename == subq.c.filename)).outerjoin(UserDictKeys, and_(UserDict.filename == UserDictKeys.filename, UserDict.key == UserDictKeys.key)).outerjoin(UserModel, and_(UserDictKeys.user_id == UserModel.id, UserModel.active == True)).filter(UserDict.key == session).group_by(UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDict.filename, UserDict.key, UserDictKeys.indexno, UserModel.email, UserDict.modtime).order_by(UserDictKeys.indexno).with_entities(UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDict.filename, UserDict.key, UserDict.modtime, UserModel.email)
-                else:
-                    interview_query = db.session.query(UserDict).join(subq, and_(UserDict.indexno == subq.c.indexno, UserDict.key == subq.c.key, UserDict.filename == subq.c.filename)).outerjoin(UserDictKeys, and_(UserDict.filename == UserDictKeys.filename, UserDict.key == UserDictKeys.key)).outerjoin(UserModel, and_(UserDictKeys.user_id == UserModel.id, UserModel.active == True)).group_by(UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDict.filename, UserDict.key, UserDictKeys.indexno, UserModel.email, UserDict.modtime).order_by(UserDictKeys.indexno).with_entities(UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDict.filename, UserDict.key, UserDict.modtime, UserModel.email)
-    #logmessage(str(interview_query))
-    interviews = list()
-    stored_info = list()
 
-    for interview_info in interview_query:
-        #logmessage("filename is " + str(interview_info.filename) + " " + str(interview_info.key))
-        if session is not None and interview_info.key != session:
-            continue
-        if include_dict and interview_info.dictionary is None:
-            continue
-        if include_dict:
-            stored_info.append(dict(filename=interview_info.filename,
-                                    encrypted=interview_info.encrypted,
-                                    dictionary=interview_info.dictionary,
-                                    key=interview_info.key,
-                                    email=interview_info.email,
-                                    user_id=interview_info.user_id,
-                                    temp_user_id=interview_info.temp_user_id))
+    interviews_length = 0
+    interviews = list()
+
+    while True:
+        there_are_more = False
+        subq = db.session.query(db.func.max(UserDict.indexno).label('indexno'), UserDict.filename, UserDict.key).group_by(UserDict.filename, UserDict.key).subquery()
+        if user_id is not None:
+            query_elements = [UserDict.indexno, UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDictKeys.filename, UserDictKeys.key, UserModel.email]
+            filter_elements = [UserDictKeys.user_id == user_id]
+            group_elements = [UserModel.email, UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDictKeys.filename, UserDictKeys.key, UserDictKeys.indexno, UserDict.indexno]
+            if include_dict:
+                query_elements.extend([UserDict.dictionary, UserDict.encrypted, UserModel.email])
+                group_elements.extend([UserDict.dictionary, UserDict.encrypted])
+            else:
+                query_elements.append(UserDict.modtime)
+                group_elements.append(UserDict.modtime)
+            if filename is not None:
+                filter_elements.append(UserDictKeys.filename == filename)
+            if session is not None:
+                filter_elements.append(UserDictKeys.key == session)
+            if start_id is not None:
+                filter_elements.append(UserDict.indexno > start_id)
+            interview_query = db.session.query(*query_elements).join(subq, and_(subq.c.filename == UserDictKeys.filename, subq.c.key == UserDictKeys.key)).join(UserDict, and_(UserDict.indexno == subq.c.indexno, UserDict.key == UserDictKeys.key, UserDict.filename == UserDictKeys.filename)).join(UserModel, UserModel.id == UserDictKeys.user_id).filter(and_(*filter_elements)).group_by(*group_elements).order_by(UserDict.indexno)
         else:
-            stored_info.append(dict(filename=interview_info.filename,
-                                    modtime=interview_info.modtime,
-                                    key=interview_info.key,
-                                    email=interview_info.email,
-                                    user_id=interview_info.user_id,
-                                    temp_user_id=interview_info.temp_user_id))
-    for interview_info in stored_info:
-        interview_title = dict()
-        is_valid = True
-        interview_valid = True
-        try:
-            interview = docassemble.base.interview_cache.get_interview(interview_info['filename'])
-        except Exception as the_err:
-            if exclude_invalid:
-                continue
-            logmessage("user_interviews: unable to load interview file " + interview_info['filename'])
-            interview_title['full'] = word('Error: interview not found')
-            interview_valid = False
-            is_valid = False
-        #logmessage("Found old interview with title " + interview_title)
-        if include_dict:
-            if interview_info['encrypted']:
-                try:
-                    dictionary = decrypt_dictionary(interview_info['dictionary'], secret)
-                except Exception as the_err:
-                    if exclude_invalid:
-                        continue
-                    try:
-                        logmessage("user_interviews: unable to decrypt dictionary.  " + str(the_err.__class__.__name__) + ": " + str(the_err))
-                    except:
-                        logmessage("user_interviews: unable to decrypt dictionary.  " + str(the_err.__class__.__name__))
-                    dictionary = fresh_dictionary()
-                    dictionary['_internal']['starttime'] = None
-                    dictionary['_internal']['modtime'] = None
-                    is_valid = False
-            else:
-                try:
-                    dictionary = unpack_dictionary(interview_info['dictionary'])
-                except Exception as the_err:
-                    if exclude_invalid:
-                        continue
-                    try:
-                        logmessage("user_interviews: unable to unpack dictionary.  " + str(the_err.__class__.__name__) + ": " + str(the_err))
-                    except:
-                        logmessage("user_interviews: unable to unpack dictionary.  " + str(the_err.__class__.__name__))
-                    dictionary = fresh_dictionary()
-                    dictionary['_internal']['starttime'] = None
-                    dictionary['_internal']['modtime'] = None
-                    is_valid = False
-            if not isinstance(dictionary, dict):
-                logmessage("user_interviews: found a dictionary that was not a dictionary")
-                continue
-        if is_valid:
+            filter_elements = []
+            group_elements = [UserDict.indexno, UserModel.email, UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDict.filename, UserDict.key, UserDict.dictionary, UserDict.encrypted, UserDictKeys.indexno, UserDict.modtime]
             if include_dict:
-                interview_title = interview.get_title(dictionary)
-                tags = interview.get_tags(dictionary)
-            else:
-                interview_title = interview.get_title(dict(_internal=dict()))
-                tags = interview.get_tags(dict(_internal=dict()))
-            metadata = copy.deepcopy(interview.consolidated_metadata)
-        elif interview_valid:
-            interview_title = interview.get_title(dict(_internal=dict()))
-            metadata = copy.deepcopy(interview.consolidated_metadata)
+                group_elements.extend([UserDict.dictionary, UserDict.encrypted])
+            if filename is not None:
+                filter_elements.append(UserDict.filename == filename)
+            if session is not None:
+                filter_elements.append(UserDict.key == session)
+            if start_id is not None:
+                filter_elements.append(UserDict.indexno > start_id)
+            interview_query = db.session.query(UserDict).join(subq, and_(UserDict.indexno == subq.c.indexno, UserDict.key == subq.c.key, UserDict.filename == subq.c.filename)).outerjoin(UserDictKeys, and_(UserDict.filename == UserDictKeys.filename, UserDict.key == UserDictKeys.key)).outerjoin(UserModel, and_(UserDictKeys.user_id == UserModel.id, UserModel.active == True))
+            if len(filter_elements) > 0:
+                interview_query = interview_query.filter(and_(*filter_elements))
+            interview_query = interview_query.group_by(*group_elements).order_by(UserDict.indexno).with_entities(UserDict.indexno, UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDict.filename, UserDict.key, UserDict.dictionary, UserDict.encrypted, UserDict.modtime, UserModel.email)
+        interview_query = interview_query.limit(PAGINATION_LIMIT_PLUS_ONE)
+
+        stored_info = list()
+        results_in_query = 0
+        for interview_info in interview_query:
+            results_in_query += 1
+            if results_in_query == PAGINATION_LIMIT_PLUS_ONE:
+                there_are_more = True
+                break
+            #logmessage("filename is " + str(interview_info.filename) + " " + str(interview_info.key))
+            if session is not None and interview_info.key != session:
+                continue
+            if include_dict and interview_info.dictionary is None:
+                continue
             if include_dict:
-                tags = interview.get_tags(dictionary)
-                if 'full' not in interview_title:
-                    interview_title['full'] = word("Interview answers cannot be decrypted")
+                stored_info.append(dict(filename=interview_info.filename,
+                                        encrypted=interview_info.encrypted,
+                                        dictionary=interview_info.dictionary,
+                                        key=interview_info.key,
+                                        email=interview_info.email,
+                                        user_id=interview_info.user_id,
+                                        temp_user_id=interview_info.temp_user_id,
+                                        indexno=interview_info.indexno))
+            else:
+                stored_info.append(dict(filename=interview_info.filename,
+                                        modtime=interview_info.modtime,
+                                        key=interview_info.key,
+                                        email=interview_info.email,
+                                        user_id=interview_info.user_id,
+                                        temp_user_id=interview_info.temp_user_id,
+                                        indexno=interview_info.indexno))
+        for interview_info in stored_info:
+            if interviews_length == PAGINATION_LIMIT:
+                there_are_more = True
+                break
+            start_id = interview_info['indexno']
+            interview_title = dict()
+            is_valid = True
+            interview_valid = True
+            try:
+                interview = docassemble.base.interview_cache.get_interview(interview_info['filename'])
+            except Exception as the_err:
+                if exclude_invalid:
+                    continue
+                logmessage("user_interviews: unable to load interview file " + interview_info['filename'])
+                interview_title['full'] = word('Error: interview not found')
+                interview_valid = False
+                is_valid = False
+            #logmessage("Found old interview with title " + interview_title)
+            if include_dict:
+                if interview_info['encrypted']:
+                    try:
+                        dictionary = decrypt_dictionary(interview_info['dictionary'], secret)
+                    except Exception as the_err:
+                        if exclude_invalid:
+                            continue
+                        try:
+                            logmessage("user_interviews: unable to decrypt dictionary.  " + str(the_err.__class__.__name__) + ": " + str(the_err))
+                        except:
+                            logmessage("user_interviews: unable to decrypt dictionary.  " + str(the_err.__class__.__name__))
+                        dictionary = fresh_dictionary()
+                        dictionary['_internal']['starttime'] = None
+                        dictionary['_internal']['modtime'] = None
+                        is_valid = False
                 else:
-                    interview_title['full'] += ' - ' + word('interview answers cannot be decrypted')
+                    try:
+                        dictionary = unpack_dictionary(interview_info['dictionary'])
+                    except Exception as the_err:
+                        if exclude_invalid:
+                            continue
+                        try:
+                            logmessage("user_interviews: unable to unpack dictionary.  " + str(the_err.__class__.__name__) + ": " + str(the_err))
+                        except:
+                            logmessage("user_interviews: unable to unpack dictionary.  " + str(the_err.__class__.__name__))
+                        dictionary = fresh_dictionary()
+                        dictionary['_internal']['starttime'] = None
+                        dictionary['_internal']['modtime'] = None
+                        is_valid = False
+                if not isinstance(dictionary, dict):
+                    logmessage("user_interviews: found a dictionary that was not a dictionary")
+                    continue
+            if is_valid:
+                if include_dict:
+                    interview_title = interview.get_title(dictionary)
+                    tags = interview.get_tags(dictionary)
+                else:
+                    interview_title = interview.get_title(dict(_internal=dict()))
+                    tags = interview.get_tags(dict(_internal=dict()))
+                metadata = copy.deepcopy(interview.consolidated_metadata)
+            elif interview_valid:
+                interview_title = interview.get_title(dict(_internal=dict()))
+                metadata = copy.deepcopy(interview.consolidated_metadata)
+                if include_dict:
+                    tags = interview.get_tags(dictionary)
+                    if 'full' not in interview_title:
+                        interview_title['full'] = word("Interview answers cannot be decrypted")
+                    else:
+                        interview_title['full'] += ' - ' + word('interview answers cannot be decrypted')
+                else:
+                    tags = interview.get_tags(dict(_internal=dict()))
+                    if 'full' not in interview_title:
+                        interview_title['full'] = word('Unknown')
             else:
-                tags = interview.get_tags(dict(_internal=dict()))
-                if 'full' not in interview_title:
-                    interview_title['full'] = word('Unknown')
-        else:
-            interview_title['full'] = word('Error: interview not found and answers could not be decrypted')
-            metadata = dict()
-            tags = set()
-        if include_dict:
-            if dictionary['_internal']['starttime']:
-                utc_starttime = dictionary['_internal']['starttime']
-                starttime = nice_date_from_utc(dictionary['_internal']['starttime'], timezone=the_timezone)
+                interview_title['full'] = word('Error: interview not found and answers could not be decrypted')
+                metadata = dict()
+                tags = set()
+            if include_dict:
+                if dictionary['_internal']['starttime']:
+                    utc_starttime = dictionary['_internal']['starttime']
+                    starttime = nice_date_from_utc(dictionary['_internal']['starttime'], timezone=the_timezone)
+                else:
+                    utc_starttime = None
+                    starttime = ''
+                if dictionary['_internal']['modtime']:
+                    utc_modtime = dictionary['_internal']['modtime']
+                    modtime = nice_date_from_utc(dictionary['_internal']['modtime'], timezone=the_timezone)
+                else:
+                    utc_modtime = None
+                    modtime = ''
             else:
                 utc_starttime = None
                 starttime = ''
-            if dictionary['_internal']['modtime']:
-                utc_modtime = dictionary['_internal']['modtime']
-                modtime = nice_date_from_utc(dictionary['_internal']['modtime'], timezone=the_timezone)
-            else:
-                utc_modtime = None
-                modtime = ''
-        else:
-            utc_starttime = None
-            starttime = ''
-            utc_modtime = interview_info['modtime']
-            modtime = nice_date_from_utc(interview_info['modtime'], timezone=the_timezone)
-        if tag is not None and tag not in tags:
-            continue
-        out = {'filename': interview_info['filename'], 'session': interview_info['key'], 'modtime': modtime, 'starttime': starttime, 'utc_modtime': utc_modtime, 'utc_starttime': utc_starttime, 'title': interview_title.get('full', word('Untitled')), 'subtitle': interview_title.get('sub', None), 'valid': is_valid, 'metadata': metadata, 'tags': tags, 'email': interview_info['email'], 'user_id': interview_info['user_id'], 'temp_user_id': interview_info['temp_user_id']}
-        if include_dict:
-            out['dict'] = dictionary
-        interviews.append(out)
-    return interviews
+                utc_modtime = interview_info['modtime']
+                modtime = nice_date_from_utc(interview_info['modtime'], timezone=the_timezone)
+            if tag is not None and tag not in tags:
+                continue
+            out = {'filename': interview_info['filename'], 'session': interview_info['key'], 'modtime': modtime, 'starttime': starttime, 'utc_modtime': utc_modtime, 'utc_starttime': utc_starttime, 'title': interview_title.get('full', word('Untitled')), 'subtitle': interview_title.get('sub', None), 'valid': is_valid, 'metadata': metadata, 'tags': tags, 'email': interview_info['email'], 'user_id': interview_info['user_id'], 'temp_user_id': interview_info['temp_user_id']}
+            if include_dict:
+                out['dict'] = dictionary
+            interviews.append(out)
+            interviews_length += 1
+        if interviews_length == PAGINATION_LIMIT or results_in_query < PAGINATION_LIMIT_PLUS_ONE:
+            break
+    if there_are_more:
+        return (interviews, start_id)
+    else:
+        return (interviews, None)
 
 @app.route('/interviews', methods=['GET', 'POST'])
 @login_required
@@ -20098,20 +20170,37 @@ def interview_list():
     if resume_interview is None and daconfig.get('auto resume interview', None) is not None and (request.args.get('from_login', False) or (re.search(r'user/(register|sign-in)', str(request.referrer)) and 'next=' not in str(request.referrer))):
         resume_interview = daconfig['auto resume interview']
     if resume_interview is not None:
-        interviews = user_interviews(user_id=current_user.id, secret=secret, exclude_invalid=True, filename=resume_interview, include_dict=True)
+        (interviews, start_id) = user_interviews(user_id=current_user.id, secret=secret, exclude_invalid=True, filename=resume_interview, include_dict=True)
         if len(interviews):
             return redirect(url_for('index', i=interviews[0]['filename'], session=interviews[0]['session'], from_list='1'))
         return redirect(url_for('index', i=resume_interview, from_list='1'))
-    interviews = user_interviews(user_id=current_user.id, secret=secret, exclude_invalid=exclude_invalid, tag=tag)
-    if interviews is None:
+    next_id_code = request.args.get('next_id', None)
+    if next_id_code:
+        try:
+            start_id = int(from_safeid(next_id_code))
+            assert start_id >= 0
+            show_back = True
+        except:
+            start_id = None
+            show_back = False
+    else:
+        start_id = None
+        show_back = False
+    result = user_interviews(user_id=current_user.id, secret=secret, exclude_invalid=exclude_invalid, tag=tag, start_id=start_id)
+    if result is None:
         raise Exception("interview_list: could not obtain list of interviews")
+    (interviews, start_id) = result
+    if start_id is None:
+        next_id = None
+    else:
+        next_id = safeid(str(start_id))
     if is_json:
         for interview in interviews:
             if 'dict' in interview:
                 del interview['dict']
             if 'tags' in interview:
                 interview['tags'] = sorted(interview['tags'])
-        return jsonify(action="interviews", interviews=interviews)
+        return jsonify(action="interviews", interviews=interviews, next_id=next_id)
     script = """
     <script>
       $("#deleteall").on('click', function(event){
@@ -20132,7 +20221,7 @@ def interview_list():
                 tags_used.add(the_tag)
     #interview_page_title = word(daconfig.get('interview page title', 'Interviews'))
     #title = word(daconfig.get('interview page heading', 'Resume an interview'))
-    argu = dict(version_warning=version_warning, tags_used=sorted(tags_used) if len(tags_used) else None, numinterviews=len([y for y in interviews if not y['metadata'].get('hidden', False)]), interviews=sorted(interviews, key=valid_date_key), tag=tag) # extra_css=Markup(global_css), extra_js=Markup(script), tab_title=interview_page_title, page_title=interview_page_title, title=title
+    argu = dict(version_warning=version_warning, tags_used=sorted(tags_used) if len(tags_used) else None, numinterviews=len([y for y in interviews if not y['metadata'].get('hidden', False)]), interviews=sorted(interviews, key=valid_date_key), tag=tag, next_id=next_id, show_back=show_back) # extra_css=Markup(global_css), extra_js=Markup(script), tab_title=interview_page_title, page_title=interview_page_title, title=title
     if 'interview page template' in daconfig and daconfig['interview page template']:
         the_page = docassemble.base.functions.package_template_filename(daconfig['interview page template'])
         if the_page is None:
@@ -20205,10 +20294,10 @@ def _on_password_change(sender, user, **extra):
     #logmessage("on password change")
     fix_secret(user=user)
 
-@user_reset_password.connect_via(app)
-def _on_password_reset(sender, user, **extra):
-    #logmessage("on password reset")
-    fix_secret(user=user)
+# @user_reset_password.connect_via(app)
+# def _on_password_reset(sender, user, **extra):
+#     #logmessage("on password reset")
+#     fix_secret(user=user)
 
 @user_registered.connect_via(app)
 def on_register_hook(sender, user, **extra):
@@ -21244,27 +21333,49 @@ def true_or_false(text):
         return False
     return True
 
-def get_user_list(include_inactive=False):
+def get_user_list(include_inactive=False, start_id=None):
     if not (current_user.is_authenticated and current_user.has_role('admin', 'advocate')):
         raise Exception("You cannot call get_user_list() unless you are an administrator or advocate")
-    if include_inactive:
-        the_users = UserModel.query.options(db.joinedload('roles')).order_by(UserModel.id).all()
-    else:
-        the_users = UserModel.query.options(db.joinedload('roles')).filter_by(active=True).order_by(UserModel.id).all()
+    user_length = 0
     user_list = list()
-    for user in the_users:
-        if user.social_id.startswith('disabled$'):
-            continue
-        user_info = dict()
-        user_info['privileges'] = list()
-        for role in user.roles:
-            user_info['privileges'].append(role.name)
-        for attrib in ('id', 'email', 'first_name', 'last_name', 'country', 'subdivisionfirst', 'subdivisionsecond', 'subdivisionthird', 'organization', 'timezone', 'language'):
-            user_info[attrib] = getattr(user, attrib)
-        if include_inactive:
-            user_info['active'] = getattr(user, 'active')
-        user_list.append(user_info)
-    return user_list
+    while True:
+        there_are_more = False
+        filter_list = []
+        if start_id is not None:
+            filter_list.append(UserModel.id > start_id)
+        if not include_inactive:
+            filter_list.append(UserModel.active == True)
+        the_users = UserModel.query.options(db.joinedload('roles'))
+        if len(filter_list):
+            the_users = the_users.filter(*filter_list)
+        the_users = the_users.order_by(UserModel.id).limit(PAGINATION_LIMIT_PLUS_ONE)
+        results_in_query = 0
+        for user in the_users:
+            results_in_query += 1
+            if results_in_query == PAGINATION_LIMIT_PLUS_ONE:
+                there_are_more = True
+                break
+            start_id = user.id
+            if user.social_id.startswith('disabled$'):
+                continue
+            if user_length == PAGINATION_LIMIT:
+                there_are_more = True
+                break
+            user_info = dict()
+            user_info['privileges'] = list()
+            for role in user.roles:
+                user_info['privileges'].append(role.name)
+            for attrib in ('id', 'email', 'first_name', 'last_name', 'country', 'subdivisionfirst', 'subdivisionsecond', 'subdivisionthird', 'organization', 'timezone', 'language'):
+                user_info[attrib] = getattr(user, attrib)
+            if include_inactive:
+                user_info['active'] = getattr(user, 'active')
+            user_list.append(user_info)
+            user_length += 1
+        if user_length == PAGINATION_LIMIT or results_in_query < PAGINATION_LIMIT_PLUS_ONE:
+            break
+    if not there_are_more:
+        start_id = None
+    return (user_list, start_id)
 
 @app.route('/translation_file', methods=['POST'])
 @login_required
@@ -21555,14 +21666,32 @@ def api_user_list():
     if not api_verify(request, roles=['admin', 'advocate']):
         return jsonify_with_status("Access denied.", 403)
     include_inactive = true_or_false(request.args.get('include_inactive', False))
-    user_list = get_user_list(include_inactive)
-    return jsonify(user_list)
+    next_id_code = request.args.get('next_id', None)
+    if next_id_code:
+        try:
+            start_id = int(from_safeid(next_id_code))
+            assert start_id >= 0
+        except:
+            start_id = None
+    else:
+        start_id = None
+    (user_list, start_id) = get_user_list(include_inactive=include_inactive, start_id=start_id)
+    if start_id is None:
+        next_id = None
+    else:
+        next_id = safeid(str(start_id))
+    return jsonify(dict(next_id=next_id, items=user_list))
 
-def get_user_info(user_id=None, email=None):
+def get_user_info(user_id=None, email=None, case_sensitive=False):
     if current_user.is_anonymous:
         raise Exception("You cannot call get_user_info() unless you are logged in")
+    if user_id is not None:
+        assert isinstance(user_id, int)
     if user_id is None and email is None:
         user_id = current_user.id
+    if email is not None:
+        assert isinstance(email, str)
+        email = email.strip()
     if not (current_user.has_role('admin', 'advocate')):
         if (user_id is not None and current_user.id != user_id) or (email is not None and current_user.email != email):
             raise Exception("You cannot call get_user_info() unless you are an administrator or advocate")
@@ -21570,7 +21699,10 @@ def get_user_info(user_id=None, email=None):
     if user_id is not None:
         user = UserModel.query.options(db.joinedload('roles')).filter_by(id=user_id).first()
     else:
-        user = UserModel.query.options(db.joinedload('roles')).filter_by(email=email).first()
+        if case_sensitive:
+            user = UserModel.query.options(db.joinedload('roles')).filter_by(email=email).first()
+        else:
+            user = UserModel.query.options(db.joinedload('roles')).filter(UserModel.email.ilike(email)).first()
     if user is None or user.social_id.startswith('disabled$'):
         return None
     for role in user.roles:
@@ -21590,6 +21722,8 @@ def make_user_inactive(user_id=None, email=None):
     if user_id is not None:
         user = UserModel.query.filter_by(id=user_id).first()
     else:
+        assert isinstance(email, str)
+        email = email.strip()
         user = UserModel.query.filter_by(email=email).first()
     if user is None:
         raise Exception("User not found")
@@ -21655,7 +21789,7 @@ def api_create_user():
     info = dict()
     for key in ('first_name', 'last_name', 'country', 'subdivisionfirst', 'subdivisionsecond', 'subdivisionthird', 'organization', 'timezone', 'language'):
         if key in post_data:
-            info[key] = post_data[key]
+            info[key] = post_data[key].strip()
     if 'privileges' in post_data and isinstance(post_data['privileges'], list):
         role_list = post_data['privileges']
     else:
@@ -21673,7 +21807,7 @@ def api_create_user():
     for role_name in role_list:
         if role_name not in valid_role_names:
             return jsonify_with_status("Invalid privilege name.  " + role_name + " is not an existing privilege.", 400)
-    password = post_data.get('password', random_alphanumeric(10))
+    password = post_data.get('password', random_alphanumeric(10)).strip()
     if len(password) < 4 or len(password) > 254:
         return jsonify_with_status("Password too short or too long", 400)
     try:
@@ -21690,8 +21824,9 @@ def api_user_info():
         return jsonify_with_status("Access denied.", 403)
     if 'username' not in request.args:
         return jsonify_with_status("An e-mail address must be supplied.", 400)
+    case_sensitive = true_or_false(request.args.get('case_sensitive', False))
     try:
-        user_info = get_user_info(email=request.args['username'])
+        user_info = get_user_info(email=request.args['username'], case_sensitive=case_sensitive)
     except Exception as err:
         return jsonify_with_status("Error obtaining user information: " + str(err), 400)
     if user_info is None:
@@ -21954,9 +22089,10 @@ def create_user(email, password, privileges=None, info=None):
         raise Exception("You cannot call create_user() unless you are logged in")
     if not (current_user.has_role('admin')):
         raise Exception("You cannot call create_user() unless you are an administrator")
+    email = email.strip()
+    password = str(password).strip()
     if len(password) < 4 or len(password) > 254:
         raise Exception("Password too short or too long")
-    password = str(password)
     role_dict = dict()
     if privileges is None:
         privileges = list()
@@ -22097,22 +22233,39 @@ def api_users_interviews():
     filename = request.args.get('i', None)
     secret = request.args.get('secret', None)
     tag = request.args.get('tag', None)
+    next_id_code = request.args.get('next_id', None)
+    if next_id_code:
+        try:
+            start_id = int(from_safeid(next_id_code))
+            assert start_id >= 0
+        except:
+            start_id = None
+    else:
+        start_id = None
     if secret is not None:
         secret = str(secret)
     if request.method == 'GET':
         include_dict = true_or_false(request.args.get('include_dictionary', False))
         try:
-            the_list = user_interviews(user_id=user_id, secret=secret, exclude_invalid=False, tag=tag, filename=filename, include_dict=include_dict)
-        except:
-            return jsonify_with_status("Error getting interview list.", 400)
-        return jsonify(docassemble.base.functions.safe_json(the_list))
+            (the_list, start_id) = user_interviews(user_id=user_id, secret=secret, exclude_invalid=False, tag=tag, filename=filename, include_dict=include_dict, start_id=start_id)
+        except Exception as err:
+            return jsonify_with_status("Error getting interview list.  " + str(err), 400)
+        if start_id is None:
+            next_id = None
+        else:
+            next_id = safeid(str(start_id))
+        return jsonify(dict(next_id=next_id, items=docassemble.base.functions.safe_json(the_list)))
     elif request.method == 'DELETE':
-        try:
-            the_list = user_interviews(user_id=user_id, exclude_invalid=False, tag=tag, filename=filename, include_dict=False)
-        except:
-            return jsonify_with_status("Error reading interview list.", 400)
-        for info in the_list:
-            user_interviews(user_id=info['user_id'], action='delete', filename=info['filename'], session=info['session'])
+        start_id = None
+        while True:
+            try:
+                (the_list, start_id) = user_interviews(user_id=user_id, exclude_invalid=False, tag=tag, filename=filename, include_dict=False, start_id=start_id)
+            except:
+                return jsonify_with_status("Error reading interview list.", 400)
+            for info in the_list:
+                user_interviews(user_id=info['user_id'], action='delete', filename=info['filename'], session=info['session'])
+            if start_id is None:
+                break
         return ('', 204)
 
 @app.route('/api/user/<int:user_id>/interviews', methods=['GET', 'DELETE'])
@@ -22126,22 +22279,39 @@ def api_user_user_id_interviews(user_id):
     filename = request.args.get('i', None)
     secret = request.args.get('secret', None)
     tag = request.args.get('tag', None)
+    next_id_code = request.args.get('next_id', None)
+    if next_id_code:
+        try:
+            start_id = int(from_safeid(next_id_code))
+            assert start_id >= 0
+        except:
+            start_id = None
+    else:
+        start_id = None
     if secret is not None:
         secret = str(secret)
     include_dict = true_or_false(request.args.get('include_dictionary', False))
     if request.method == 'GET':
         try:
-            the_list = user_interviews(user_id=user_id, secret=secret, exclude_invalid=False, tag=tag, filename=filename, include_dict=include_dict)
+            (the_list, start_id) = user_interviews(user_id=user_id, secret=secret, exclude_invalid=False, tag=tag, filename=filename, include_dict=include_dict, start_id=start_id)
         except:
             return jsonify_with_status("Error reading interview list.", 400)
-        return jsonify(docassemble.base.functions.safe_json(the_list))
+        if start_id is None:
+            next_id = None
+        else:
+            next_id = safeid(str(start_id))
+        return jsonify(dict(next_id=next_id, items=docassemble.base.functions.safe_json(the_list)))
     elif request.method == 'DELETE':
-        try:
-            the_list = user_interviews(user_id=user_id, exclude_invalid=False, tag=tag, filename=filename, include_dict=False)
-        except:
-            return jsonify_with_status("Error reading interview list.", 400)
-        for info in the_list:
-            user_interviews(user_id=info['user_id'], action='delete', filename=info['filename'], session=info['session'])
+        start_id = None
+        while True:
+            try:
+                (the_list, start_id) = user_interviews(user_id=user_id, exclude_invalid=False, tag=tag, filename=filename, include_dict=False, start_id=start_id)
+            except:
+                return jsonify_with_status("Error reading interview list.", 400)
+            for info in the_list:
+                user_interviews(user_id=info['user_id'], action='delete', filename=info['filename'], session=info['session'])
+            if start_id is None:
+                break
         return ('', 204)
 
 @app.route('/api/session/back', methods=['POST'])
@@ -22444,7 +22614,7 @@ def set_session_variables(yaml_filename, session_id, variables, secret=None, ret
                 break
     if pre_assembly_necessary:
         interview = docassemble.base.interview_cache.get_interview(yaml_filename)
-        ci = current_info(yaml=yaml_filename, req=request)
+        ci = current_info(yaml=yaml_filename, req=request, secret=secret)
         ci['session'] = session_id
         ci['encrypted'] = is_encrypted
         ci['secret'] = secret
@@ -22575,7 +22745,7 @@ def create_new_interview(yaml_filename, secret, url_args=None, request=None):
     if url_args:
         for key, val in url_args.items():
             exec("url_args['" + key + "'] = " + repr(val.encode('unicode_escape')), user_dict)
-    ci = current_info(yaml=yaml_filename, req=request)
+    ci = current_info(yaml=yaml_filename, req=request, secret=secret)
     ci['session'] = session_id
     ci['encrypted'] = True
     ci['secret'] = secret
@@ -22639,7 +22809,7 @@ def get_question_data(yaml_filename, session_id, secret, use_lock=True, user_dic
         the_section_display = None
         the_sections = list()
     interview = docassemble.base.interview_cache.get_interview(yaml_filename)
-    ci = current_info(yaml=yaml_filename, req=request)
+    ci = current_info(yaml=yaml_filename, req=request, secret=secret)
     ci['session'] = session_id
     ci['encrypted'] = is_encrypted
     ci['secret'] = secret
@@ -22791,7 +22961,7 @@ def api_session_action():
         release_lock(session_id, yaml_filename)
         return jsonify_with_status("Unable to obtain interview dictionary.", 400)
     interview = docassemble.base.interview_cache.get_interview(yaml_filename)
-    ci = current_info(yaml=yaml_filename, req=request, action=dict(action=action, arguments=arguments))
+    ci = current_info(yaml=yaml_filename, req=request, action=dict(action=action, arguments=arguments), secret=secret)
     ci['session'] = session_id
     ci['encrypted'] = is_encrypted
     ci['secret'] = secret
@@ -22926,19 +23096,36 @@ def api_user_interviews():
     if secret is not None:
         secret = str(secret)
     include_dict = true_or_false(request.args.get('include_dictionary', False))
+    next_id_code = request.args.get('next_id', None)
+    if next_id_code:
+        try:
+            start_id = int(from_safeid(next_id_code))
+            assert start_id >= 0
+        except:
+            start_id = None
+    else:
+        start_id = None
     if request.method == 'GET':
         try:
-            the_list = user_interviews(user_id=current_user.id, secret=secret, filename=filename, session=session, exclude_invalid=False, tag=tag, include_dict=include_dict)
+            (the_list, start_id) = user_interviews(user_id=current_user.id, secret=secret, filename=filename, session=session, exclude_invalid=False, tag=tag, include_dict=include_dict, start_id=start_id)
         except:
             return jsonify_with_status("Error reading interview list.", 400)
-        return jsonify(docassemble.base.functions.safe_json(the_list))
+        if start_id is None:
+            next_id = None
+        else:
+            next_id = safeid(str(start_id))
+        return jsonify(dict(next_id=next_id, items=docassemble.base.functions.safe_json(the_list)))
     elif request.method == 'DELETE':
-        try:
-            the_list = user_interviews(user_id=current_user.id, filename=filename, session=session, exclude_invalid=False, tag=tag, include_dict=False)
-        except:
-            return jsonify_with_status("Error reading interview list.", 400)
-        for info in the_list:
-            user_interviews(user_id=info['user_id'], action='delete', filename=info['filename'], session=info['session'])
+        start_id = None
+        while True:
+            try:
+                (the_list, start_id) = user_interviews(user_id=current_user.id, filename=filename, session=session, exclude_invalid=False, tag=tag, include_dict=False, start_id=start_id)
+            except:
+                return jsonify_with_status("Error reading interview list.", 400)
+            for info in the_list:
+                user_interviews(user_id=info['user_id'], action='delete', filename=info['filename'], session=info['session'])
+            if start_id is None:
+                break
         return ('', 204)
 
 @app.route('/api/interviews', methods=['GET', 'DELETE'])
@@ -22954,19 +23141,36 @@ def api_interviews():
     if secret is not None:
         secret = str(secret)
     include_dict = true_or_false(request.args.get('include_dictionary', False))
+    next_id_code = request.args.get('next_id', None)
+    if next_id_code:
+        try:
+            start_id = int(from_safeid(next_id_code))
+            assert start_id >= 0
+        except:
+            start_id = None
+    else:
+        start_id = None
     if request.method == 'GET':
         try:
-            the_list = user_interviews(secret=secret, filename=filename, session=session, exclude_invalid=False, tag=tag, include_dict=include_dict)
+            (the_list, start_id) = user_interviews(secret=secret, filename=filename, session=session, exclude_invalid=False, tag=tag, include_dict=include_dict, start_id=start_id)
         except Exception as err:
             return jsonify_with_status("Error reading interview list: " + str(err), 400)
-        return jsonify(docassemble.base.functions.safe_json(the_list))
+        if start_id is None:
+            next_id = None
+        else:
+            next_id = safeid(str(start_id))
+        return jsonify(dict(next_id=next_id, items=docassemble.base.functions.safe_json(the_list)))
     elif request.method == 'DELETE':
-        try:
-            the_list = user_interviews(filename=filename, session=session, exclude_invalid=False, tag=tag, include_dict=False)
-        except:
-            return jsonify_with_status("Error reading interview list.", 400)
-        for info in the_list:
-            user_interviews(user_id=info['user_id'], action='delete', filename=info['filename'], session=info['session'])
+        start_id = None
+        while True:
+            try:
+                (the_list, start_id) = user_interviews(filename=filename, session=session, exclude_invalid=False, tag=tag, include_dict=False, start_id=start_id)
+            except:
+                return jsonify_with_status("Error reading interview list.", 400)
+            for info in the_list:
+                user_interviews(user_id=info['user_id'], action='delete', filename=info['filename'], session=info['session'])
+            if start_id is None:
+                break
         return ('', 204)
 
 def jsonify_task(result):
@@ -24317,7 +24521,7 @@ def handle_csrf_error(the_error):
     if request.method == 'POST':
         if 'ajax' in request.form and int(request.form['ajax']):
             flash(word("Input not processed because the page expired."), "success")
-            return jsonify(dict(action='reload'))
+            return jsonify(dict(action='reload', reason='csrf_error'))
         try:
             referer = str(request.referrer)
         except:
@@ -24444,6 +24648,8 @@ if not os.access(WEBAPP_PATH, os.W_OK):
 
 from docassemble.webapp.daredis import r, r_user
 
+from docassemble.webapp.jsonstore import read_answer_json, write_answer_json, delete_answer_json, variables_snapshot_connection
+
 docassemble.base.functions.update_server(url_finder=get_url_from_file_reference,
                                          navigation_bar=navigation_bar,
                                          chat_partners_available=chat_partners_available,
@@ -24491,7 +24697,12 @@ docassemble.base.functions.update_server(url_finder=get_url_from_file_reference,
                                          main_page_parts=main_page_parts,
                                          SavedFile=SavedFile,
                                          path_from_reference=path_from_reference,
-                                         button_class_prefix=app.config['BUTTON_STYLE'])
+                                         button_class_prefix=app.config['BUTTON_STYLE'],
+                                         write_answer_json=write_answer_json,
+                                         read_answer_json=read_answer_json,
+                                         delete_answer_json=delete_answer_json,
+                                         variables_snapshot_connection=variables_snapshot_connection)
+
 #docassemble.base.util.set_user_id_function(user_id_dict)
 #docassemble.base.functions.set_generate_csrf(generate_csrf)
 #docassemble.base.parse.set_url_finder(get_url_from_file_reference)

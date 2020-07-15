@@ -1,5 +1,89 @@
 # Change Log
 
+## [1.1.49] - 2020-07-07
+### Fixed
+- Additional input validation on parameters passed to APIs.
+
+## [1.1.48] - 2020-07-06
+### Fixed
+- The `/api/user_info` API endpoint and the `get_user_info()` function
+  now do case insensitive searches for e-mail addresses.
+
+## [1.1.47] - 2020-07-05
+### Added
+- The `store_variables_snapshot()` function.
+
+## [1.1.46] - 2020-07-05
+### Fixed
+- Error in restart module.
+
+## [1.1.45] - 2020-07-05
+### Fixed
+- Error in table creation module.
+
+## [1.1.44] - 2020-07-05
+### Changed
+- The `interview_list()` function, when called without an `action`,
+  now uses pagination and returns a tuple instead of a list.  Note
+  that this change is not backwards-compatible, so you will need to
+  change any code that you have that calls `interview_list()`.
+- The `get_user_list()` function now uses pagination and returns a
+  tuple instead of a list.  Note that this change is not
+  backwards-compatible, so you will need to change any code that you
+  have that calls `interview_list()`.
+- The `/api/interviews`, `/api/user/interviews`,
+  `/api/user/<user_id>/interviews`, and `/api/user_list` GET endpoints
+  of the API now use pagination and return a dictionary, not a list.
+  Note that this change is not backwards-compatible, so you will need
+  to change any code that you have that uses these APIs.
+- Removed the `PY2`, `string_types`, and `text_type` names from
+  `docassemble.base.util`.  Note that if you have used any of these,
+  this change may break your code.
+### Added
+- The `persistent` optional keyword parameter for
+  `mark_task_as_performed()` and related functions.
+- The `task_persistent` optional keyword parameter for `send_email()`,
+  `send_sms()`, and the `DAWeb` methods.
+### Fixed
+- Issue with encryption in functions launched during the loading of
+  the first page of an interview session.
+- Issue with multi-server configurations and the order in which
+  container software is updated that can result in some containers
+  unable to start.
+
+## [1.1.43] - 2020-06-30
+### Changed
+- The `complete_elements()` method now returns a `DAList`.  Note that
+  this may break existing code that uses `complete_elements()`.  To
+  get a plain list of the complete elements, use
+  `complete_elements().elements`.
+- Spanish ordinal numbers removed.
+- Upgraded jQuery and jQuery Validation Plugin.
+### Fixed
+- Possible fix to iframe reloading issue.
+
+## [1.1.42] - 2020-06-25
+### Added
+- Aliases for JavaScript functions that have the `da` prefix.
+### Fixed
+- Jinja2 filter was converting Python built-in types to strings.
+
+## [1.1.41] - 2020-06-22
+### Fixed
+- Bug in `recursive_eval_textobject()`.
+
+## [1.1.40] - 2020-06-19
+### Added
+- `question metadata`, `field metadata`, and the `send question data`
+  option under `features`.
+- The `country` keyword parameter for `.sms_number()`.
+- The `field` keyword parameter for `validation_error()`.
+
+## [1.1.39] - 2020-06-17
+### Fixed
+- Issue with `interview_url_action()` and `force_ask()`.
+- Upgraded `docxtpl` and `docx`.
+
 ## [1.1.38] - 2020-06-11
 ### Added
 - The `add another label` option for `list collect`.
