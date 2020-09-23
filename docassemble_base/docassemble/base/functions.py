@@ -1207,7 +1207,7 @@ def url_of(file_reference, **kwargs):
 
 def server_capabilities():
     """Returns a dictionary with true or false values indicating various capabilities of the server."""
-    result = dict(sms=False, fax=False, google_login=False, facebook_login=False, auth0_login=False, twitter_login=False, azure_login=False, phone_login=False, voicerss=False, s3=False, azure=False, github=False, pypi=False, googledrive=False, google_maps=False)
+    result = dict(sms=False, fax=False, google_login=False, facebook_login=False, auth0_login=False, twitter_login=False, azure_login=False, phone_login=False, s3=False, azure=False, github=False, pypi=False, googledrive=False, google_maps=False)
     if 'twilio' in server.daconfig and isinstance(server.daconfig['twilio'], (list, dict)):
         if type(server.daconfig['twilio']) is list:
             tconfigs = server.daconfig['twilio']
@@ -1247,7 +1247,7 @@ def server_capabilities():
         result['pypi'] = True
     if 'google' in server.daconfig and type(server.daconfig['google']) is dict and ('google maps api key' in server.daconfig['google'] or 'api key' in server.daconfig['google']):
         result['google_maps'] = True
-    for key in ['voicerss', 's3', 'azure']:
+    for key in ['s3', 'azure']:
         if key in server.daconfig and type(server.daconfig[key]) is dict:
             if not ('enable' in server.daconfig[key] and not server.daconfig[key]['enable']):
                 result[key] = True

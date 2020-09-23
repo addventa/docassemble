@@ -146,31 +146,6 @@ else:
 
 audio_mimetype_table = {'mp3': 'audio/mpeg', 'ogg': 'audio/ogg'}
 
-valid_voicerss_dialects = {
-    'ca': ['es'],
-    'zh': ['cn', 'hk', 'tw'],
-    'da': ['dk'],
-    'nl': ['nl'],
-    'en': ['au', 'ca', 'gb', 'in', 'us'],
-    'fi': ['fi'],
-    'fr': ['ca, fr'],
-    'de': ['de'],
-    'it': ['it'],
-    'ja': ['jp'],
-    'ko': ['kr'],
-    'nb': ['no'],
-    'pl': ['pl'],
-    'pt': ['br', 'pt'],
-    'ru': ['ru'],
-    'es': ['mx', 'es'],
-    'sv': ['se']
-    }
-
-voicerss_config = daconfig.get('voicerss', None)
-if not voicerss_config or ('enable' in voicerss_config and not voicerss_config['enable']) or not ('key' in voicerss_config and voicerss_config['key']):
-    VOICERSS_ENABLED = False
-else:
-    VOICERSS_ENABLED = True
 ROOT = daconfig.get('root', '/')
 #app.logger.warning("default sender is " + current_app.config['MAIL_DEFAULT_SENDER'] + "\n")
 exit_page = daconfig.get('exitpage', 'https://docassemble.org')
@@ -10595,14 +10570,8 @@ def index(action_argument=None, refer=None):
             the_language = question_language
         else:
             the_language = util_language
-        if voicerss_config and 'language map' in voicerss_config and isinstance(voicerss_config['language map'], dict) and the_language in voicerss_config['language map']:
-            the_language = voicerss_config['language map'][the_language]
         if the_language == util_language and util_dialect is not None:
             the_dialect = util_dialect
-        elif voicerss_config and 'dialects' in voicerss_config and isinstance(voicerss_config['dialects'], dict) and the_language in voicerss_config['dialects']:
-            the_dialect = voicerss_config['dialects'][the_language]
-        elif the_language in valid_voicerss_dialects:
-            the_dialect = valid_voicerss_dialects[the_language][0]
         else:
             logmessage("index: unable to determine dialect; reverting to default")
             the_language = DEFAULT_LANGUAGE
@@ -11120,38 +11089,6 @@ def speak_file():
     if not entry:
         logmessage("speak_file: could not serve speak file because no entry could be found in speaklist for filename " + str(filename) + " and key " + str(key) + " and question number " + str(question) + " and question type " + str(question_type) + " and language " + str(the_language) + " and dialect " + str(the_dialect))
         return ('File not found', 404)
-    if not entry.upload:
-        existing_entry = SpeakList.query.filter(and_(SpeakList.phrase == entry.phrase, SpeakList.language == entry.language, SpeakList.dialect == entry.dialect, SpeakList.upload != None, SpeakList.encrypted == entry.encrypted)).first()
-        if existing_entry:
-            logmessage("speak_file: found existing entry: " + str(existing_entry.id) + ".  Setting to " + str(existing_entry.upload))
-            entry.upload = existing_entry.upload
-        else:
-            if not VOICERSS_ENABLED:
-                logmessage("speak_file: could not serve speak file because voicerss not enabled")
-                return ('File not found', 404)
-            new_file_number = get_new_file_number(key, 'speak.mp3', yaml_file_name=filename)
-            #phrase = codecs.decode(entry.phrase, 'base64')
-            if entry.encrypted:
-                phrase = decrypt_phrase(entry.phrase, secret)
-            else:
-                phrase = unpack_phrase(entry.phrase)
-            url = voicerss_config.get('url', "https://api.voicerss.org/")
-            #logmessage("Retrieving " + url)
-            audio_file = SavedFile(new_file_number, extension='mp3', fix=True)
-            audio_file.fetch_url_post(url, dict(f=voicerss_config.get('format', '16khz_16bit_stereo'), key=voicerss_config['key'], src=phrase, hl=str(entry.language) + '-' + str(entry.dialect)))
-            if audio_file.size_in_bytes() > 100:
-                call_array = [daconfig.get('pacpl', 'pacpl'), '-t', 'ogg', audio_file.path + '.mp3']
-                logmessage("speak_file: calling " + " ".join(call_array))
-                result = subprocess.run(call_array).returncode
-                if result != 0:
-                    logmessage("speak_file: failed to convert downloaded mp3 (" + audio_file.path + '.mp3' + ") to ogg")
-                    return ('File not found', 404)
-                entry.upload = new_file_number
-                audio_file.finalize()
-                db.session.commit()
-            else:
-                logmessage("speak_file: download from voicerss (" + url + ") failed")
-                return ('File not found', 404)
     if not entry.upload:
         logmessage("speak_file: upload file number was not set")
         return ('File not found', 404)

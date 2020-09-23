@@ -229,14 +229,6 @@ def load(**kwargs):
     if 'keymap' in daconfig and daconfig['keymap'] not in ['vim', 'emacs', 'sublime']:
         config_error("You used a keymap that is not supported.  Available values are vim, emacs, and sublime.")
         del daconfig['keymap']
-    if 'voicerss' in daconfig:
-        if isinstance(daconfig['voicerss'], dict):
-            if 'languages' in daconfig['voicerss']:
-                daconfig['voicerss']['dialects'] = daconfig['voicerss']['languages']
-                del daconfig['voicerss']['languages']
-        else:
-            config_error('voicerss must be a dict')
-            del daconfig['voicerss']
     if 'cross site domain' in daconfig and 'cross site domains' not in daconfig:
         daconfig['cross site domains'] = [daconfig['cross site domain'].strip()]
         del daconfig['cross site domain']
