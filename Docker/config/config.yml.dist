@@ -53,7 +53,6 @@ locale: en_US.utf8
 os locale: {{LOCALE}}
 timezone: {{TIMEZONE}}
 redis: {{REDIS}}
-rabbitmq: {{RABBITMQ}}
 s3:
   enable: {{S3ENABLE}}
   access key id: {{S3ACCESSKEY}}
