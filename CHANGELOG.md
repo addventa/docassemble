@@ -1,5 +1,216 @@
 # Change Log
 
+## [1.1.77] - 2020-09-22
+### Fixed
+- Issue with fix in the previous version regarding group-level file permissions.
+
+## [1.1.76] - 2020-09-22
+### Added
+- The `question_id` attribute of `user_info()`.
+### Fixed
+- Issue with group-level file permissions.
+
+## [1.1.75] - 2020-09-20
+### Fixed
+- Issues with `show if` and `js show if` when multiple fields with the
+  same name are on the screen.
+- Issues with server-side validation not recreating values on the
+  screen on error.
+
+## [1.1.74] - 2020-09-18
+### Changed
+- Setting `url_args` without causing a change to the `url_args` does
+  not cause a new step to be created.
+### Fixed
+- An empty string `min` or `max` was not being ignored.
+- Issue with `generic object`.
+
+## [1.1.73] - 2020-09-13
+### Changed
+- The `use_word` keyword attribute to `nice_number()` and `ordinal()`
+  can be used to force a textual representation of any number.
+
+## [1.1.72] - 2020-09-10
+### Fixed
+- Removal of `new_session` from URLs formed with `interview_url()`.
+
+## [1.1.71] - 2020-09-07
+### Fixed
+- Better support for iterables in `comma_list()` and other places.
+- Markdown table alignment in Bootstrap.
+- Upgraded Pillow.
+
+## [1.1.70] - 2020-09-05
+### Added
+- The `reply_to` option for `send_email()`.
+### Changed
+- The current section name is now the label of the `small screen
+  navigation: dropdown` button.
+- The breakpoint for the mobile signature view is now Bootstrap `xs`.
+### Fixed
+- Multiple choice fields with empty choices were being set to `None`
+  despite `code`-based `show if` deselecting the field.
+
+## [1.1.69] - 2020-09-02
+### Added
+- The `/api/stash_data` and `/api/retrieve_stashed_data` endpoints.
+- The `stash_data()` and `retrieve_stashed_data()` functions.
+- The `current` option for `referring_url()`.
+
+## [1.1.68] - 2020-09-02
+### Fixed
+- Improper verb conjugation for non-English languages.
+
+## [1.1.67] - 2020-09-01
+### Fixed
+- Issue with two POST requests being sent during inline file uploads.
+
+## [1.1.66] - 2020-08-30
+### Added
+- The `small screen navigation` option under `features`.
+- The `email template`, `email subject`, `email body`, and `email
+  address default` options for customizing the functionality of the
+  `attachment`/`attachment code` interface.
+### Changed
+- The horizontal section interface is no longer hidden on small
+  screens.
+- The vertical section interface becomes the horizontal section
+  interface on small screens.
+- The default body of the e-mail that the user can send from an
+  `attachment`/`attachment code` interface is now translated using the
+  phrases `Your document, %s, is attached.` and `Your documents, %s, are
+  attached.`.
+
+## [1.1.65] - 2020-08-28
+### Added
+- The `style` keyword parameter for `interview_url()`.
+### Changed
+- The `/start/` path for starting an interview now transforms into
+  `/run` instead of `/interview`.  It also has a second form for
+  referring to the package name and filename (without using
+  `dispatch`).
+### Fixed
+- The Playground "Share" link did not update correctly based on the
+  interview being run.
+
+## [1.1.64] - 2020-08-26
+### Fixed
+- Issue with relative image URLs when embedding in a `<div>`.
+
+## [1.1.63] - 2020-08-25
+### Added
+- The `corner back button label` screen part.
+### Changed
+- Upgraded bootstrap-fileupload.
+### Fixed
+- The `progress` modifier did not behave as described in the documentation.
+
+## [1.1.62] - 2020-08-23
+### Added
+- The modifiers `include attachment notice`, `include download tab`,
+  and `manual attachment list` for tweaking the display of attached
+  documents.
+### Fixed
+- Step advanced when session started with URL parameters.
+- The signature screen scrolled at submission.
+- The `next` parameter was forgotten when using social login methods.
+- The `reconsider` modifier did not work with iterator variables.
+
+## [1.1.61] - 2020-08-20
+### Fixed
+- JavaScript error with `getField()`.
+
+## [1.1.60] - 2020-08-19
+### Changed
+- Playground Packages page now reports local date and time of a commit.
+### Fixed
+- Issue with two file fields or two fields with a `validate` that have
+  the same variable name and one is hidden by `show if`.
+
+## [1.1.59] - 2020-08-18
+### Fixed
+- Cron problem introduced in 1.1.56.
+
+## [1.1.58] - 2020-08-16
+### Fixed
+- Backwards-compatibility issue related to `DAEmpty` introduced in 1.1.54.
+
+## [1.1.57] - 2020-08-16
+### Fixed
+- Backwards-compatibility issue related to `DAEmpty` introduced in 1.1.54.
+
+## [1.1.56] - 2020-08-16
+### Added
+- The `session_local`, `device_local`, and `user_local` objects in the
+  interview answers.
+- The `require login` `metadata` directive.
+### Changed
+- When the API is in use, `interface()` will return `'api'`.
+### Fixed
+- `review` blocks were not compatible with iterator variables.
+- `combobox` fields not working right in `list collect` mode.
+- `address autocomplete` did not initialize when the address was
+  hidden by a `show if`.
+- Submission blocked when an empty non-required file upload field was
+  present in an embedded interview.
+
+## [1.1.55] - 2020-08-06
+### Added
+- The `create_session()` function.
+- The `package` attribute of the output of `user_info()`.
+- The `make_copy` keyword parameter for `all_variables()`.
+- The `overwrite` keyword parameter for `set_session_variables()`.
+- The `overwrite` parameter for the `/api/session` POST endpoint.
+- The `persistent` option for the `/api/session/action` POST endpoint.
+- Recipe for passing variables from one session to a newly created
+  other session.
+
+## [1.1.54] - 2020-08-04
+### Added
+- The `attr_name()` method of the `DAObject` class.
+- The `dry_run` keyword parameter for `send_email()` and `send_sms()`.
+### Changed
+- The `str` keyword parameter when initializing a `DAEmpty` object.
+- New recipe for gathering multiple signatures; uses a modular
+  approach.
+### Fixed
+- Missing control for `capitalize` in some language functions.
+- SendGrid fails when subject line is empty string.
+- The `temporary` and `once_temporary` keyword parameters for
+  `interview_url_action()` were not working.
+- Problem with running interviews in a different tab in Playground on
+  Chrome.
+
+## [1.1.53] - 2020-07-29
+### Fixed
+- Error in Docassemble-Flask-User dependency.
+
+## [1.1.52] - 2020-07-29
+### Fixed
+- Moved evaluation of section information to post-assembly when
+  getting question data.
+
+## [1.1.51] - 2020-07-28
+### Added
+- The `footer` screen part.
+- `terms` and `autoterms` are now included in JSON question data.
+### Fixed
+- `signature` blocks did not support `continue button field`.
+- System message translation system had gaps due to the integration
+  with Flask-User's translation system not working as intended.
+- Inconsistent behavior of `force_ask()` depending on whether an item
+  was listed first or not.
+
+## [1.1.50] - 2020-07-21
+### Added
+- Feature for viewing names in an interview and the YAML blocks
+  associated with them.
+### Fixed
+- Missing `.copy()` method for `DAList`.
+- The `init()` method of the `DAFileCollection` class did not accept
+  arbitrary parameters.
+- Fully qualified image URLs now work in e-mail HTML.
+
 ## [1.1.49] - 2020-07-07
 ### Fixed
 - Additional input validation on parameters passed to APIs.

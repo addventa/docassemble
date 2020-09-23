@@ -5773,7 +5773,7 @@ Feature: Example interviews
     Then I should see the phrase "What is your date of birth?"
     And I set the text box to "08/01/1989"
     And I click the button "Continue"
-    Then I should see the phrase "You are 30 years old."
+    Then I should see the phrase "You are 31 years old."
 
   # Scenario: Test the interview "Test e-mail attachment"
   #   Given I start the interview "docassemble.demo:data/questions/testattach.yml"
@@ -5983,14 +5983,6 @@ Feature: Example interviews
   Scenario: Test the interview "Define variable"
     Given I start the interview "docassemble.base:data/questions/examples/define.yml"
     Then I should see the phrase "Your favorite fruit is apple."
-
-  Scenario: Test the interview "Back button inside question"
-    Given I start the interview "docassemble.base:data/questions/examples/question-back-button.yml"
-    Then I should see the phrase "Are you doing well?"
-    And I click the button "Yes"
-    Then I should see the phrase "Is the sky blue?"
-    And I click the question back button
-    Then I should see the phrase "Are you doing well?"
 
   Scenario: Test the interview "Help with question"
     Given I start the interview "docassemble.base:data/questions/examples/help-damages-label.yml"

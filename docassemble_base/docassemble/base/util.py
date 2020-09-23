@@ -21,12 +21,13 @@ import docassemble.base.pandoc
 import docassemble.base.pdftk
 import docassemble.base.file_docx
 from docassemble.base.file_docx import include_docx_template
-from docassemble.base.functions import alpha, roman, item_label, comma_and_list, get_language, set_language, get_dialect, set_country, get_country, word, comma_list, ordinal, ordinal_number, need, nice_number, quantity_noun, possessify, verb_past, verb_present, noun_plural, noun_singular, space_to_underscore, force_ask, force_gather, period_list, name_suffix, currency_symbol, currency, indefinite_article, nodoublequote, capitalize, title_case, url_of, do_you, did_you, does_a_b, did_a_b, were_you, was_a_b, have_you, has_a_b, your, her, his, their, is_word, get_locale, set_locale, process_action, url_action, get_info, set_info, get_config, prevent_going_back, qr_code, action_menu_item, from_b64_json, defined, define, value, message, response, json_response, command, single_paragraph, quote_paragraphs, location_returned, location_known, user_lat_lon, interview_url, interview_url_action, interview_url_as_qr, interview_url_action_as_qr, interview_email, get_emails, this_thread, static_image, action_arguments, action_argument, language_functions, language_function_constructor, get_default_timezone, user_logged_in, interface, user_privileges, user_has_privilege, user_info, background_action, background_response, background_response_action, background_error_action, us, set_live_help_status, chat_partners_available, phone_number_in_e164, phone_number_formatted, phone_number_is_valid, countries_list, country_name, write_record, read_records, delete_record, variables_as_json, all_variables, server, language_from_browser, device, plain, bold, italic, states_list, state_name, subdivision_type, indent, raw, fix_punctuation, set_progress, get_progress, referring_url, undefine, invalidate, dispatch, yesno, noyes, split, showif, showifdef, phone_number_part, set_parts, log, encode_name, decode_name, interview_list, interview_menu, server_capabilities, session_tags, get_chat_log, get_user_list, get_user_info, set_user_info, get_user_secret, create_user, get_session_variables, set_session_variables, get_question_data, go_back_in_session, manage_privileges, salutation, redact, ensure_definition, forget_result_of, re_run_logic, reconsider, set_title, set_save_status, single_to_double_newlines, CustomDataType, verbatim, add_separators, update_ordinal_numbers, update_ordinal_function, update_language_function, update_nice_numbers, update_word_collection, store_variables_snapshot, get_uid
+from docassemble.base.functions import alpha, roman, item_label, comma_and_list, get_language, set_language, get_dialect, set_country, get_country, word, comma_list, ordinal, ordinal_number, need, nice_number, quantity_noun, possessify, verb_past, verb_present, noun_plural, noun_singular, space_to_underscore, force_ask, force_gather, period_list, name_suffix, currency_symbol, currency, indefinite_article, nodoublequote, capitalize, title_case, url_of, do_you, did_you, does_a_b, did_a_b, were_you, was_a_b, have_you, has_a_b, your, her, his, their, is_word, get_locale, set_locale, process_action, url_action, get_info, set_info, get_config, prevent_going_back, qr_code, action_menu_item, from_b64_json, defined, define, value, message, response, json_response, command, single_paragraph, quote_paragraphs, location_returned, location_known, user_lat_lon, interview_url, interview_url_action, interview_url_as_qr, interview_url_action_as_qr, interview_email, get_emails, this_thread, static_image, action_arguments, action_argument, language_functions, language_function_constructor, get_default_timezone, user_logged_in, interface, user_privileges, user_has_privilege, user_info, background_action, background_response, background_response_action, background_error_action, us, set_live_help_status, chat_partners_available, phone_number_in_e164, phone_number_formatted, phone_number_is_valid, countries_list, country_name, write_record, read_records, delete_record, variables_as_json, all_variables, server, language_from_browser, device, plain, bold, italic, states_list, state_name, subdivision_type, indent, raw, fix_punctuation, set_progress, get_progress, referring_url, undefine, invalidate, dispatch, yesno, noyes, split, showif, showifdef, phone_number_part, set_parts, log, encode_name, decode_name, interview_list, interview_menu, server_capabilities, session_tags, get_chat_log, get_user_list, get_user_info, set_user_info, get_user_secret, create_user, create_session, get_session_variables, set_session_variables, get_question_data, go_back_in_session, manage_privileges, salutation, redact, ensure_definition, forget_result_of, re_run_logic, reconsider, set_title, set_save_status, single_to_double_newlines, CustomDataType, verbatim, add_separators, update_ordinal_numbers, update_ordinal_function, update_language_function, update_nice_numbers, update_word_collection, store_variables_snapshot, get_uid
 from docassemble.base.core import DAObject, DAList, DADict, DAOrderedDict, DASet, DAFile, DAFileCollection, DAStaticFile, DAFileList, DAEmail, DAEmailRecipient, DAEmailRecipientList, DATemplate, DAEmpty, DALink, selections, objects_from_file, RelationshipTree, DAContext, DACatchAll
 from decimal import Decimal
 import sys
 #sys.stderr.write("importing async mail now from util\n")
 from docassemble.base.filter import markdown_to_html, to_text, ensure_valid_filename
+from docassemble.base.generate_key import random_alphanumeric
 
 #file_finder, url_finder, da_send_mail
 
@@ -258,6 +259,7 @@ __all__ = [
     'set_user_info',
     'get_user_secret',
     'create_user',
+    'create_session',
     'get_session_variables',
     'set_session_variables',
     'go_back_in_session',
@@ -295,7 +297,9 @@ __all__ = [
     'iso_country',
     'assemble_docx',
     'docx_concatenate',
-    'store_variables_snapshot'
+    'store_variables_snapshot',
+    'stash_data',
+    'retrieve_stashed_data'
 ]
 
 #knn_machine_learner = DummyObject
@@ -435,7 +439,9 @@ class DAWeb(DAObject):
         on_failure = self._get_on_failure(on_failure)
         on_success = self._get_on_success(on_success)
         success_code = self._get_success_code(success_code)
-        if isinstance(success_code, (list, set, tuple, DASet, DAList)):
+        if isinstance(success_code, str):
+            success_code = [int(success_code.strip())]
+        elif isinstance(success_code, (abc.Iterable, DASet, DAList)):
             new_success_code = list()
             for code in success_code:
                 if not isinstance(code, int):
@@ -1756,14 +1762,14 @@ class Person(DAObject):
     """Represents a legal or natural person."""
     def init(self, *pargs, **kwargs):
         if not hasattr(self, 'name') and 'name' not in kwargs:
-            self.name = Name()
+            self.initializeAttribute('name', Name)
         if 'address' not in kwargs:
             self.initializeAttribute('address', Address)
         if 'location' not in kwargs:
             self.initializeAttribute('location', LatitudeLongitude)
         if 'name' in kwargs and isinstance(kwargs['name'], str):
             if not hasattr(self, 'name'):
-                self.name = Name()
+                self.initializeAttribute('name', Name)
             self.name.text = kwargs['name']
             del kwargs['name']
         # if 'roles' not in kwargs:
@@ -1951,7 +1957,7 @@ class Individual(Person):
     """Represents a natural person."""
     def init(self, *pargs, **kwargs):
         if 'name' not in kwargs and not hasattr(self, 'name'):
-            self.name = IndividualName()
+            self.initializeAttribute('name', IndividualName)
         # if 'child' not in kwargs and not hasattr(self, 'child'):
         #     self.child = ChildList()
         # if 'income' not in kwargs and not hasattr(self, 'income'):
@@ -1961,7 +1967,7 @@ class Individual(Person):
         # if 'expense' not in kwargs and not hasattr(self, 'expense'):
         #     self.expense = Expense()
         if (not hasattr(self, 'name')) and 'name' in kwargs and isinstance(kwargs['name'], str):
-            self.name = IndividualName()
+            self.initializeAttribute('name', IndividualName)
             self.name.uses_parts = False
             self.name.text = kwargs['name']
         return super().init(*pargs, **kwargs)
@@ -2279,7 +2285,7 @@ def send_sms_invite(to=None, body='question', config='default'):
     #logmessage("Sending message " + str(message) + " to " + str(phone_number))
     send_sms(to=phone_number, body=message, config=config)
 
-def send_sms(to=None, body=None, template=None, task=None, task_persistent=False, attachments=None, config='default'):
+def send_sms(to=None, body=None, template=None, task=None, task_persistent=False, attachments=None, config='default', dry_run=False):
     """Sends a text message and returns whether sending the text was successful."""
     if server.twilio_config is None:
         logmessage("send_sms: ignoring because Twilio not enabled")
@@ -2303,8 +2309,8 @@ def send_sms(to=None, body=None, template=None, task=None, task_persistent=False
     if template is not None and body is None:
         body_html = '<html><body>'
         if template.subject is not None:
-            body_html += markdown_to_html(template.subject)
-        body_html += markdown_to_html(template.content) + '</body></html>'
+            body_html += markdown_to_html(template.subject, external=True)
+        body_html += markdown_to_html(template.content, external=True) + '</body></html>'
         body = BeautifulSoup(body_html, "html.parser").get_text('\n')
     if body is None:
         body = word("blank message")
@@ -2347,6 +2353,8 @@ def send_sms(to=None, body=None, template=None, task=None, task_persistent=False
                     media.append(the_attachment)
     if len(media) > 10:
         logmessage("send_sms: more than 10 attachments were provided; not sending message")
+        success = False
+    if dry_run:
         success = False
     if success:
         twilio_client = TwilioRestClient(tconfig['account sid'], tconfig['auth token'])
@@ -2418,11 +2426,11 @@ def send_fax(fax_number, file_object, config='default', country=None):
         return FaxStatus(None)
     return FaxStatus(server.send_fax(fax_string(fax_number, country=country), file_object, config))
 
-def send_email(to=None, sender=None, cc=None, bcc=None, body=None, html=None, subject="", template=None, task=None, task_persistent=False, attachments=None, mailgun_variables=None):
+def send_email(to=None, sender=None, reply_to=None, cc=None, bcc=None, body=None, html=None, subject="", template=None, task=None, task_persistent=False, attachments=None, mailgun_variables=None, dry_run=False):
     """Sends an e-mail and returns whether sending the e-mail was successful."""
     if attachments is None:
         attachments = []
-    if not isinstance(attachments, (list, DAList, set, DASet, tuple)):
+    if (not isinstance(attachments, (DAList, DASet, abc.Iterable))) or isinstance(attachments, str):
         attachments = [attachments]
     from flask_mail import Message
     if type(to) is not list:
@@ -2432,7 +2440,7 @@ def send_email(to=None, sender=None, cc=None, bcc=None, body=None, html=None, su
     if template is not None:
         if subject is None or subject == '':
             subject = template.subject
-        body_html = '<html><body>' + markdown_to_html(template.content) + '</body></html>'
+        body_html = '<html><body>' + template.content_as_html(external=True) + '</body></html>'
         if body is None:
             body = BeautifulSoup(body_html, "html.parser").get_text('\n')
         if html is None:
@@ -2441,11 +2449,12 @@ def send_email(to=None, sender=None, cc=None, bcc=None, body=None, html=None, su
         body = ""
     subject = re.sub(r'[\n\r]+', ' ', subject)
     sender_string = email_stringer(sender, first=True, include_name=True)
+    reply_to_string = email_stringer(reply_to, first=True, include_name=True)
     to_string = email_stringer(to)
     cc_string = email_stringer(cc)
     bcc_string = email_stringer(bcc)
     #logmessage("Sending mail to: " + repr(dict(subject=subject, recipients=to_string, sender=sender_string, cc=cc_string, bcc=bcc_string, body=body, html=html)))
-    msg = Message(subject, sender=sender_string, recipients=to_string, cc=cc_string, bcc=bcc_string, body=body, html=html)
+    msg = Message(subject, sender=sender_string, reply_to=reply_to_string, recipients=to_string, cc=cc_string, bcc=bcc_string, body=body, html=html)
     if mailgun_variables is not None:
         if isinstance(mailgun_variables, dict):
             msg.mailgun_variables = mailgun_variables
@@ -2510,6 +2519,8 @@ def send_email(to=None, sender=None, cc=None, bcc=None, body=None, html=None, su
                             success = False
                     else:
                         success = False
+    if dry_run:
+        success = False
     if success:
         try:
             logmessage("send_email: starting to send")
@@ -2552,7 +2563,7 @@ def map_of(*pargs, **kwargs):
                     if 'icon' in marker and not isinstance(marker['icon'], dict):
                         marker['icon'] = {'url': server.url_finder(marker['icon'])}
                     if 'info' in marker and marker['info']:
-                        marker['info'] = markdown_to_html(marker['info'], trim=True)
+                        marker['info'] = markdown_to_html(marker['info'], trim=True, external=True)
                     the_map['markers'].append(marker)
     if 'center' in kwargs:
         the_center = kwargs['center']
@@ -2864,7 +2875,7 @@ def docx_concatenate(*pargs, **kwargs):
 def get_docx_paths(target, paths):
     if isinstance(target, DAFileCollection) and hasattr(target, 'docx'):
         paths.append(target.docx.path())
-    elif isinstance(target, DAFileList) or isinstance(target, DAList) or isinstance(target, list):
+    elif isinstance(target, DAFileList) or isinstance(target, DAList) or (isinstance(target, abc.Iterable) and not isinstance(target, str)):
         for the_file in target:
             get_docx_paths(the_file, paths)
     elif isinstance(target, DAFile) or isinstance(target, DAStaticFile):
@@ -2892,7 +2903,7 @@ def pdf_concatenate(*pargs, **kwargs):
 def get_pdf_paths(target, paths):
     if isinstance(target, DAFileCollection) and hasattr(target, 'pdf'):
         paths.append(target.pdf.path())
-    elif isinstance(target, DAFileList) or isinstance(target, DAList) or isinstance(target, list):
+    elif isinstance(target, DAFileList) or isinstance(target, DAList) or (isinstance(target, abc.Iterable) and not isinstance(target, str)):
         for the_file in target:
             get_pdf_paths(the_file, paths)
     elif isinstance(target, DAFile) or isinstance(target, DAStaticFile):
@@ -3333,3 +3344,20 @@ def set_task_counter(task, times, persistent=False):
         store.set('tasks', tasks)
         return
     this_thread.internal['tasks'][task] = times
+
+def stash_data(data, expire=None):
+    """Stores data in an encrypted form and returns a key and a decryption secret."""
+    if expire is None:
+        expire = 60*60*24*90
+    try:
+        expire = int(expire)
+        assert expire > 0
+    except:
+        raise DAError("Invalid expire value")
+    return server.stash_data(data, expire)
+
+def retrieve_stashed_data(stash_key, secret, delete=False, refresh=False):
+    """Retrieves data stored with stash_data()."""
+    if refresh and not (isinstance(refresh, int) and refresh > 0):
+        refresh = 60*60*24*90
+    return server.retrieve_stashed_data(stash_key, secret, delete=delete, refresh=refresh)

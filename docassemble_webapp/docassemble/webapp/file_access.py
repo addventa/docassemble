@@ -16,7 +16,9 @@ import docassemble.base.functions
 from docassemble.webapp.users.models import UserDictKeys, UserRoles
 from docassemble.webapp.core.models import Uploads, UploadsUserAuth, UploadsRoleAuth
 from docassemble.webapp.files import SavedFile, get_ext_and_mimetype
+from flask import session
 from flask_login import current_user
+from docassemble.webapp.db_object import db
 from sqlalchemy import or_, and_
 import docassemble.base.config
 import sys
@@ -199,7 +201,7 @@ def get_info_from_file_reference(file_reference, **kwargs):
         elif len(parts) == 2:
             result['package'] = parts[0]
         result['fullpath'] = docassemble.base.functions.static_filename_path(file_reference)
-    #logmessage("path is " + str(result['fullpath']))
+    # sys.stderr.write("path is " + str(result['fullpath']) + "\n")
     if result['fullpath'] is not None: #os.path.isfile(result['fullpath'])
         if not has_info:
             result['filename'] = os.path.basename(result['fullpath'])
@@ -217,13 +219,13 @@ def get_info_from_file_reference(file_reference, **kwargs):
                 result['fullpath'] = result['path'] + '.' + result['extension']
                 ext_type, result['mimetype'] = get_ext_and_mimetype(result['fullpath'])
             else:
-                logmessage("Did not find file " + result['path'] + '.' + convert[result['extension']])
+                sys.stderr.write("Did not find file " + result['path'] + '.' + convert[result['extension']] + "\n")
                 return dict()
         #logmessage("Full path is " + result['fullpath'])
         if os.path.isfile(result['fullpath']) and not has_info:
             add_info_about_file(result['fullpath'], result['path'], result)
     else:
-        logmessage("File reference " + str(file_reference) + " DID NOT EXIST.")
+        sys.stderr.write("File reference " + str(file_reference) + " DID NOT EXIST.\n")
     return(result)
 
 def add_info_about_file(filename, basename, result):
@@ -273,11 +275,11 @@ def get_info_from_file_number(file_number, privileged=False, filename=None, uids
     if not privileged and upload is not None and upload.private and upload.key not in uids:
         has_access = False
         if current_user and current_user.is_authenticated:
-            if UserDictKeys.query.filter_by(key=upload.key, user_id=current_user.id).first() or UploadsUserAuth.query.filter_by(uploads_indexno=file_number, user_id=current_user.id).first() or db.session.query(UploadsRoleAuth.id).join(UserRoles, and_(UserRoles.user_id == current_user.id, UploadsRoleAuth.role_id == UserRoles.role_id)).first():
+            if UserDictKeys.query.filter_by(key=upload.key, user_id=current_user.id).first() or UploadsUserAuth.query.filter_by(uploads_indexno=file_number, user_id=current_user.id).first() or db.session.query(UploadsRoleAuth.id).join(UserRoles, and_(UserRoles.user_id == current_user.id, UploadsRoleAuth.role_id == UserRoles.role_id)).filter(UploadsRoleAuth.uploads_indexno == file_number).first():
                 has_access = True
         elif session and 'tempuser' in session:
             temp_user_id = int(session['tempuser'])
-            if UserDictKeys.query.filter_by(key=upload.key, temp_user_id=temp_user_id).first() or UploadsUserAuth.query.filter_by(uploads_indexno=file_number, temp_user_id=temp_user.id).first():
+            if UserDictKeys.query.filter_by(key=upload.key, temp_user_id=temp_user_id).first() or UploadsUserAuth.query.filter_by(uploads_indexno=file_number, temp_user_id=temp_user_id).first():
                 has_access = True
         if not has_access:
             upload = None

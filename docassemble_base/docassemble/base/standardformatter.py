@@ -542,10 +542,7 @@ def as_html(status, url_for, debug, root, validation_rules, field_error, the_pro
     back_button_val = status.extras.get('back_button', None)
     if (back_button_val or (back_button_val is None and status.question.interview.question_back_button)) and status.question.can_go_back and steps > 1:
         back_button = '\n                  <button type="button" class="btn ' + BUTTON_STYLE + 'link ' + BUTTON_CLASS + ' daquestionbackbutton danonsubmit" title=' + json.dumps(word("Go back to the previous question")) + '><span><i class="fas fa-chevron-left"></i> '
-        if status.extras['back button label text'] is not None:
-            back_button += status.extras['back button label text']
-        else:
-            back_button += status.question.back()
+        back_button += status.back
         back_button += '</span></button>'
     else:
         back_button = ''
@@ -634,21 +631,21 @@ def as_html(status, url_for, debug, root, validation_rules, field_error, the_pro
     output = str()
     if the_progress_bar:
         if status.question.question_type == "signature":
-            the_progress_bar = re.sub(r'class="row"', 'class="d-none d-md-block"', the_progress_bar)
+            the_progress_bar = re.sub(r'class="row"', 'class="d-none d-sm-block"', the_progress_bar)
         output += the_progress_bar
     if status.question.question_type == "signature":
         if status.question.interview.question_back_button and status.question.can_go_back and steps > 1:
             back_clear_button = '<button type="button" class="btn btn-sm ' + BUTTON_STYLE + 'link dasignav-left dasignavbutton daquestionbackbutton danonsubmit"><span>' + status.question.back() + '</span></button>'
         else:
             back_clear_button = '<a href="#" role="button" class="btn btn-sm ' + BUTTON_STYLE + 'warning dasignav-left dasignavbutton dasigclear">' + word('Clear') + '</a>'
-        output += '            <div class="dasigpage" id="dasigpage">\n              <div class="dasigshowsmallblock dasigheader d-block d-md-none" id="dasigheader">\n                <div class="dasiginnerheader">\n                  ' + back_clear_button + '\n                  <a href="#" role="button" class="btn btn-sm ' + BUTTON_STYLE + 'primary dasignav-right dasignavbutton dasigsave">' + continue_label + '</a>\n                  <div id="dasigtitle" class="dasigtitle">'
+        output += '            <div class="dasigpage" id="dasigpage">\n              <div class="dasigshowsmallblock dasigheader d-block d-sm-none" id="dasigheader">\n                <div class="dasiginnerheader">\n                  ' + back_clear_button + '\n                  <a href="#" role="button" class="btn btn-sm ' + BUTTON_STYLE + 'primary dasignav-right dasignavbutton dasigsave">' + continue_label + '</a>\n                  <div id="dasigtitle" class="dasigtitle">'
         if status.questionText:
             output += markdown_to_html(status.questionText, trim=True, status=status)
         else:
             output += word('Sign Your Name')
         output += '</div>\n                </div>\n              </div>\n              <div class="dasigtoppart" id="dasigtoppart">\n                <div id="daerrormess" class="dasigerrormessage dasignotshowing">' + word("You must sign your name to continue.") + '</div>\n'
         if status.questionText:
-            output += '                <div class="da-page-header d-none d-md-block"><h1 class="h3">' + decoration_text + markdown_to_html(status.questionText, trim=True, status=status, strip_newlines=True) + '</h1><div class="daclear"></div></div>\n'
+            output += '                <div class="da-page-header d-none d-sm-block"><h1 class="h3">' + decoration_text + markdown_to_html(status.questionText, trim=True, status=status, strip_newlines=True) + '</h1><div class="daclear"></div></div>\n'
         output += '              </div>'
         if status.subquestionText:
             output += '                <div id="dasigmidpart" class="dasigmidpart da-subquestion">\n' + markdown_to_html(status.subquestionText, status=status, indent=18) + '                </div>\n'
@@ -656,10 +653,10 @@ def as_html(status, url_for, debug, root, validation_rules, field_error, the_pro
             output += '\n              <div id="dasigmidpart" class="dasigmidpart"></div>'
         output += '\n              <div id="dasigcontent"><p style="text-align:center;border-style:solid;border-width:1px">' + word('Loading.  Please wait . . . ') + '</p></div>\n              <div class="dasigbottompart" id="dasigbottompart">\n                '
         if showUnderText:
-            output += '                <div class="d-none d-md-block">' + markdown_to_html(status.extras['underText'], trim=False, status=status) + '</div>\n                <div class="d-block d-md-none">' + markdown_to_html(status.extras['underText'], trim=True, status=status) + '</div>'
+            output += '                <div class="d-none d-sm-block">' + markdown_to_html(status.extras['underText'], trim=False, status=status) + '</div>\n                <div class="d-block d-sm-none">' + markdown_to_html(status.extras['underText'], trim=True, status=status) + '</div>'
         output += "\n              </div>"
         output += """
-              <div class="form-actions d-none d-md-block dasigbuttons">""" + back_button + additional_buttons_before + """
+              <div class="form-actions d-none d-sm-block dasigbuttons mt-3">""" + back_button + additional_buttons_before + """
                 <a href="#" role="button" class="btn """ + BUTTON_STYLE + """primary """ + BUTTON_CLASS + """ dasigsave">""" + continue_label + """</a>
                 <a href="#" role="button" class="btn """ + BUTTON_STYLE + """warning """ + BUTTON_CLASS + """ dasigclear">""" + word('Clear') + """</a>""" + additional_buttons_after + help_button + """
               </div>
@@ -776,10 +773,10 @@ def as_html(status, url_for, debug, root, validation_rules, field_error, the_pro
                         icon = '<i class="' + icon + '"></i> '
                     else:
                         icon = ''
-                    fieldlist.append('                <div class="row' + side_note_parent + '"><div class="col-md-12"><a href="#" role="button" class="btn btn-sm ' + BUTTON_STYLE + color + ' da-review-action da-review-action-button" data-action=' + myb64doublequote(json.dumps(field.action)) + '>' + icon + markdown_to_html(status.labels[field.number], trim=True, status=status, strip_newlines=True) + '</a>' + markdown_to_html(status.helptexts[field.number], status=status, strip_newlines=True) + '</div>' + side_note + '</div>\n')
+                    fieldlist.append('                <div class="row' + side_note_parent + '"><div class="col-md-12"><a href="#" role="button" class="btn btn-sm ' + BUTTON_STYLE + color + ' da-review-action da-review-action-button" data-action=' + myb64doublequote(status.extras['action'][field.number]) + '>' + icon + markdown_to_html(status.labels[field.number], trim=True, status=status, strip_newlines=True) + '</a>' + markdown_to_html(status.helptexts[field.number], status=status, strip_newlines=True) + '</div>' + side_note + '</div>\n')
                     continue
             if hasattr(field, 'label'):
-                fieldlist.append('                <div class="form-group row' + side_note_parent + '"><div class="col-md-12"><a href="#" class="da-review-action" data-action=' + myb64doublequote(json.dumps(field.action)) + '>' + markdown_to_html(status.labels[field.number], trim=True, status=status, strip_newlines=True) + '</a></div>' + side_note + '</div>\n')
+                fieldlist.append('                <div class="form-group row' + side_note_parent + '"><div class="col-md-12"><a href="#" class="da-review-action" data-action=' + myb64doublequote(status.extras['action'][field.number]) + '>' + markdown_to_html(status.labels[field.number], trim=True, status=status, strip_newlines=True) + '</a></div>' + side_note + '</div>\n')
                 if field.number in status.helptexts:
                     fieldlist.append('                <div class="row"><div class="col-md-12">' + markdown_to_html(status.helptexts[field.number], status=status, strip_newlines=True) + '</div></div>\n')
         output += status.pre
@@ -829,8 +826,6 @@ def as_html(status, url_for, debug, root, validation_rules, field_error, the_pro
                 note_fields[field.number] = status.extras['html'][field.number].rstrip()
             elif 'note' in status.extras and field.number in status.extras['note']:
                 note_fields[field.number] = markdown_to_html(status.extras['note'][field.number], status=status, embedder=embed_input)
-            if hasattr(field, 'address_autocomplete') and field.address_autocomplete and hasattr(field, 'saveas'):
-                autocomplete_id.append(field.saveas)
             if hasattr(field, 'saveas'):
                 varnames[safeid('_field_' + str(field.number))] = field.saveas
                 if (hasattr(field, 'extras') and (('show_if_var' in field.extras and 'show_if_val' in status.extras) or 'show_if_js' in field.extras)) or (hasattr(field, 'disableothers') and field.disableothers):
@@ -843,6 +838,8 @@ def as_html(status, url_for, debug, root, validation_rules, field_error, the_pro
                     validation_rules['rules'][the_saveas] = dict()
                 if the_saveas not in validation_rules['messages']:
                     validation_rules['messages'][the_saveas] = dict()
+                if hasattr(field, 'address_autocomplete') and field.address_autocomplete:
+                    autocomplete_id.append(the_saveas)
         seen_extra_header = False
         for field in field_list:
             field_number = int(re.sub(r'.*_', '', str(field.number)))
@@ -1115,13 +1112,13 @@ def as_html(status, url_for, debug, root, validation_rules, field_error, the_pro
                 if field.datatype == 'date':
                     validation_rules['rules'][the_saveas]['date'] = True
                     validation_rules['messages'][the_saveas]['date'] = field.validation_message('date', status, word("You need to enter a valid date."))
-                    if hasattr(field, 'extras') and 'min' in field.extras and 'min' in status.extras and 'max' in field.extras and 'max' in status.extras:
+                    if hasattr(field, 'extras') and 'min' in field.extras and 'min' in status.extras and 'max' in field.extras and 'max' in status.extras and field.number in status.extras['min'] and field.number in status.extras['max']:
                         validation_rules['rules'][the_saveas]['minmaxdate'] = [format_date(status.extras['min'][field.number], format='yyyy-MM-dd'), format_date(status.extras['max'][field.number], format='yyyy-MM-dd')]
                         validation_rules['messages'][the_saveas]['minmaxdate'] = field.validation_message('date minmax', status, word("You need to enter a date between %s and %s."), parameters=(format_date(status.extras['min'][field.number], format='medium'), format_date(status.extras['max'][field.number], format='medium')))
                     else:
                         was_defined = dict()
                         for key in ['min', 'max']:
-                            if hasattr(field, 'extras') and key in field.extras and key in status.extras:
+                            if hasattr(field, 'extras') and key in field.extras and key in status.extras and field.number in status.extras[key]:
                                 was_defined[key] = True
                                 #sys.stderr.write("Adding validation rule for " + str(key) + "\n")
                                 validation_rules['rules'][the_saveas][key + 'date'] = format_date(status.extras[key][field.number], format='yyyy-MM-dd')
@@ -1153,13 +1150,13 @@ def as_html(status, url_for, debug, root, validation_rules, field_error, the_pro
                 if field.datatype in ['number', 'currency', 'float', 'integer']:
                     validation_rules['rules'][the_saveas]['number'] = True
                     validation_rules['messages'][the_saveas]['number'] = field.validation_message('number', status, word("You need to enter a number."))
-                    if field.datatype == 'integer':
+                    if field.datatype == 'integer' and not ('step' in status.extras and field.number in status.extras['step']):
                         validation_rules['messages'][the_saveas]['step'] = field.validation_message('integer', status, word("Please enter a whole number."))
                     elif 'step' in status.extras and field.number in status.extras['step']:
                         validation_rules['messages'][the_saveas]['step'] = field.validation_message('step', status, word("Please enter a multiple of {0}."))
                     #sys.stderr.write("Considering adding validation rule\n")
                     for key in ['min', 'max']:
-                        if hasattr(field, 'extras') and key in field.extras and key in status.extras:
+                        if hasattr(field, 'extras') and key in field.extras and key in status.extras and field.number in status.extras[key]:
                             #sys.stderr.write("Adding validation rule for " + str(key) + "\n")
                             validation_rules['rules'][the_saveas][key] = float(status.extras[key][field.number])
                             if key == 'min':
@@ -1548,35 +1545,36 @@ def as_html(status, url_for, debug, root, validation_rules, field_error, the_pro
         output += tracker_tag(status)
         output += '            </form>\n'
     if len(status.attachments) > 0:
-        output += '            <br/>\n'
-        if len(status.attachments) > 1:
-            output += '            <h2 class="sr-only">' + word('Attachments') + "</h2>\n"
-            output += '            <div class="da-attachment-alert da-attachment-alert-multiple alert alert-success" role="alert">' + word('The following documents have been created for you.') + '</div>\n'
-        else:
-            output += '            <h2 class="sr-only">' + word('Attachment') + "</h2>\n"
-            output += '            <div class="da-attachment-alert da-attachment-alert-single alert alert-success" role="alert">' + word('The following document has been created for you.') + '</div>\n'
+        if not status.extras.get('manual_attachment_list', False):
+            output += '            <br/>\n'
+            if len(status.attachments) > 1:
+                output += '            <h2 class="sr-only">' + word('Attachments') + "</h2>\n"
+                if status.extras.get('attachment_notice', True):
+                    output += '            <div class="da-attachment-alert da-attachment-alert-multiple alert alert-success" role="alert">' + word('The following documents have been created for you.') + '</div>\n'
+            else:
+                output += '            <h2 class="sr-only">' + word('Attachment') + "</h2>\n"
+                if status.extras.get('attachment_notice', True):
+                    output += '            <div class="da-attachment-alert da-attachment-alert-single alert alert-success" role="alert">' + word('The following document has been created for you.') + '</div>\n'
         attachment_index = 0
         editable_included = False
         if status.extras.get('always_include_editable_files', False):
             automatically_include_editable = True
         else:
             automatically_include_editable = False
-        if len(status.attachments) > 1:
-            file_word = 'files'
-        else:
-            file_word = 'file'
-        editable_name = ''
+        editable_options = set()
+        total_editable = 0
         for attachment in status.attachments:
             if 'rtf' in attachment['valid_formats'] or 'rtf to docx' in attachment['valid_formats'] or 'docx' in attachment['valid_formats'] or '*' in attachment['valid_formats']:
                 if 'pdf' in attachment['valid_formats'] or '*' in attachment['valid_formats']:
                     editable_included = True
-                    if 'rtf' in attachment['valid_formats'] or '*' in attachment['valid_formats']:
-                        if 'docx' in attachment['valid_formats'] or 'rtf to docx' in attachment['valid_formats']:
-                            editable_name = 'RTF and DOCX files'
-                        else:
-                            editable_name = 'RTF ' + file_word
-                    elif 'docx' in attachment['valid_formats'] or 'rtf to docx' in attachment['valid_formats']:
-                        editable_name = 'DOCX ' + file_word
+                if 'rtf' in attachment['valid_formats'] or '*' in attachment['valid_formats']:
+                    total_editable += 1
+                    editable_options.add('RTF')
+                elif 'docx' in attachment['valid_formats'] or 'rtf to docx' in attachment['valid_formats']:
+                    total_editable += 1
+                    editable_options.add('DOCX')
+            if status.extras.get('manual_attachment_list', False):
+                continue
             if debug and len(attachment['markdown']):
                 if 'html' in attachment['valid_formats'] or '*' in attachment['valid_formats']:
                     md_format = 'html'
@@ -1608,11 +1606,14 @@ def as_html(status, url_for, debug, root, validation_rules, field_error, the_pro
                 show_markdown = False
                 show_download = True
                 multiple_formats = False
+            if not status.extras.get('download_tab', True):
+                show_preview = False
+                show_markdown = False
             output += '            <div class="da-attachment-title-wrapper"><h3>' + markdown_to_html(attachment['name'], trim=True, status=status, strip_newlines=True) + '</h3></div>\n'
             if attachment['description']:
                 output += '            <div class="da-attachment-title-description">' + markdown_to_html(attachment['description'], status=status, strip_newlines=True) + '</div>\n'
             output += '            <div class="da-attachment-download-wrapper">\n'
-            if True or show_preview or show_markdown:
+            if status.extras.get('download_tab', True) or show_preview or show_markdown:
                 output += '              <ul role="tablist" class="nav nav-tabs da-attachment-tablist">\n'
                 if show_download:
                     output += '                <li class="nav-item da-attachment-tab-download-header"><a class="nav-link active" id="dadownload-tab' + str(attachment_index) + '" href="#dadownload' + str(attachment_index) + '" data-toggle="tab" role="tab" aria-controls="dadownload' + str(attachment_index) + '" aria-selected="true">' + word('Download') + '</a></li>\n'
@@ -1623,7 +1624,10 @@ def as_html(status, url_for, debug, root, validation_rules, field_error, the_pro
                 output += '              </ul>\n'
             output += '              <div class="tab-content" id="databcontent' + str(attachment_index) + '">\n'
             if show_download:
-                output += '                <div class="tab-pane show active da-attachment-tab-download" id="dadownload' + str(attachment_index) + '" role="tabpanel" aria-labelledby="dadownload-tab' + str(attachment_index) + '">\n'
+                if status.extras.get('download_tab', True) or show_preview or show_markdown:
+                    output += '                <div class="tab-pane show active da-attachment-tab-download" id="dadownload' + str(attachment_index) + '" role="tabpanel" aria-labelledby="dadownload-tab' + str(attachment_index) + '">\n'
+                else:
+                    output += '                <div>\n'
                 if multiple_formats:
                     output += '                  <p class="da-attachment-tab-download-intro">' + word('The document is available in the following formats:') + '</p>\n'
                 if attachment.get('raw', False):
@@ -1650,6 +1654,21 @@ def as_html(status, url_for, debug, root, validation_rules, field_error, the_pro
                 output += '                </div>\n'
             output += '              </div>\n            </div>\n'
             attachment_index += 1
+        if editable_included:
+            if 'RTF' in editable_options and 'DOCX' in editable_options:
+                editable_name = word('Include RTF and DOCX files for editing')
+            elif 'RTF' in editable_options:
+                if total_editable > 1:
+                    editable_name = word('Include RTF files for editing')
+                else:
+                    editable_name = word('Include RTF file for editing')
+            elif 'DOCX' in editable_options:
+                if total_editable > 1:
+                    editable_name = word('Include DOCX files for editing')
+                else:
+                    editable_name = word('Include DOCX file for editing')
+            else:
+                editable_name = ''
         if status.extras.get('allow_emailing', True) or status.extras.get('allow_downloading', False):
             if len(status.attachments) > 1:
                 email_header = word("E-mail these documents")
@@ -1658,7 +1677,9 @@ def as_html(status, url_for, debug, root, validation_rules, field_error, the_pro
                 email_header = word("E-mail this document")
                 download_header = word("Download this document as a ZIP file")
             if status.extras.get('allow_emailing', True):
-                if status.current_info['user']['is_authenticated'] and status.current_info['user']['email']:
+                if status.extras.get('email_default', None):
+                    default_email = status.extras['email_default']
+                elif status.current_info['user']['is_authenticated'] and status.current_info['user']['email']:
                     default_email = status.current_info['user']['email']
                 else:
                     default_email = ''
@@ -1679,7 +1700,7 @@ def as_html(status, url_for, debug, root, validation_rules, field_error, the_pro
                       <input type="hidden" value="True" name="_attachment_include_editable" id="da_attachment_include_editable"/>"""
                     else:
                         output += """
-                      <div class="form-group row"><div class="col-md-4 col-form-label da-form-label datext-right"></div><div class="col-md-8"><input alt=""" + fix_double_quote(word("Check box") + ", " + word('Include ' + editable_name + ' for editing')) + """ type="checkbox" value="True" name="_attachment_include_editable" id="da_attachment_include_editable"/>&nbsp;<label for="da_attachment_include_editable" class="danobold">""" + word('Include ' + editable_name + ' for editing') + '</label></div></div>\n'
+                      <div class="form-group row"><div class="col-md-4 col-form-label da-form-label datext-right"></div><div class="col-md-8"><input alt=""" + fix_double_quote(word("Check box") + ", " + editable_name) + """ type="checkbox" value="True" name="_attachment_include_editable" id="da_attachment_include_editable"/>&nbsp;<label for="da_attachment_include_editable" class="danobold">""" + editable_name + '</label></div></div>\n'
                 output += """
                       <button class="btn """ + BUTTON_STYLE + """primary" type="submit"><span>""" + word('Send') + '</span></button>\n                      <input type="hidden" name="_email_attachments" value="1"/>'
                 output += """
@@ -1707,7 +1728,7 @@ def as_html(status, url_for, debug, root, validation_rules, field_error, the_pro
                       <input type="hidden" value="True" name="_attachment_include_editable" id="da_attachment_include_editable"/>"""
                     else:
                         output += """
-                      <div class="form-group row"><div class="col-md-12"><input alt=""" + fix_double_quote(word("Check box") + ", " + word('Include ' + editable_name + ' for editing')) + """ type="checkbox" value="True" name="_attachment_include_editable" id="da_attachment_include_editable"/>&nbsp;<label for="da_attachment_include_editable" class="danobold">""" + word('Include ' + editable_name + ' for editing') + '</label></div></div>\n'
+                      <div class="form-group row"><div class="col-md-12"><input alt=""" + fix_double_quote(word("Check box") + ", " + editable_name) + """ type="checkbox" value="True" name="_attachment_include_editable" id="da_attachment_include_editable"/>&nbsp;<label for="da_attachment_include_editable" class="danobold">""" + editable_name + '</label></div></div>\n'
                 output += """
                       <button class="btn """ + BUTTON_STYLE + """primary" type="submit"><span>""" + word('Download All') + '</span></button>\n                      <input type="hidden" name="_download_attachments" value="1"/>'
                 output += """
@@ -1971,6 +1992,13 @@ def input_for(status, field, wide=False, embedded=False):
                 defaultvalue = None
         elif isinstance(status.defaults[field.number], (str, int, float)):
             defaultvalue = str(status.defaults[field.number])
+        elif isinstance(status.defaults[field.number], list):
+            defaultvalue = []
+            for item in status.defaults[field.number]:
+                if hasattr(item, 'instanceName'):
+                    defaultvalue.append(safeid(item.instanceName))
+                else:
+                    defaultvalue.append(item)
         else:
             defaultvalue = status.defaults[field.number]
     else:
@@ -2062,7 +2090,10 @@ def input_for(status, field, wide=False, embedded=False):
                         inner_field = safeid(from_safeid(saveas_string) + "[R" + myb64quote(repr(pair['key'])) + "]")
                     #sys.stderr.write("I've got a " + repr(pair['label']) + "\n")
                     formatted_item = markdown_to_html(str(pair['label']), status=status, trim=True, escape=(not embedded), do_terms=False)
-                    if 'default' in pair and pair['default']:
+                    def_key = from_safeid(saveas_string) + "[" + repr(pair['key']) + "]"
+                    if def_key in status.other_defaults and status.other_defaults[def_key]:
+                        ischecked = ' checked'
+                    elif 'default' in pair and pair['default']:
                         ischecked = ' checked'
                     elif defaultvalue is None:
                         ischecked = ''
@@ -2098,7 +2129,7 @@ def input_for(status, field, wide=False, embedded=False):
                     inner_fieldlist.append('<input class="dafield' + str(field.number) + ' dacheckbox-embedded danota-checkbox" id="_ignore' + str(field.number) + '" type="checkbox" name="_ignore' + str(field.number) + '"' + disable_others_data + '/>&nbsp;<label for="_ignore' + str(field.number) + '">' + formatted_item + '</label>')
                 else:
                     inner_fieldlist.append('<input aria-label="' + formatted_item + '" alt="' + formatted_item + '" data-labelauty="' + formatted_item + '|' + formatted_item + '" class="' + 'dafield' + str(field.number) + ' danota-checkbox da-to-labelauty checkbox-icon' + extra_checkbox + '"' + title_text + ' type="checkbox" name="_ignore' + str(field.number) + '" ' + ischecked + disable_others_data + '/>')
-            elif (hasattr(field, 'extras') and (('minlength' in field.extras and 'minlength' in status.extras) or ('maxlength' in field.extras and 'maxlength' in status.extras))):
+            elif (hasattr(field, 'extras') and (('minlength' in field.extras and 'minlength' in status.extras and field.number in status.extras['minlength']) or ('maxlength' in field.extras and 'maxlength' in status.extras and field.number in status.extras['maxlength']))):
                 inner_fieldlist.append('<input value="" type="hidden" name="_ignore' + str(field.number) + '"/>')
             if embedded:
                 output += ' '.join(inner_fieldlist) + '</span>'
@@ -2458,6 +2489,8 @@ def input_for(status, field, wide=False, embedded=False):
                 output += '</span>'
         elif hasattr(field, 'inputtype') and field.inputtype == 'ajax':
             if defaultvalue is not None and isinstance(defaultvalue, (str, int, bool, float)):
+                if field.datatype in ('currency', 'number') and hasattr(field, 'extras') and 'step' in field.extras and 'step' in status.extras and field.number in status.extras['step'] and int(status.extras['step'][field.number]) == float(status.extras['step'][field.number]):
+                    defaultvalue = int(float(defaultvalue))
                 defaultstring = ' value=' + fix_double_quote(str(defaultvalue))
                 default_val = defaultvalue
             elif isinstance(defaultvalue, datetime.datetime):
@@ -2495,6 +2528,8 @@ def input_for(status, field, wide=False, embedded=False):
                     the_date = format_datetime(defaultvalue, format='yyyy-MM-ddTHH:mm')
                     if the_date != word("Bad date"):
                         defaultvalue = the_date
+                elif field.datatype in ('currency', 'number') and hasattr(field, 'extras') and 'step' in field.extras and 'step' in status.extras and field.number in status.extras['step'] and int(status.extras['step'][field.number]) == float(status.extras['step'][field.number]):
+                    defaultvalue = int(float(defaultvalue))
                 defaultstring = ' value=' + fix_double_quote(str(defaultvalue))
             elif isinstance(defaultvalue, datetime.datetime):
                 if field.datatype == 'datetime':

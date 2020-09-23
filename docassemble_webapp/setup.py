@@ -8,9 +8,9 @@ def read(fname):
 openpyxl_version = "2.5.14" if sys.version.startswith('3.5') else "3.0.0"
 twine_version = "1.15.0" if sys.version.startswith('3.5') else "2.0.0"
 install_requires = [
-    'docassemble==1.1.49',
-    'docassemble.base==1.1.49',
-    'docassemble.demo==1.1.49',
+    'docassemble==1.1.77',
+    'docassemble.base==1.1.77',
+    'docassemble.demo==1.1.77',
     "3to2==1.1.1",
     "airtable-python-wrapper==0.12.0",
     "alembic==1.2.1",
@@ -58,8 +58,8 @@ install_requires = [
     "Flask-Mail==0.9.1",
     "Flask-SocketIO==4.2.1",
     "Flask-SQLAlchemy==2.4.1",
-    "Flask-User==0.6.21",
     "Flask-WTF==0.14.3",
+    "Docassemble-Flask-User==0.6.22",
     "future==0.18.1",
     "gcs-oauth2-boto-plugin==2.5",
     "geographiclib==1.50",
@@ -105,6 +105,7 @@ install_requires = [
     "netifaces==0.10.9",
     "nltk==3.4.5",
     "numpy==1.17.3",
+    "num2words==0.5.10",
     "oauth2client==4.1.3",
     "openpyxl==" + openpyxl_version,
     "ordered-set==3.1.1",
@@ -115,7 +116,7 @@ install_requires = [
     "Pattern==3.6",
     "pdfminer.six==20200517",
     "phonenumbers==8.10.21",
-    "Pillow==6.2.1",
+    "Pillow==7.1.0",
     "pkginfo==1.5.0.1",
     "pluggy==0.13.0",
     "ply==3.11",
@@ -189,7 +190,7 @@ install_requires = [
     "uritemplate==3.0.0",
     "urllib3==1.25.6",
     "us==1.0.0",
-    "user-agents==2.0",
+    "user-agents==2.1",
     "uWSGI==2.0.18",
     "vine==1.3.0",
     "wcwidth==0.1.7",
@@ -205,7 +206,7 @@ install_requires = [
 ]
 
 setup(name='docassemble.webapp',
-      version='1.1.49',
+      version='1.1.77',
       python_requires='>=3.5',
       description=('The web application components of the docassemble system.'),
       long_description=read("README.md"),

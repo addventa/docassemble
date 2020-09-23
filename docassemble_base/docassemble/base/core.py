@@ -64,13 +64,18 @@ def get_unique_name():
 
 class DAEmpty:
     """An object that does nothing except avoid triggering errors about missing information."""
+    def __init__(self, *pargs, **kwargs):
+        self.str = str(kwargs.get('str', ''))
     def __getattr__(self, thename):
-        if thename.startswith('_'):
+        if thename.startswith('_') or thename == 'str':
             return object.__getattribute__(self, thename)
         else:
             return DAEmpty()
     def __str__(self):
-        return ''
+        try:
+            return object.__getattribute__(self, 'str')
+        except:
+            return ''
     def __dir__(self):
         return list()
     def __contains__(self, item):
@@ -260,6 +265,9 @@ class DAObject:
         self.instanceName = get_unique_name()
         self.has_nonrandom_instance_name = False
         return self
+    def attr_name(self, attr):
+        """Returns a variable name for an attribute, suitable for use in force_ask() and other functions."""
+        return self.instanceName + '.' + attr
     def delattr(self, *pargs):
         """Deletes attributes."""
         for attr in pargs:
@@ -511,10 +519,11 @@ class DAObject:
         """Returns a possessive phrase based on the instanceName.  E.g., client.object_possessive('fish') returns
         "client's fish." """
         language = kwargs.get('language', None)
+        capitalize = kwargs.get('capitalize', False)
         if len(self.instanceName.split(".")) > 1:
             return(possessify_long(self.object_name(), target, language=language))
         else:
-            return(possessify(the(self.object_name(), language=language), target, language=language))
+            return(possessify(the(self.object_name(), language=language), target, language=language, capitalize=capitalize))
     def initializeAttribute(self, *pargs, **kwargs):
         """Defines an attribute for the object, setting it to a newly initialized object.
         The first argument is the name of the attribute and the second argument is type
@@ -1096,6 +1105,9 @@ class DAList(DAObject):
         if hasattr(self, 'doing_gathered_and_complete'):
             del self.doing_gathered_and_complete
         return True
+    def copy(self):
+        """Returns a copy of the list."""
+        return self.elements.copy()
     def filter(self, *pargs, **kwargs):
         """Returns a filtered version of the list containing only items with particular values of attributes."""
         self._trigger_gather()
@@ -1425,10 +1437,10 @@ class DAList(DAObject):
         if len(self.elements) == 0:
             return 0
         return len(self.elements) - 1
-    def number_as_word(self, language=None):
+    def number_as_word(self, language=None, capitalize=False):
         """Returns the number of elements in the list, spelling out the number if ten
         or below.  Forces the gathering of the elements if necessary."""
-        return nice_number(self.number(), language=language)
+        return nice_number(self.number(), language=language, capitalize=capitalize)
     def complete_elements(self, complete_attribute=None):
         """Returns a list of the elements that are complete."""
         if complete_attribute is None and hasattr(self, 'complete_attribute'):
@@ -3556,6 +3568,7 @@ class DAFileCollection(DAObject):
     """
     def init(self, *pargs, **kwargs):
         self.info = dict()
+        super().init(*pargs, **kwargs)
     def _extension_list(self):
         if hasattr(self, 'info') and 'formats' in self.info:
             return self.info['formats']
@@ -3600,7 +3613,7 @@ class DAFileCollection(DAObject):
         return the_file.path()
     def get_docx_variables(self):
         """Returns a list of variables used by the Jinja2 templating of a DOCX template file."""
-        return the_file.docx.get_docx_fields()
+        return the_file.docx.get_docx_variables()
     def get_pdf_fields(self):
         """Returns a list of fields that exist in the PDF document"""
         return the_file.pdf.get_pdf_fields()
@@ -3614,7 +3627,7 @@ class DAFileCollection(DAObject):
         """Sets attributes of the file(s) stored on the server.  Takes optional keyword arguments private and persistent, which must be boolean values."""
         for ext in self._extension_list():
             if hasattr(self, ext):
-                return getattr(self, ext).set_attributes(**kwargs)
+                getattr(self, ext).set_attributes(**kwargs)
     def user_access(self, *pargs, **kwargs):
         """Allows or disallows access to the file(s) for a given user."""
         for ext in self._extension_list():
@@ -3962,7 +3975,7 @@ def text_of_table(table_info, orig_user_dict, temp_vars, editable=True):
     if table_info.is_editable and not editable:
         header_output.pop()
     the_iterable = eval(table_info.row, user_dict_copy)
-    if not isinstance(the_iterable, (list, dict, DAList, DADict)):
+    if (not isinstance(the_iterable, (DAList, DADict, abc.Iterable))) or isinstance(the_iterable, str):
         raise DAError("Error in processing table " + table_info.saveas + ": row value is not iterable")
     if hasattr(the_iterable, 'instanceName') and hasattr(the_iterable, 'elements') and isinstance(the_iterable.elements, (list, dict)):
         if not table_info.require_gathered:
@@ -4178,7 +4191,7 @@ class DALazyTableTemplate(DALazyTemplate):
         if self.table_info.is_editable:
             header_output.pop()
         the_iterable = eval(self.table_info.row, user_dict_copy)
-        if not isinstance(the_iterable, (list, dict, DAList, DADict)):
+        if (not isinstance(the_iterable, (DAList, DADict, abc.Iterable))) or isinstance(the_iterable, str):
             raise DAError("Error in processing table " + self.table_info.saveas + ": row value is not iterable")
         if hasattr(the_iterable, 'instanceName') and hasattr(the_iterable, 'elements') and isinstance(the_iterable.elements, (list, dict)):
             if not self.table_info.require_gathered:
@@ -4241,8 +4254,13 @@ def selections(*pargs, **kwargs):
         if isinstance(arg, DAList):
             arg._trigger_gather()
             the_list = arg.elements
-        elif type(arg) is list:
+        elif isinstance(arg, DASet):
+            arg._trigger_gather()
+            the_list = list(arg.elements)
+        elif isinstance(arg, list):
             the_list = arg
+        elif isinstance(arg, set):
+            the_list = list(arg)
         else:
             the_list = [arg]
         for subarg in the_list:
@@ -4496,3 +4514,15 @@ def objects_from_structure(target, root=None):
         return target
     else:
         raise DAError("objects_from_structure: expected a standard type, but found a " + str(type(target)))
+
+class DASessionLocal(DAObject):
+    def __init__(self, *pargs, **kwargs):
+        super().__init__('session_local')
+
+class DADeviceLocal(DAObject):
+    def __init__(self, *pargs, **kwargs):
+        super().__init__('device_local')
+
+class DAUserLocal(DAObject):
+    def __init__(self, *pargs, **kwargs):
+        super().__init__('user_local')

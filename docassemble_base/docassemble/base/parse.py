@@ -46,6 +46,7 @@ from types import CodeType
 import pandas
 import dateutil.parser
 import pytz
+from bs4 import BeautifulSoup
 RangeType = type(range(1,2))
 NoneType = type(None)
 
@@ -112,7 +113,7 @@ def textify(data, the_user_dict):
 #     save_numbered_file = func
 #     return
 
-initial_dict = dict(_internal=dict(dirty=dict(), progress=0, tracker=0, docvar=dict(), doc_cache=dict(), steps=1, steps_offset=0, secret=None, informed=dict(), livehelp=dict(availability='unavailable', mode='help', roles=list(), partner_roles=list()), answered=set(), answers=dict(), objselections=dict(), starttime=None, modtime=None, accesstime=dict(), tasks=dict(), gather=list(), event_stack=dict(), misc=dict()), url_args=dict(), nav=docassemble.base.functions.DANav())
+initial_dict = dict(_internal=dict(session_local=dict(), device_local=dict(), user_local=dict(), dirty=dict(), progress=0, tracker=0, docvar=dict(), doc_cache=dict(), steps=1, steps_offset=0, secret=None, informed=dict(), livehelp=dict(availability='unavailable', mode='help', roles=list(), partner_roles=list()), answered=set(), answers=dict(), objselections=dict(), starttime=None, modtime=None, accesstime=dict(), tasks=dict(), gather=list(), event_stack=dict(), misc=dict()), url_args=dict(), nav=docassemble.base.functions.DANav())
 
 def set_initial_dict(the_dict):
     global initial_dict
@@ -446,6 +447,8 @@ class InterviewStatus:
                     saveas_to_use[field.saveas] = the_saveas
                     saveas_by_number[field.number] = the_saveas
             for field in the_field_list:
+                if not self.extras['ok'][field.number]:
+                    continue
                 if self.is_empty_mc(field):
                     if hasattr(field, 'datatype'):
                         hiddens[field.saveas] = field.datatype
@@ -455,8 +458,6 @@ class InterviewStatus:
                         datatypes[field.saveas] = field.datatype
                         if field.datatype == 'object_checkboxes':
                             datatypes[safeid(from_safeid(field.saveas) + ".gathered")] = 'boolean'
-                    continue
-                if not self.extras['ok'][field.number]:
                     continue
                 if hasattr(field, 'extras'):
                     if 'ml_group' in field.extras or 'ml_train' in field.extras:
@@ -638,6 +639,7 @@ class InterviewStatus:
         self.attachments = question_result['attachments']
         self.selectcompute = question_result['selectcompute']
         self.defaults = question_result['defaults']
+        self.other_defaults = dict()
         #self.defined = question_result['defined']
         self.hints = question_result['hints']
         self.helptexts = question_result['helptexts']
@@ -655,6 +657,29 @@ class InterviewStatus:
             result['validation_messages'] = copy.copy(self.question.interview.default_validation_messages[self.question.language])
         else:
             result['validation_messages'] = dict()
+        lang = docassemble.base.functions.get_language()
+        if len(self.question.terms) or len(self.question.interview.terms):
+            result['terms'] = dict()
+            if 'terms' in self.extras:
+                for term, vals in self.extras['terms'].items():
+                    result['terms'][term] = vals['definition']
+            if lang in self.question.interview.terms and len(self.question.interview.terms[lang]):
+                for term, vals in self.question.interview.terms[lang].items():
+                    result['terms'][term] = vals['definition']
+            elif self.question.language in self.question.interview.terms and len(self.question.interview.terms[self.question.language]):
+                for term, vals in self.question.interview.terms[self.question.language].items():
+                    result['terms'][term] = vals['definition']
+        if len(self.question.autoterms) or len(self.question.interview.autoterms):
+            result['autoterms'] = dict()
+            if 'autoterms' in self.extras:
+                for term, vals in self.extras['autoterms'].items():
+                    result['autoterms'][term] = vals['definition']
+            if lang in self.question.interview.autoterms and len(self.question.interview.autoterms[lang]):
+                for term, vals in question.interview.autoterms[lang].items():
+                    result['autoterms'][term] = vals['definition']
+            elif self.question.language in self.question.interview.autoterms and len(self.question.interview.autoterms[self.question.language]):
+                for term, vals in self.question.interview.autoterms[self.question.language].items():
+                    result['autoterms'][term] = vals['definition']
         if self.orig_sought is not None:
             result['event_list'] = [self.orig_sought]
         for param in ('questionText', 'subquestionText', 'continueLabel', 'helpLabel'):
@@ -722,6 +747,7 @@ class InterviewStatus:
                         result['decoration_name'] = decoration['image']
                         break
         if len(self.attachments) > 0:
+            #PPP
             result['attachments'] = list()
             if self.current_info['user']['is_authenticated'] and self.current_info['user']['email']:
                 result['default_email'] = self.current_info['user']['email']
@@ -1375,6 +1401,7 @@ class Question:
         self.reload_after = None
         self.continuelabel = None
         self.backbuttonlabel = None
+        self.cornerbackbuttonlabel = None
         self.helplabel = None
         self.progress = None
         self.section = None
@@ -1404,8 +1431,8 @@ class Question:
             raise DAError("This block is missing a 'question' directive." + self.idebug(data))
         if self.interview.debug:
             for key in data:
-                if key not in ('features', 'scan for variables', 'only sets', 'question', 'code', 'event', 'translations', 'default language', 'on change', 'sections', 'progressive', 'auto open', 'section', 'machine learning storage', 'language', 'prevent going back', 'back button', 'usedefs', 'continue button label', 'resume button label', 'back button label', 'skip undefined', 'list collect', 'mandatory', 'attachment options', 'script', 'css', 'initial', 'default role', 'command', 'objects from file', 'use objects', 'data', 'variable name', 'data from code', 'objects', 'id', 'ga id', 'segment id', 'segment', 'supersedes', 'order', 'image sets', 'images', 'def', 'mako', 'interview help', 'default screen parts', 'default validation messages', 'generic object', 'generic list object', 'comment', 'metadata', 'modules', 'reset', 'imports', 'terms', 'auto terms', 'role', 'include', 'action buttons', 'if', 'validation code', 'require', 'orelse', 'attachment', 'attachments', 'attachment code', 'attachments code', 'allow emailing', 'allow downloading', 'progress', 'zip filename', 'action', 'backgroundresponse', 'response', 'binaryresponse', 'all_variables', 'response filename', 'content type', 'redirect url', 'null response', 'sleep', 'include_internal', 'css class', 'subquestion', 'reload', 'help', 'audio', 'video', 'decoration', 'signature', 'under', 'right', 'check in', 'yesno', 'noyes', 'yesnomaybe', 'noyesmaybe', 'sets', 'event', 'choices', 'buttons', 'dropdown', 'combobox', 'field', 'shuffle', 'review', 'need', 'depends on', 'target', 'table', 'rows', 'columns', 'require gathered', 'allow reordering', 'edit', 'delete buttons', 'confirm', 'read only', 'edit header', 'confirm', 'show if empty', 'template', 'content file', 'content', 'subject', 'reconsider', 'undefine', 'continue button field', 'fields', 'indent', 'url', 'default', 'datatype', 'extras', 'allowed to set', 'show incomplete', 'not available label', 'required', 'always include editable files', 'question metadata'):
-                    logmessage("Ignoring unknown dictionary key " + key + "." + self.idebug(data))
+                if key not in ('features', 'scan for variables', 'only sets', 'question', 'code', 'event', 'translations', 'default language', 'on change', 'sections', 'progressive', 'auto open', 'section', 'machine learning storage', 'language', 'prevent going back', 'back button', 'usedefs', 'continue button label', 'resume button label', 'back button label', 'corner back button label', 'skip undefined', 'list collect', 'mandatory', 'attachment options', 'script', 'css', 'initial', 'default role', 'command', 'objects from file', 'use objects', 'data', 'variable name', 'data from code', 'objects', 'id', 'ga id', 'segment id', 'segment', 'supersedes', 'order', 'image sets', 'images', 'def', 'mako', 'interview help', 'default screen parts', 'default validation messages', 'generic object', 'generic list object', 'comment', 'metadata', 'modules', 'reset', 'imports', 'terms', 'auto terms', 'role', 'include', 'action buttons', 'if', 'validation code', 'require', 'orelse', 'attachment', 'attachments', 'attachment code', 'attachments code', 'allow emailing', 'allow downloading', 'email subject', 'email body', 'email address default', 'progress', 'zip filename', 'action', 'backgroundresponse', 'response', 'binaryresponse', 'all_variables', 'response filename', 'content type', 'redirect url', 'null response', 'sleep', 'include_internal', 'css class', 'response code', 'subquestion', 'reload', 'help', 'audio', 'video', 'decoration', 'signature', 'under', 'right', 'check in', 'yesno', 'noyes', 'yesnomaybe', 'noyesmaybe', 'sets', 'event', 'choices', 'buttons', 'dropdown', 'combobox', 'field', 'shuffle', 'review', 'need', 'depends on', 'target', 'table', 'rows', 'columns', 'require gathered', 'allow reordering', 'edit', 'delete buttons', 'confirm', 'read only', 'edit header', 'confirm', 'show if empty', 'template', 'content file', 'content', 'subject', 'reconsider', 'undefine', 'continue button field', 'fields', 'indent', 'url', 'default', 'datatype', 'extras', 'allowed to set', 'show incomplete', 'not available label', 'required', 'always include editable files', 'question metadata', 'include attachment notice', 'include download tab', 'manual attachment list'):
+                    logmessage("Ignoring unknown dictionary key '" + key + "'." + self.idebug(data))
         if 'features' in data:
             should_append = False
             if not isinstance(data['features'], dict):
@@ -1436,6 +1463,12 @@ class Question:
                 self.interview.force_fullscreen = data['features']['go full screen']
             if 'navigation' in data['features'] and data['features']['navigation']:
                 self.interview.use_navigation = data['features']['navigation']
+            if 'small screen navigation' in data['features']:
+                if data['features']['small screen navigation'] == 'dropdown':
+                    self.interview.use_navigation_on_small_screens = 'dropdown'
+                else:
+                    if not data['features']['small screen navigation']:
+                        self.interview.use_navigation_on_small_screens = False
             if 'centered' in data['features'] and not data['features']['centered']:
                 self.interview.flush_left = True
             if 'maximum image size' in data['features']:
@@ -1665,6 +1698,8 @@ class Question:
             self.continuelabel = TextObject(definitions + str(data['resume button label']), question=self)
         if 'back button label' in data:
             self.backbuttonlabel = TextObject(definitions + str(data['back button label']), question=self)
+        if 'corner back button label' in data:
+            self.cornerbackbuttonlabel = TextObject(definitions + str(data['corner back button label']), question=self)
         if 'skip undefined' in data:
             if 'review' not in data:
                 raise DAError("You cannot set the skip undefined directive if the type of question is not review." + self.idebug(data))
@@ -2330,8 +2365,23 @@ class Question:
             self.allow_emailing = data['allow emailing']
         if 'allow downloading' in data:
             self.allow_downloading = data['allow downloading']
+        if 'email subject' in data:
+            self.email_subject = TextObject(definitions + str(data['email subject']), question=self)
+        if 'email body' in data:
+            self.email_body = TextObject(definitions + str(data['email body']), question=self)
+        if 'email template' in data:
+            self.email_template = compile(data['email template'], '<email template>', 'eval')
+            self.find_fields_in(data['email template'])
+        if 'email address default' in data:
+            self.email_default = TextObject(definitions + str(data['email address default']), question=self)
         if 'always include editable files' in data:
             self.always_include_editable_files = data['always include editable files']
+        if 'include attachment notice' in data:
+            self.attachment_notice = data['include attachment notice']
+        if 'include download tab' in data:
+            self.download_tab = data['include download tab']
+        if 'manual attachment list' in data:
+            self.manual_attachment_list = data['manual attachment list']
         # if 'role' in data:
         #     if isinstance(data['role'], list):
         #         for rolename in data['role']:
@@ -2342,11 +2392,14 @@ class Question:
         #     else:
         #         raise DAError("A role section must be text or a list." + self.idebug(data))
         if 'progress' in data:
-            try:
-                self.progress = int(data['progress'])
-                self.interview.progress_points.add(self.progress)
-            except:
-                logmessage("Invalid progress number " + repr(data['progress']))
+            if data['progress'] is None:
+                self.progress = -1
+            else:
+                try:
+                    self.progress = int(data['progress'])
+                    self.interview.progress_points.add(self.progress)
+                except:
+                    logmessage("Invalid progress number " + repr(data['progress']))
         if 'zip filename' in data:
             self.zip_filename = TextObject(definitions + str(data['zip filename']), question=self)
         if 'action' in data:
@@ -2634,7 +2687,7 @@ class Question:
                     field_data['type'] = 'threestate'
             self.fields.append(Field(field_data))
             self.question_type = 'multiple_choice'
-        elif 'continue button field' in data and 'fields' not in data and 'yesno' not in data and 'noyes' not in data and 'yesnomaybe' not in data and 'noyesmaybe' not in data:
+        elif 'continue button field' in data and 'fields' not in data and 'yesno' not in data and 'noyes' not in data and 'yesnomaybe' not in data and 'noyesmaybe' not in data and 'signature' not in data:
             if not isinstance(data['continue button field'], str):
                 raise DAError("A continue button field must be plain text." + self.idebug(data))
             if self.scan_for_variables:
@@ -2903,7 +2956,7 @@ class Question:
                     raise DAError("A undefine directive must refer to variable names expressed as text." + self.idebug(data))
                 self.find_fields_in(the_field)
                 self.undefine.append(the_field)
-        if 'continue button field' in data and 'question' in data and ('field' in data or 'fields' in data or 'yesno' in data or 'noyes' in data or 'yesnomaybe' in data or 'noyesmaybe' in data):
+        if 'continue button field' in data and 'question' in data and ('field' in data or 'fields' in data or 'yesno' in data or 'noyes' in data or 'yesnomaybe' in data or 'noyesmaybe' in data or 'signature' in data):
             if not isinstance(data['continue button field'], str):
                 raise DAError("A continue button field must be plain text." + self.idebug(data))
             if self.scan_for_variables:
@@ -3074,7 +3127,10 @@ class Question:
                                         if 'js show if' in field or 'js hide if' in field:
                                             raise DAError("You cannot mix js show if and non-js show if" + self.idebug(data))
                                         field_info['extras']['show_if_var'] = safeid(field[key]['variable'].strip())
-                                        field_info['extras']['show_if_val'] = TextObject(definitions + str(field[key]['is']).strip(), question=self)
+                                        if isinstance(field[key]['is'], str):
+                                            field_info['extras']['show_if_val'] = TextObject(definitions + str(field[key]['is']).strip(), question=self)
+                                        else:
+                                            field_info['extras']['show_if_val'] = TextObject(str(field[key]['is']))
                                         showif_valid = True
                                     if 'code' in field[key]:
                                         field_info['showif_code'] = compile(field[key]['code'], '<show if code>', 'eval')
@@ -3683,7 +3739,7 @@ class Question:
         for the_field in self.undefine:
             docassemble.base.functions.undefine(the_field)
         if len(self.reconsider) > 0:
-            docassemble.base.functions.reconsider(*self.reconsider)
+            docassemble.base.functions.reconsider(*[substitute_vars(item, is_generic, the_x, iterators) for item in self.reconsider])
         if self.need is not None:
             for need_code in self.need:
                 eval(need_code, the_user_dict)
@@ -3751,6 +3807,8 @@ class Question:
     def maybe(self):
         return word("I don't know")
     def back(self):
+        return word("Back")
+    def cornerback(self):
         return word("Back")
     def help(self):
         return word("Help")
@@ -4246,15 +4304,15 @@ class Question:
             extras['rightText'] = self.interview.default_screen_parts[self.language]['right'].text(user_dict)
         elif 'right' in the_default_titles:
             extras['rightText'] = the_default_titles['right']
-        for screen_part in ('pre', 'post', 'submit', 'exit link', 'exit label', 'exit url', 'full', 'logo', 'title', 'subtitle', 'tab title', 'short title', 'logo', 'title url', 'title url opens in other window'):
+        for screen_part in ('pre', 'post', 'footer', 'submit', 'exit link', 'exit label', 'exit url', 'full', 'logo', 'title', 'subtitle', 'tab title', 'short title', 'logo', 'title url', 'title url opens in other window'):
             if screen_part in user_dict['_internal'] and user_dict['_internal'][screen_part] is not None:
                 extras[screen_part + ' text'] = user_dict['_internal'][screen_part]
         if self.language in self.interview.default_screen_parts:
             for screen_part in self.interview.default_screen_parts[self.language]:
-                if screen_part in ('pre', 'post', 'submit', 'exit link', 'exit label', 'exit url', 'full', 'logo', 'title', 'subtitle', 'tab title', 'short title', 'logo', 'title url', 'title url opens in other window') and (screen_part + ' text') not in extras:
+                if screen_part in ('pre', 'post', 'footer', 'submit', 'exit link', 'exit label', 'exit url', 'full', 'logo', 'title', 'subtitle', 'tab title', 'short title', 'logo', 'title url', 'title url opens in other window') and (screen_part + ' text') not in extras:
                     extras[screen_part + ' text'] = self.interview.default_screen_parts[self.language][screen_part].text(user_dict)
         for key, val in the_default_titles.items():
-            if key in ('pre', 'post', 'submit', 'exit link', 'exit label', 'exit url', 'full', 'logo', 'title', 'subtitle', 'tab title', 'short title', 'logo', 'title url', 'title url opens in other window') and (key + ' text') not in extras:
+            if key in ('pre', 'post', 'footer', 'submit', 'exit link', 'exit label', 'exit url', 'full', 'logo', 'title', 'subtitle', 'tab title', 'short title', 'logo', 'title url', 'title url opens in other window') and (key + ' text') not in extras:
                 extras[key + ' text'] = val
         if len(self.terms):
             lang = docassemble.base.functions.get_language()
@@ -4306,6 +4364,16 @@ class Question:
             extras['back button label text'] = the_default_titles['back button label']
         else:
             extras['back button label text'] = None
+        if self.cornerbackbuttonlabel is not None:
+            extras['corner back button label text'] = self.cornerbackbuttonlabel.text(user_dict)
+        elif 'corner back button label' in user_dict['_internal'] and user_dict['_internal']['corner back button label'] is not None:
+            extras['corner back button label text'] = user_dict['_internal']['corner back button label']
+        elif self.language in self.interview.default_screen_parts and 'corner back button label' in self.interview.default_screen_parts[self.language]:
+            extras['corner back button label text'] = self.interview.default_screen_parts[self.language]['corner back button label'].text(user_dict)
+        elif 'corner back button label' in the_default_titles:
+            extras['corner back button label text'] = the_default_titles['corner back button label']
+        else:
+            extras['corner back button label text'] = None
         if self.helptext is not None:
             if self.helplabel is not None:
                 helplabel = self.helplabel.text(user_dict)
@@ -4392,6 +4460,21 @@ class Question:
                 extras['always_include_editable_files'] = self.always_include_editable_files
             else:
                 extras['always_include_editable_files'] = eval(self.always_include_editable_files, user_dict)
+        if hasattr(self, 'attachment_notice'):
+            if isinstance(self.attachment_notice, bool):
+                extras['attachment_notice'] = self.attachment_notice
+            else:
+                extras['attachment_notice'] = eval(self.attachment_notice, user_dict)
+        if hasattr(self, 'download_tab'):
+            if isinstance(self.download_tab, bool):
+                extras['download_tab'] = self.download_tab
+            else:
+                extras['download_tab'] = eval(self.download_tab, user_dict)
+        if hasattr(self, 'manual_attachment_list'):
+            if isinstance(self.manual_attachment_list, bool):
+                extras['manual_attachment_list'] = self.manual_attachment_list
+            else:
+                extras['manual_attachment_list'] = eval(self.manual_attachment_list, user_dict)
         if hasattr(self, 'allow_emailing'):
             if isinstance(self.allow_emailing, bool):
                 extras['allow_emailing'] = self.allow_emailing
@@ -4449,6 +4532,10 @@ class Question:
                                 break
                     if failed:
                         continue
+                if hasattr(field, 'action'):
+                    if 'action' not in extras:
+                        extras['action'] = dict()
+                    extras['action'][field.number] = substitute_vars(json.dumps(field.action), self.is_generic, the_x, iterators)
                 if hasattr(field, 'extras'):
                     if 'show_if_js' in field.extras:
                         if 'show_if_js' not in extras:
@@ -4474,7 +4561,7 @@ class Question:
                                 extras[key] = dict()
                             if skip_undefined:
                                 try:
-                                    extras[key][field.number] = field.extras[key].text(user_dict)
+                                    extras[key][field.number] = field.extras[key].text(user_dict).strip()
                                 except LazyNameError:
                                     raise
                                 except Exception as err:
@@ -4485,6 +4572,8 @@ class Question:
                                 extras[key][field.number] = field.extras[key].text(user_dict)
                             if isinstance(extras[key][field.number], str):
                                 extras[key][field.number] = extras[key][field.number].strip()
+                                if extras[key][field.number] == '':
+                                    del extras[key][field.number]
                 if hasattr(field, 'helptext'):
                     if skip_undefined:
                         try:
@@ -4963,6 +5052,8 @@ class Question:
                                 extras[key][field.number] = field.extras[key].text(user_dict)
                                 if isinstance(extras[key][field.number], str):
                                     extras[key][field.number] = extras[key][field.number].strip()
+                                    if extras[key][field.number] == '':
+                                        del extras[key][field.number]
                         for key in ('ml_train',):
                             if key in field.extras:
                                 if key not in extras:
@@ -5009,6 +5100,24 @@ class Question:
                 if 'current_field' in docassemble.base.functions.this_thread.misc:
                     del docassemble.base.functions.this_thread.misc['current_field']
         if len(self.attachments) or self.compute_attachment is not None:
+            if hasattr(self, 'email_default'):
+                the_email_address = self.email_default.text(user_dict).strip()
+                if '@' in the_email_address and not re.search(r'\s', the_email_address):
+                    extras['email_default'] = the_email_address
+            if hasattr(self, 'email_subject'):
+                extras['email_subject'] = re.sub(r'[\n\r]+', ' ', self.email_subject.text(user_dict).strip())
+            if hasattr(self, 'email_body'):
+                extras['email_html'] = '<html><body>' + docassemble.base.filter.markdown_to_html(self.email_body.text(user_dict), status=docassemble.base.functions.this_thread.interview_status, question=self, external=True) + '</body></html>'
+                extras['email_body'] = BeautifulSoup(extras['email_html'], "html.parser").get_text('\n')
+            if hasattr(self, 'email_template') and ('email_subject' not in extras or 'email_html' not in extras):
+                template = eval(self.email_template, user_dict)
+                if 'email_subject' not in extras:
+                    the_subject = re.sub(r'[\n\r]+', ' ', template.subject.strip())
+                    if the_subject:
+                        extras['email_subject'] = the_subject
+                if 'email_html' not in extras:
+                    extras['email_html'] = '<html><body>' + template.content_as_html(external=True) + '</body></html>'
+                    extras['email_body'] = BeautifulSoup(extras['email_html'], "html.parser").get_text('\n')
             attachment_text = self.processed_attachments(user_dict) # , the_x=the_x, iterators=iterators
         else:
             attachment_text = []
@@ -5063,7 +5172,7 @@ class Question:
                     already_there = True
                     break
             if not already_there:
-                user_dict['_internal']['event_stack'][session_uid].insert(0, dict(action=orig_sought, arguments=dict()))
+                user_dict['_internal']['event_stack'][session_uid].insert(0, dict(action=orig_sought, arguments=dict(), context=dict()))
         return({'type': 'question', 'question_text': question_text, 'subquestion_text': subquestion, 'continue_label': continuelabel, 'audiovideo': audiovideo, 'decorations': decorations, 'help_text': help_text_list, 'attachments': attachment_text, 'question': self, 'selectcompute': selectcompute, 'defaults': defaults, 'hints': hints, 'helptexts': helptexts, 'extras': extras, 'labels': labels, 'sought': sought, 'orig_sought': orig_sought}) #'defined': defined,
     def processed_attachments(self, the_user_dict, **kwargs):
         use_cache = kwargs.get('use_cache', True)
@@ -5968,6 +6077,7 @@ class Interview:
         self.recursion_limit = get_config('recursion limit', 500)
         self.cache_documents = True
         self.use_navigation = False
+        self.use_navigation_on_small_screens = True
         self.flush_left = False
         self.max_image_size = get_config('maximum image size', None)
         self.image_type = get_config('image upload type', None)
@@ -6071,7 +6181,7 @@ class Interview:
     def get_title(self, the_user_dict, status=None, converter=None):
         if converter is None:
             converter = lambda y: y
-        mapping = (('title', 'full'), ('logo', 'logo'), ('short title', 'short'), ('tab title', 'tab'), ('subtitle', 'sub'), ('exit link', 'exit link'), ('exit label', 'exit label'), ('exit url', 'exit url'), ('submit', 'submit'), ('pre', 'pre'), ('post', 'post'), ('continue button label', 'continue button label'), ('resume button label', 'resume button label'), ('under', 'under'), ('right', 'right'), ('logo', 'logo'), ('css class', 'css class'), ('date format', 'date format'), ('time format', 'time format'), ('datetime format', 'datetime format'), ('title url', 'title url'), ('title url opens in other window', 'title url opens in other window'))
+        mapping = (('title', 'full'), ('logo', 'logo'), ('short title', 'short'), ('tab title', 'tab'), ('subtitle', 'sub'), ('exit link', 'exit link'), ('exit label', 'exit label'), ('exit url', 'exit url'), ('submit', 'submit'), ('pre', 'pre'), ('post', 'post'), ('footer', 'footer'), ('continue button label', 'continue button label'), ('resume button label', 'resume button label'), ('back button label', 'back button label'), ('corner back button label', 'corner back button label'), ('under', 'under'), ('right', 'right'), ('logo', 'logo'), ('css class', 'css class'), ('date format', 'date format'), ('time format', 'time format'), ('datetime format', 'datetime format'), ('title url', 'title url'), ('title url opens in other window', 'title url opens in other window'))
         title = dict()
         for title_name, title_abb in mapping:
             if '_internal' in the_user_dict and title_name in the_user_dict['_internal'] and the_user_dict['_internal'][title_name] is not None:
@@ -6113,6 +6223,13 @@ class Interview:
                 return False
             if has_roles is not None:
                 return len(set(roles).intersection(set(has_roles))) > 0
+        if is_anonymous:
+            require_login = False
+            for metadata in self.metadata:
+                if 'require login' in metadata:
+                    require_login = True if metadata['require login'] else False
+            if require_login:
+                return False
         return True
     def allowed_to_see_listed(self, is_anonymous=False, has_roles=None):
         if not self.allowed_to_access(is_anonymous=is_anonymous, has_roles=has_roles):
@@ -6135,6 +6252,13 @@ class Interview:
                 return False
             if has_roles is not None:
                 return len(set(roles).intersection(set(has_roles))) > 0
+        if is_anonymous:
+            require_login = False
+            for metadata in self.metadata:
+                if 'require login' in metadata:
+                    require_login = True if metadata['require login'] else False
+            if require_login:
+                return False
         return True
     def is_unlisted(self):
         unlisted = False
@@ -6273,7 +6397,7 @@ class Interview:
                     recursive_update(self.consolidated_metadata[key], val)
                 else:
                     self.consolidated_metadata[key] = val
-        mapping = (('title', 'full'), ('logo', 'logo'), ('short title', 'short'), ('tab title', 'tab'), ('subtitle', 'sub'), ('exit link', 'exit link'), ('exit label', 'exit label'), ('exit url', 'exit url'), ('submit', 'submit'), ('pre', 'pre'), ('post', 'post'), ('help label', 'help label'), ('continue button label', 'continue button label'), ('resume button label', 'resume button label'), ('back button label', 'back button label'), ('right', 'right'), ('under', 'under'), ('submit', 'submit'), ('css class', 'css class'), ('date format', 'date format'), ('time format', 'time format'), ('datetime format', 'datetime format'), ('title url', 'title url'), ('title url opens in other window', 'title url opens in other window'))
+        mapping = (('title', 'full'), ('logo', 'logo'), ('short title', 'short'), ('tab title', 'tab'), ('subtitle', 'sub'), ('exit link', 'exit link'), ('exit label', 'exit label'), ('exit url', 'exit url'), ('submit', 'submit'), ('pre', 'pre'), ('post', 'post'), ('footer', 'footer'), ('help label', 'help label'), ('continue button label', 'continue button label'), ('resume button label', 'resume button label'), ('back button label', 'back button label'), ('corner back button label', 'corner back button label'), ('right', 'right'), ('under', 'under'), ('submit', 'submit'), ('css class', 'css class'), ('date format', 'date format'), ('time format', 'time format'), ('datetime format', 'datetime format'), ('title url', 'title url'), ('title url opens in other window', 'title url opens in other window'))
         self.default_title = {'*': dict()}
         for metadata in self.metadata:
             for title_name, title_abb in mapping:
@@ -6292,7 +6416,7 @@ class Interview:
                 if title_abb in self.default_title[lang]:
                     continue
                 if parts.get('main page ' + title_name, '') != '':
-                    self.default_title[lang][title_abb] = parts['main page ' + title_name]
+                    self.default_title[lang][title_abb] = parts['main page ' + title_name].strip()
     def make_sorter(self):
         lookup_dict = self.orderings_by_question
         class K:
@@ -6417,6 +6541,24 @@ class Interview:
                     pass
             elif var in user_dict:
                 del user_dict[var]
+        session_uid = interview_status.current_info['user']['session_uid']
+        device_id = interview_status.current_info['user']['device_id']
+        user_id = str(interview_status.current_info['user']['the_user_id'])
+        if 'session_local' not in user_dict['_internal']: ### take out after a time
+            user_dict['_internal']['session_local'] = dict()
+            user_dict['_internal']['device_local'] = dict()
+            user_dict['_internal']['user_local'] = dict()
+        if session_uid not in user_dict['_internal']['session_local'] or device_id not in user_dict['_internal']['device_local'] or user_id not in user_dict['_internal']['user_local']:
+            exec('import docassemble.base.core')
+            if session_uid not in user_dict['_internal']['session_local']:
+                user_dict['_internal']['session_local'][session_uid] = eval("docassemble.base.core.DASessionLocal()")
+            if device_id not in user_dict['_internal']['device_local']:
+                user_dict['_internal']['device_local'][device_id] = eval("docassemble.base.core.DADeviceLocal()")
+            if user_id not in user_dict['_internal']['user_local']:
+                user_dict['_internal']['user_local'][user_id] = eval("docassemble.base.core.DAUserLocal()")
+        user_dict['session_local'] = user_dict['_internal']['session_local'][session_uid]
+        user_dict['device_local'] = user_dict['_internal']['device_local'][device_id]
+        user_dict['user_local'] = user_dict['_internal']['user_local'][user_id]
         number_loops = 0
         variables_sought = set()
         try:
@@ -6583,24 +6725,23 @@ class Interview:
                         if the_exception.next_action is not None and not interview_status.checkin:
                             if 'event_stack' not in user_dict['_internal']:
                                 user_dict['_internal']['event_stack'] = dict()
-                            session_uid = interview_status.current_info['user']['session_uid']
                             if session_uid not in user_dict['_internal']['event_stack']:
                                 user_dict['_internal']['event_stack'][session_uid] = list()
                             new_items = list()
                             for new_item in the_exception.next_action:
                                 already_there = False
                                 for event_item in user_dict['_internal']['event_stack'][session_uid]:
-                                    if event_item['action'] == new_item:
+                                    if (isinstance(new_item, dict) and event_item['action'] == new_item['action']) or (isinstance(new_item, str) and event_item['action'] == new_item):
                                         already_there = True
                                         break
                                 if not already_there:
                                     new_items.append(new_item)
                             if len(new_items):
-                                #logmessage("adding a new item to event_stack: " + repr(new_items))
                                 user_dict['_internal']['event_stack'][session_uid] = new_items + user_dict['_internal']['event_stack'][session_uid]
                             #interview_status.next_action.extend(the_exception.next_action)
                             if the_exception.name.startswith('_da_'):
                                 continue
+                            docassemble.base.functions.this_thread.misc['forgive_missing_question'] = [the_exception.name]
                         if the_exception.arguments is not None:
                             docassemble.base.functions.this_thread.current_info.update(dict(action=the_exception.name, arguments=the_exception.arguments))
                         missingVariable = the_exception.name
@@ -7248,7 +7389,10 @@ class Interview:
                         if question.question_type == 'event_code':
                             docassemble.base.functions.pop_event_stack(origMissingVariable)
                         docassemble.base.functions.this_thread.current_question = question
-                        exec_with_trap(question, user_dict)
+                        if was_defined:
+                            exec_with_trap(question, user_dict, old_variable=missing_var)
+                        else:
+                            exec_with_trap(question, user_dict)
                         interview_status.mark_tentative_as_answered(user_dict)
                         if missing_var in variable_stack:
                             variable_stack.remove(missing_var)
@@ -7256,6 +7400,8 @@ class Interview:
                             docassemble.base.functions.pop_current_variable()
                             docassemble.base.functions.pop_event_stack(origMissingVariable)
                             question.invalidate_dependencies(user_dict, old_values)
+                            if was_defined:
+                                exec("del __oldvariable__", user_dict)
                             return({'type': 'continue', 'sought': missing_var, 'orig_sought': origMissingVariable})
                         try:
                             eval(missing_var, user_dict)
@@ -7285,9 +7431,10 @@ class Interview:
                 if a_question_was_skipped:
                     raise DAError("Infinite loop: " + missingVariable + " already looked for, where stack is " + str(variable_stack))
                 if 'forgive_missing_question' in docassemble.base.functions.this_thread.misc and origMissingVariable in docassemble.base.functions.this_thread.misc['forgive_missing_question']:
-                    #logmessage("Forgiving " + origMissingVariable)
                     docassemble.base.functions.pop_current_variable()
                     docassemble.base.functions.pop_event_stack(origMissingVariable)
+                    if 'action' in docassemble.base.functions.this_thread.current_info and docassemble.base.functions.this_thread.current_info['action'] == origMissingVariable:
+                        del docassemble.base.functions.this_thread.current_info['action']
                     return({'type': 'continue', 'sought': origMissingVariable, 'orig_sought': origMissingVariable})
                 if self.options.get('use catchall', False) and not origMissingVariable.endswith('.value'):
                     string = "import docassemble.base.core"
@@ -7299,7 +7446,6 @@ class Interview:
                     return({'type': 'continue', 'sought': origMissingVariable, 'orig_sought': origMissingVariable})
                 raise DAErrorMissingVariable("Interview has an error.  There was a reference to a variable '" + origMissingVariable + "' that could not be looked up in the question file (for language '" + str(language) + "') or in any of the files incorporated by reference into the question file.", variable=origMissingVariable)
             except ForcedReRun as the_exception:
-                #logmessage("forcedrerun")
                 docassemble.base.functions.pop_current_variable()
                 docassemble.base.functions.pop_event_stack(origMissingVariable)
                 return({'type': 're_run', 'sought': origMissingVariable, 'orig_sought': origMissingVariable})
@@ -7334,13 +7480,15 @@ class Interview:
                             if not already_there:
                                 new_items.append(new_item)
                         if len(new_items):
-                            #logmessage("adding a new item to event_stack: " + repr(new_items))
                             user_dict['_internal']['event_stack'][session_uid] = new_items + user_dict['_internal']['event_stack'][session_uid]
                         #interview_status.next_action.extend(the_exception.next_action)
                     if the_exception.arguments is not None:
                         docassemble.base.functions.this_thread.current_info.update(dict(action=the_exception.name, arguments=the_exception.arguments))
                     if the_exception.name.startswith('_da_'):
-                        continue
+                        docassemble.base.functions.pop_current_variable()
+                        docassemble.base.functions.pop_event_stack(origMissingVariable)
+                        return({'type': 're_run', 'sought': origMissingVariable, 'orig_sought': origMissingVariable})
+                    docassemble.base.functions.this_thread.misc['forgive_missing_question'] = [the_exception.name]
                 else:
                     #logmessage("regular nameerror")
                     follow_mc = True
@@ -7543,7 +7691,6 @@ class Interview:
             #     new_question.name = "Question_Temp"
             #     return(new_question.ask(user_dict, old_user_dict, 'None', [], None, None))
         if 'forgive_missing_question' in docassemble.base.functions.this_thread.misc and origMissingVariable in docassemble.base.functions.this_thread.misc['forgive_missing_question']:
-            #logmessage("Forgiving " + missing_var + " and " + origMissingVariable)
             docassemble.base.functions.pop_current_variable()
             docassemble.base.functions.pop_event_stack(origMissingVariable)
             return({'type': 'continue', 'sought': missing_var, 'orig_sought': origMissingVariable})
@@ -7551,8 +7698,8 @@ class Interview:
 
 def substitute_vars(var, is_generic, the_x, iterators, last_only=False):
     if is_generic:
-        if the_x != 'None' and hasattr(the_x, 'instanceName'):
-            var = re.sub(r'^x\b', the_x.instanceName, var)
+        if the_x != 'None':
+            var = re.sub(r'^x\b', the_x, var)
     if len(iterators):
         if last_only:
             indexno = len(iterators) - 1
@@ -7586,7 +7733,7 @@ def process_selections(data, manual=False, exclude=None):
     else:
         to_exclude = unpack_list(exclude)
     result = []
-    if (isinstance(data, abc.Iterable) and not isinstance(data, (str, dict))) or (hasattr(data, 'elements') and isinstance(data.elements, list)):
+    if (isinstance(data, abc.Iterable) and not isinstance(data, (str, dict))) or (hasattr(data, 'elements') and isinstance(data.elements, (list, set))):
         for entry in data:
             if isinstance(entry, dict) or (hasattr(entry, 'elements') and isinstance(entry.elements, dict)):
                 the_item = dict()
@@ -7808,10 +7955,16 @@ def invalid_variable_name(varname):
         return True
     return False
 
-def exec_with_trap(the_question, the_dict):
+def exec_with_trap(the_question, the_dict, old_variable=None):
     try:
         exec(the_question.compute, the_dict)
     except (NameError, UndefinedError, CommandError, ResponseError, BackgroundResponseError, BackgroundResponseActionError, QuestionError, AttributeError, MandatoryQuestion, CodeExecute, SyntaxException, CompileException):
+        if old_variable is not None:
+            try:
+                exec(str(old_variable) + " = __oldvariable__", the_dict)
+                exec("del __oldvariable__", the_dict)
+            except:
+                pass
         raise
     except Exception as e:
         cl, exc, tb = sys.exc_info()
