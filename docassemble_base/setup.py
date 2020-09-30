@@ -166,7 +166,15 @@ install_requires = [
     "XlsxWriter==1.2.2",
     "xlwt==1.3.0",
     "zc.lockfile==2.0",
-    "zipp==0.6.0"
+    "zipp==0.6.0",
+    "amqp-5.0.1",
+    "billiard-3.6.3.0",
+    "celery-5.0.0",
+    "click-didyoumean-0.0.3",
+    "click-repl-0.1.6",
+    "kombu-5.0.2",
+    "prompt-toolkit-3.0.7",
+    "vine-5.0."
 ]
 
 setup(name='docassemble.base',
