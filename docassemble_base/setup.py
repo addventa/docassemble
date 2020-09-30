@@ -94,7 +94,6 @@ install_requires = [
     "mdx-smartypants==1.5.1",
     "more-itertools==7.2.0",
     "namedentities==1.5.2",
-    "nltk==3.4.5",
     "numpy==1.17.3",
     "num2words==0.5.10",
     "oauth2client==4.1.3",
