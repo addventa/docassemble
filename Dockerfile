@@ -58,9 +58,9 @@ bash -c \
 "cd /tmp \
 && python3.6 -m venv --copies /usr/share/docassemble/local3.6 \
 && source /usr/share/docassemble/local3.6/bin/activate \
-&& pip3 install --upgrade pip==20.1 \
-&& pip3 install --upgrade mod_wsgi==4.7.0 \
-&& pip3 install --upgrade \
+&& pip3 install --no-cache --find-links ./packages --upgrade pip==20.1 \
+&& pip3 install --no-cache --find-links ./packages --upgrade mod_wsgi==4.7.0 \
+&& pip3 install --no-cache --find-links ./packages --upgrade \
    3to2==1.1.1 \
    cython==0.29.14 \
    numpy==1.17.3 \
@@ -77,7 +77,7 @@ bash -c \
    pycryptodomex==3.9.0 \
    six==1.12.0 \
    setuptools==40.6.2 \
-&& pip3 install --upgrade \
+&& pip3 install --no-cache --find-links ./packages --upgrade \
    /tmp/docassemble/docassemble \
    /tmp/docassemble/docassemble_base \
    /tmp/docassemble/docassemble_demo \
