@@ -210,8 +210,10 @@ if [ "${S3ENABLE:-false}" == "true" ]; then
     else
         export LOCAL_HOSTNAME=`hostname --fqdn`
     fi
+    echo "S3 check need of letsencrypt" >&2
     if [[ $CONTAINERROLE =~ .*:(all|web):.* ]] && [[ $(s4cmd ls "s3://${S3BUCKET}/letsencrypt.tar.gz") ]]; then
         rm -f /tmp/letsencrypt.tar.gz
+        echo "S3 get lets encrypt tar" >&2
         s4cmd get "s3://${S3BUCKET}/letsencrypt.tar.gz" /tmp/letsencrypt.tar.gz
         cd /
         tar -xf /tmp/letsencrypt.tar.gz
@@ -219,34 +221,48 @@ if [ "${S3ENABLE:-false}" == "true" ]; then
     else
         rm -f /etc/letsencrypt/da_using_lets_encrypt
     fi
+    echo "S3 check need to sync backup" >&2
     if [ "${DABACKUPDAYS}" != "0" ] && [[ $(s4cmd ls "s3://${S3BUCKET}/backup/${LOCAL_HOSTNAME}") ]]; then
+        echo "S3 sync backup" >&2
         s4cmd dsync "s3://${S3BUCKET}/backup/${LOCAL_HOSTNAME}" "${DA_ROOT}/backup"
     fi
+    echo "S3 check need to sync apache" >&2
     if [[ $CONTAINERROLE =~ .*:(all|web|log):.* ]] && [[ $(s4cmd ls "s3://${S3BUCKET}/apache") ]]; then
+        echo "S3 sync apache" >&2
         s4cmd dsync "s3://${S3BUCKET}/apache" /etc/apache2/sites-available
     fi
     if [[ $CONTAINERROLE =~ .*:(all):.* ]]; then
+        echo "S3 check need to sync apachelogs" >&2
         if [[ $(s4cmd ls "s3://${S3BUCKET}/apachelogs") ]]; then
+            echo "S3 sync apachelogs" >&2
             s4cmd dsync "s3://${S3BUCKET}/apachelogs" /var/log/apache2
             chown root.adm /var/log/apache2/*
             chmod 640 /var/log/apache2/*
         fi
+        echo "S3 check need to sync nginxlogs" >&2
         if [[ $(s4cmd ls "s3://${S3BUCKET}/nginxlogs") ]]; then
+            echo "S3 sync nginxlogs" >&2
             s4cmd dsync "s3://${S3BUCKET}/nginxlogs" /var/log/nginx
             chown www-data.adm /var/log/nginx/*
             chmod 640 /var/log/nginx/*
         fi
     fi
+    echo "S3 check need to sync log" >&2
     if [[ $CONTAINERROLE =~ .*:(all|log):.* ]] && [[ $(s4cmd ls "s3://${S3BUCKET}/log") ]]; then
+        echo "S3 sync log" >&2
         s4cmd dsync "s3://${S3BUCKET}/log" "${LOGDIRECTORY:-${DA_ROOT}/log}"
         chown -R www-data.www-data "${LOGDIRECTORY:-${DA_ROOT}/log}"
     fi
+    echo "S3 check need to sync config.yml" >&2
     if [[ $(s4cmd ls "s3://${S3BUCKET}/config.yml") ]]; then
         rm -f "$DA_CONFIG_FILE"
+        echo "S3 sync config.yml" >&2
         s4cmd get "s3://${S3BUCKET}/config.yml" "$DA_CONFIG_FILE"
         chown www-data.www-data "$DA_CONFIG_FILE"
     fi
+    echo "S3 check need to sync redis.rdb" >&2
     if [[ $CONTAINERROLE =~ .*:(all|redis):.* ]] && [[ $(s4cmd ls "s3://${S3BUCKET}/redis.rdb") ]] && [ "$REDISRUNNING" = false ]; then
+        echo "S3 sync redis.rdb" >&2
         s4cmd -f get "s3://${S3BUCKET}/redis.rdb" "/var/lib/redis/dump.rdb"
         chown redis.redis "/var/lib/redis/dump.rdb"
     fi
