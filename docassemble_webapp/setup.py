@@ -30,7 +30,7 @@ install_requires = [
     "bleach==3.1.4",
     "blinker==1.4",
     "boto==2.49.0",
-    "boto3==1.10.2",
+    "boto3==1.4.3",
     "botocore==1.13.2",
     "cachetools==3.1.1",
     "certifi==2019.9.11",
