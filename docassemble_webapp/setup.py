@@ -158,7 +158,7 @@ install_requires = [
     "ruamel.yaml==0.16.5",
     "ruamel.yaml.clib==0.2.0",
     "s3transfer==0.2.1",
-    "./usr/share/docassemble/packages/s4cmd-2.1.1-py3-none-any.whl",
+    "s4cmd==2.1.1",
     "scikit-learn==0.21.3",
     "scipy==1.3.1",
     "simplekv==0.13.0",

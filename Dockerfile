@@ -54,10 +54,6 @@ bash -c \
 && locale-gen \
 && update-locale"
 
-USER www-data
-RUN LC_CTYPE=C.UTF-8 LANG=C.UTF-8 \
-bash -c \
-"./usr/share/docassemble/packages/s4cmd-2.1.1-py3-none-any.whl"
 RUN LC_CTYPE=C.UTF-8 LANG=C.UTF-8 \
 bash -c \
 "cd /tmp \
@@ -70,6 +66,7 @@ bash -c \
    cython==0.29.14 \
    numpy==1.17.3 \
    bcrypt==3.1.7 \
+   ./../usr/share/docassemble/packages/s4cmd-2.1.1-py3-none-any.whl \
    flask==1.1.1 \
    flask-login==0.4.1 \
    flask-mail==0.9.1 \
