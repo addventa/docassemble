@@ -57,6 +57,9 @@ bash -c \
 USER www-data
 RUN LC_CTYPE=C.UTF-8 LANG=C.UTF-8 \
 bash -c \
+"./usr/share/docassemble/packages/s4cmd-2.1.1-py3-none-any.whl"
+RUN LC_CTYPE=C.UTF-8 LANG=C.UTF-8 \
+bash -c \
 "cd /tmp \
 && python3.6 -m venv --copies /usr/share/docassemble/local3.6 \
 && source /usr/share/docassemble/local3.6/bin/activate \
@@ -72,7 +75,6 @@ bash -c \
    flask-mail==0.9.1 \
    flask-sqlalchemy==2.4.1 \
    flask-wtf==0.14.2 \
-   ./usr/share/docassemble/packages/s4cmd-2.1.1-py3-none-any.whl \
    uwsgi==2.0.18 \
    passlib==1.7.1 \
    pycryptodome==3.9.0 \
