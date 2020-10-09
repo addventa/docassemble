@@ -26,6 +26,7 @@ bash -c \
 && cp /tmp/docassemble/Docker/docassemble-behindlb.conf /etc/apache2/conf-available/ \
 && cp /tmp/docassemble/Docker/docassemble-supervisor.conf /etc/supervisor/conf.d/docassemble.conf \
 && cp /tmp/docassemble/Docker/ssl/* /usr/share/docassemble/certs/ \
+&& cp /tmp/docassemble/Docker/packages/* /usr/share/docassemble/packages/ \
 && cp /tmp/docassemble/Docker/config/exim4-router /etc/exim4/conf.d/router/101_docassemble \
 && cp /tmp/docassemble/Docker/config/exim4-filter /etc/exim4/docassemble-filter \
 && cp /tmp/docassemble/Docker/config/exim4-main /etc/exim4/conf.d/main/01_docassemble \
@@ -70,7 +71,7 @@ bash -c \
    flask-mail==0.9.1 \
    flask-sqlalchemy==2.4.1 \
    flask-wtf==0.14.2 \
-   s4cmd==2.1.0 \
+   ./usr/share/docassemble/packages/s4cmd-2.1.1-py3-none-any.whl \
    uwsgi==2.0.18 \
    passlib==1.7.1 \
    pycryptodome==3.9.0 \
