@@ -300,6 +300,7 @@ def load(**kwargs):
         hostname = os.getenv('SERVERHOSTNAME', socket.gethostname())
     if S3_ENABLED:
         import docassemble.webapp.amazon
+        print("creating S3 object")
         cloud = docassemble.webapp.amazon.s3object(s3_config)
     elif AZURE_ENABLED:
         import docassemble.webapp.microsoft
