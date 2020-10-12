@@ -378,6 +378,7 @@ def add_dependencies(user_id):
     start_time = time.time()
     #sys.stderr.write('add_dependencies: user_id is ' + str(user_id) + "\n")
     sys.stderr.write("add_dependencies: starting\n")
+    print("add_dependencies: starting\n")
     from docassemble.base.config import hostname
     from docassemble.webapp.app_object import app
     from docassemble.webapp.db_object import db
@@ -385,6 +386,7 @@ def add_dependencies(user_id):
     packages_known = set()
     for package in Package.query.filter_by(active=True).all():
         packages_known.add(package.name)
+    print(packages_known)
     installed_packages = get_installed_distributions()
     home_pages = None
     packages_to_add = list()
@@ -395,6 +397,7 @@ def add_dependencies(user_id):
             continue
         Package.query.filter_by(name=package.key).delete()
         packages_to_add.append(package)
+    print(packages_to_add)
     if len(packages_to_add):
         db.session.commit()
         for package in packages_to_add:

@@ -11,7 +11,6 @@ epoch = pytz.utc.localize(datetime.datetime.utcfromtimestamp(0))
 
 class s3object(object):
     def __init__(self, s3_config):
-        print("setting botocore DEFAULT_CIPHERS to 'ALL:@SECLEVEL=1'")
         botocore.vendored.requests.packages.urllib3.util.ssl_.DEFAULT_CIPHERS='ALL:@SECLEVEL=1'
         if 'access key id' in s3_config and s3_config['access key id'] is not None:
             self.conn = boto3.resource('s3', region_name=s3_config.get('region', None), aws_access_key_id=s3_config['access key id'], aws_secret_access_key=s3_config['secret access key'], endpoint_url=s3_config.get('endpoint url', None))
