@@ -1,7 +1,7 @@
 import boto3
 import time
 import os
-from botocore.errorfactory import ClientError
+from botocore.exceptions import ClientError
 import mimetypes
 import sys
 import datetime
