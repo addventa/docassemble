@@ -26,6 +26,8 @@ bash -c \
 && cp /tmp/docassemble/Docker/docassemble-behindlb.conf /etc/apache2/conf-available/ \
 && cp /tmp/docassemble/Docker/docassemble-supervisor.conf /etc/supervisor/conf.d/docassemble.conf \
 && cp /tmp/docassemble/Docker/ssl/* /usr/share/docassemble/certs/ \
+&& mkdir /usr/share/docassemble/packages \
+&& cp /tmp/docassemble/Docker/packages/* /usr/share/docassemble/packages/ \
 && cp /tmp/docassemble/Docker/config/exim4-router /etc/exim4/conf.d/router/101_docassemble \
 && cp /tmp/docassemble/Docker/config/exim4-filter /etc/exim4/docassemble-filter \
 && cp /tmp/docassemble/Docker/config/exim4-main /etc/exim4/conf.d/main/01_docassemble \
@@ -65,12 +67,12 @@ bash -c \
    cython==0.29.14 \
    numpy==1.17.3 \
    bcrypt==3.1.7 \
+   ./../usr/share/docassemble/packages/s4cmd-2.1.1-py3-none-any.whl \
    flask==1.1.1 \
    flask-login==0.4.1 \
    flask-mail==0.9.1 \
    flask-sqlalchemy==2.4.1 \
    flask-wtf==0.14.2 \
-   s4cmd==2.1.0 \
    uwsgi==2.0.18 \
    passlib==1.7.1 \
    pycryptodome==3.9.0 \
@@ -82,7 +84,8 @@ bash -c \
    /tmp/docassemble/docassemble_base \
    /tmp/docassemble/docassemble_demo \
    /tmp/docassemble/docassemble_webapp \
-&& pip3 uninstall --yes mysqlclient MySQL-python &> /dev/null"
+&& pip3 uninstall --yes mysqlclient MySQL-python &> /dev/null \
+&& cp /usr/share/docassemble/local3.6/lib/python3.6/site-packages/s4cmd.py /usr/share/s4cmd/"
 
 USER root
 RUN \
