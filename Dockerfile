@@ -84,7 +84,8 @@ bash -c \
    /tmp/docassemble/docassemble_demo \
    /tmp/docassemble/docassemble_webapp \
 && pip3 uninstall --yes mysqlclient MySQL-python &> /dev/null \
-&& cp /usr/share/docassemble/local3.6/lib/python3.6/site-packages/s4cmd.py /usr/share/s4cmd/"
+&& cp /usr/share/docassemble/local3.6/lib/python3.6/site-packages/s4cmd.py /usr/share/s4cmd/ \
+&& python3.6 -m nltk.downloader -d /usr/local/share/nltk_data all"
 
 USER root
 RUN \
