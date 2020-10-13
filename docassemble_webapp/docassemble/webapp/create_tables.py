@@ -13,7 +13,7 @@ from docassemble.webapp.core.models import Uploads, ObjectStorage, SpeakList, Sh
 
 import docassemble.webapp.core.models
 from docassemble.webapp.packages.models import Package
-# from docassemble.webapp.update import add_dependencies
+from docassemble.webapp.update import add_dependencies
 from sqlalchemy import create_engine, MetaData
 #import random
 #import string
@@ -100,7 +100,7 @@ def populate_tables():
     if cron.confirmed_at is None:
         cron.confirmed_at = datetime.datetime.now()
     db.session.commit()
-    # add_dependencies(admin.id)
+    add_dependencies(admin.id)
     git_packages = Package.query.filter_by(type='git')
     for package in git_packages:
         if package.name in ['docassemble', 'docassemble.base', 'docassemble.webapp', 'docassemble.demo']:
