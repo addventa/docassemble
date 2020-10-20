@@ -404,7 +404,10 @@ fi
 
 if [ ! -f "$DA_CONFIG_FILE" ]; then
     echo "There is no config file.  Creating one from source." >&2
-    sed -e 's@{{DBPREFIX}}@'"${DBPREFIX:-postgresql+psycopg2:\/\/}"'@' \
+    sed -e 's/{{DEBUG}}/'"${DEBUG:-true}"'/' \
+        -e 's/{{ENABLEPLAYGROUND}}/'"${ENABLEPLAYGROUND:-true}"'/' \
+        -e 's/{{ALLOWDEMO}}/'"${ALLOWDEMO:-true}"'/' \
+        -e 's@{{DBPREFIX}}@'"${DBPREFIX:-postgresql+psycopg2:\/\/}"'@' \
         -e 's/{{DBNAME}}/'"${DBNAME:-docassemble}"'/' \
         -e 's/{{DBUSER}}/'"${DBUSER:-docassemble}"'/' \
         -e 's#{{DBPASSWORD}}#'"${DBPASSWORD:-abc123}"'#' \
