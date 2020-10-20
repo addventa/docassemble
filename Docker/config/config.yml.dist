@@ -1,6 +1,6 @@
-debug: True
-enable playground: True
-allow demo: True
+debug: {{DEBUG}}
+enable playground: {{ENABLEPLAYGROUND}}
+allow demo: {{ALLOWDEMO}}
 exitpage: https://docassemble.org
 db:
   prefix: {{DBPREFIX}}
