@@ -415,6 +415,10 @@ if [ ! -f "$DA_CONFIG_FILE" ]; then
         -e 's/{{DBPORT}}/'"${DBPORT:-null}"'/' \
         -e 's/{{DBTABLEPREFIX}}/'"${DBTABLEPREFIX:-null}"'/' \
         -e 's/{{DBBACKUP}}/'"${DBBACKUP:-true}"'/' \
+        -e 's/{{AUTH0ENABLE}}/'"${AUTH0ENABLE:-false}"'/' \
+        -e 's/{{AUTH0ID}}/'"${AUTH0ID:-null}"'/' \
+        -e 's/{{AUTH0SECRET}}/'"${AUTH0SECRET:-null}"'/' \
+        -e 's/{{AUTH0ENDPOINT}}/'"${AUTH0ENDPOINT:-null}"'/' \
         -e 's/{{S3ENABLE}}/'"${S3ENABLE:-false}"'/' \
         -e 's#{{S3ACCESSKEY}}#'"${S3ACCESSKEY:-null}"'#' \
         -e 's#{{S3SECRETACCESSKEY}}#'"${S3SECRETACCESSKEY:-null}"'#' \
