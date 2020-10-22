@@ -25453,6 +25453,10 @@ LOGFORMAT = daconfig.get('log format', 'docassemble: ip=%(clientip)s i=%(yamlfil
 if True:
     docassemble_log_handler = logging.FileHandler(filename=os.path.join(LOG_DIRECTORY, 'docassemble.log'))
     sys_logger.addHandler(docassemble_log_handler)
+    stdout_handler = logging.StreamHandler(sys.stdout)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    stdout_handler.setFormatter(formatter)
+    sys_logger.addHandler(stdout_handler)
 else:
     try:
         import logging.handlers
