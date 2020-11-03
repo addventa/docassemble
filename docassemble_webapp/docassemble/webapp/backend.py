@@ -411,7 +411,7 @@ if not os.path.exists(LOGFILE):
 error_file_handler = logging.FileHandler(filename=LOGFILE)
 error_file_handler.setLevel(logging.DEBUG)
 app.logger.addHandler(error_file_handler)
-stdout_handler = logging.StreamHandler(sys.stdout)
+stdout_handler = logging.StreamHandler(sys.stderr)
 stdout_handler.setLevel(logging.DEBUG)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 stdout_handler.setFormatter(formatter)

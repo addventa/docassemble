@@ -455,7 +455,7 @@ def custom_register():
 
 def custom_login():
     """ Prompt for username/email and password and sign the user in."""
-    #sys.stderr.write("In custom_login\n")
+    sys.stderr.write("In custom_login\n")
     logmessage("Doing custom_login")
     if ('json' in request.form and as_int(request.form['json'])) or ('json' in request.args and as_int(request.args['json'])):
         is_json = True
@@ -25453,7 +25453,7 @@ LOGFORMAT = daconfig.get('log format', 'docassemble: ip=%(clientip)s i=%(yamlfil
 if True:
     docassemble_log_handler = logging.FileHandler(filename=os.path.join(LOG_DIRECTORY, 'docassemble.log'))
     sys_logger.addHandler(docassemble_log_handler)
-    stdout_handler = logging.StreamHandler(sys.stdout)
+    stdout_handler = logging.StreamHandler(sys.stderr)
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     stdout_handler.setFormatter(formatter)
     sys_logger.addHandler(stdout_handler)
