@@ -456,7 +456,7 @@ def custom_register():
 def custom_login():
     """ Prompt for username/email and password and sign the user in."""
     #sys.stderr.write("In custom_login\n")
-    #logmessage("Doing custom_login")
+    logmessage("Doing custom_login")
     if ('json' in request.form and as_int(request.form['json'])) or ('json' in request.args and as_int(request.args['json'])):
         is_json = True
     else:
@@ -467,7 +467,7 @@ def custom_login():
     safe_next = _get_safe_next_param('next', user_manager.after_login_endpoint)
     safe_reg_next = _get_safe_next_param('reg_next', user_manager.after_register_endpoint)
 
-    if _call_or_get(current_user.is_authenticated) and user_manager.auto_login_at_login:
+    if True or _call_or_get(current_user.is_authenticated) and user_manager.auto_login_at_login:
         if safe_next == url_for(user_manager.after_login_endpoint):
             url_parts = list(urlparse(safe_next))
             query = dict(parse_qsl(url_parts[4]))
