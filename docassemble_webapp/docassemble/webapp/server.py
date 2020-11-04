@@ -467,7 +467,7 @@ def custom_login():
     safe_next = _get_safe_next_param('next', user_manager.after_login_endpoint)
     safe_reg_next = _get_safe_next_param('reg_next', user_manager.after_register_endpoint)
 
-    if True or _call_or_get(current_user.is_authenticated) and user_manager.auto_login_at_login:
+    if _call_or_get(current_user.is_authenticated) and user_manager.auto_login_at_login:
         if safe_next == url_for(user_manager.after_login_endpoint):
             url_parts = list(urlparse(safe_next))
             query = dict(parse_qsl(url_parts[4]))
