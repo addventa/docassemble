@@ -3903,6 +3903,7 @@ class OAuthSignIn(object):
         self.consumer_id = credentials.get('id', None)
         self.consumer_secret = credentials.get('secret', None)
         self.consumer_domain = credentials.get('domain', None)
+        self.consumer_map = credentials.get('roles_map', dict())
 
     def authorize(self):
         pass
@@ -4090,7 +4091,7 @@ class Auth0SignIn(OAuthSignIn):
         email = me.get('email')
         if user_id is None or username is None or email is None:
             raise Exception("Error: could not get necessary information from Auth0")
-        return social_id, username, email, {'name': me.get('name', None)}
+        return social_id, username, email, {'name': me.get('name', None)}, None
 
 class ApigeeSignIn(OAuthSignIn):
     def __init__(self):
@@ -4127,9 +4128,11 @@ class ApigeeSignIn(OAuthSignIn):
         social_id = 'apigee$' + str(user_id)
         username = me.get('name')
         email = me.get('email')
+        roles = me.get('groups', list())
+        roles = [self.consumer_map[role] for role in roles]
         if user_id is None or username is None or email is None:
             raise Exception("Error: could not get necessary information from Apigee")
-        return social_id, username, email, {'name': me.get('name', None)}
+        return social_id, username, email, {'name': me.get('name', None)}, roles
 
 class TwitterSignIn(OAuthSignIn):
     def __init__(self):
@@ -4280,18 +4283,18 @@ def oauth_callback(provider):
     # for argument in request.args:
     #     logmessage("argument " + str(argument) + " is " + str(request.args[argument]))
     oauth = OAuthSignIn.get_provider(provider)
-    social_id, username, email, name_data = oauth.callback()
+    social_id, username, email, name_data, roles = oauth.callback()
     if social_id is None:
         flash(word('Authentication failed.'), 'error')
         return redirect(url_for('interview_list', from_login='1'))
     user = UserModel.query.options(db.joinedload('roles')).filter_by(social_id=social_id).first()
-    if not user:
-        user = UserModel.query.options(db.joinedload('roles')).filter_by(email=email).first()
+    # if not user:
+    #     user = UserModel.query.options(db.joinedload('roles')).filter_by(email=email).first()
     if user and user.social_id is not None and user.social_id.startswith('local'):
         flash(word('There is already a username and password on this system with the e-mail address') + " " + str(email) + ".  " + word("Please log in."), 'error')
         return redirect(url_for('user.login'))
     if not user:
-        user = UserModel(social_id=social_id, nickname=username, email=email, active=True)
+        user = UserModel(social_id=social_id, nickname=username, email=email, roles=roles, active=True)
         if 'first_name' in name_data and 'last_name' in name_data and name_data['first_name'] is not None and name_data['last_name'] is not None:
             user.first_name = name_data['first_name']
             user.last_name = name_data['last_name']
@@ -4299,6 +4302,9 @@ def oauth_callback(provider):
             user.first_name = re.sub(r' .*', '', name_data['name'])
             user.last_name = re.sub(r'.* ', '', name_data['name'])
         db.session.add(user)
+        db.session.commit()
+    else:
+        user.roles = roles
         db.session.commit()
     login_user(user, remember=False)
     update_last_login(user)

@@ -423,6 +423,7 @@ if [ ! -f "$DA_CONFIG_FILE" ]; then
         -e 's/{{APIGEEID}}/'"${APIGEEID:-null}"'/' \
         -e 's/{{APIGEESECRET}}/'"${APIGEESECRET:-null}"'/' \
         -e 's/{{APIGEEENDPOINT}}/'"${APIGEEENDPOINT:-null}"'/' \
+        -e 's/{{APIGEEROLESMAP}}/'"${APIGEEROLESMAP:-null}"'/' \
         -e 's/{{S3ENABLE}}/'"${S3ENABLE:-false}"'/' \
         -e 's#{{S3ACCESSKEY}}#'"${S3ACCESSKEY:-null}"'#' \
         -e 's#{{S3SECRETACCESSKEY}}#'"${S3SECRETACCESSKEY:-null}"'#' \

@@ -30,6 +30,7 @@ oauth:
     id: {{APIGEEID}}
     secret: {{APIGEESECRET}}
     domain: {{APIGEEENDPOINT}}
+    roles_map: {{APIGEEROLESMAP}}
   twitter:
     enable: False
     id: Iweh63ReKfOCttaUBE3t27TET

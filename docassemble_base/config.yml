@@ -29,6 +29,7 @@ oauth:
     id: ceyd6imTYxTNmuj2CYpwH_cEhdWt93e6
     secret: LLGEBDrrgDFDfBsFjErsdSdsntkrtAbfa4ee3ss_adfdSDFEWEsfgHTerjNsd3dD
     domain: example.apigee.com
+    roles_map: []
   twitter:
     enable: False
     id: Iweh63ReKfOCttaUBE3t27TET
