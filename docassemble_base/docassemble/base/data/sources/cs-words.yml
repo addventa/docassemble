@@ -602,6 +602,7 @@ cs:
   "You need to enter a valid time.": "Musíte zadat platný čas."
   "You need to log in before you can access": "Musíte se nejdříve přihlásit"
   "You need to log in with Auth0.": "Musíte se přihlásit do Auth0"
+  "You need to log in with Apigee.": "Musíte se přihlásit do Apigee"
   "You need to log in with Azure.": "Musíte se přihlásit do Azure."
   "You need to log in with Facebook.": "Musíte se přihlásit na Facebook."
   "You need to log in with Google.": "Musíte se přihlásit do Googlu."

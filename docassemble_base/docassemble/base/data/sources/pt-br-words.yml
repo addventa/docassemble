@@ -612,6 +612,7 @@ pt:
   "You need to enter a valid time.": "Você precisa inserir um horário válido."
   "You need to log in before you can access": "Você precisa realizar o login antes de poder acessar"
   "You need to log in with Auth0.": "Você precisa realizar o login com Auth0."
+  "You need to log in with Apigee.": "Você precisa realizar o login com Apigee."
   "You need to log in with Azure.": "Você precisa realizar o login com o Azure."
   "You need to log in with Facebook.": "Você precisa realizar o login com o Facebook."
   "You need to log in with Google.": "Você precisa realizar login com o Google."

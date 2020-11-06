@@ -25,6 +25,11 @@ oauth:
     id: {{AUTH0ID}}
     secret: {{AUTH0SECRET}}
     domain: {{AUTH0ENDPOINT}}
+  apigee:
+    enable: False
+    id: Iweh63ReKfOCttaUBE3t27TET
+    secret: hfieegGgrht5re3hfhsRGStYUbDDAgerergrggSDGHtrErE7rf
+    domain: apigee.com
   twitter:
     enable: False
     id: Iweh63ReKfOCttaUBE3t27TET

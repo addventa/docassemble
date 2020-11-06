@@ -591,6 +591,7 @@
 "Register for an account on": Null
 "Register": Null
 "Register with Auth0": Null
+"Register with Apigee": Null
 "Register with Azure": Null
 "Register with Facebook": Null
 "Register with Google": Null
@@ -672,6 +673,7 @@
 "Sign in or sign up to save answers": Null
 "Sign in to save answers": Null
 "Sign in with Auth0": Null
+"Sign in with Apigee": Null
 "Sign in with Azure": Null
 "Sign in with Facebook": Null
 "Sign in with Google": Null
@@ -981,6 +983,7 @@
 "You need to increment the version before publishing to PyPI.": Null
 "You need to log in before you can access": Null
 "You need to log in with Auth0.": Null
+"You need to log in with Apigee.": Null
 "You need to log in with Azure.": Null
 "You need to log in with Facebook.": Null
 "You need to log in with Google.": Null

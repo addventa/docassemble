@@ -24,6 +24,11 @@ oauth:
     id: ceyd6imTYxTNmuj2CYpwH_cEhdWt93e6
     secret: LLGEBDrrgDFDfBsFjErsdSdsntkrtAbfa4ee3ss_adfdSDFEWEsfgHTerjNsd3dD
     domain: example.auth0.com
+  apigee:
+    enable: True
+    id: ceyd6imTYxTNmuj2CYpwH_cEhdWt93e6
+    secret: LLGEBDrrgDFDfBsFjErsdSdsntkrtAbfa4ee3ss_adfdSDFEWEsfgHTerjNsd3dD
+    domain: example.apigee.com
   twitter:
     enable: False
     id: Iweh63ReKfOCttaUBE3t27TET

@@ -656,6 +656,7 @@ lt:
   "You need to increment the version before publishing to PyPI.": "Jums reikia padidinti versiją prieš skalbiant PyPI."
   "You need to log in before you can access": "Jums reikia prisijungti norėdami pasiekti"
   "You need to log in with Auth0.": "Jums reikia prisijungti su Auth0."
+  "You need to log in with Apigee.": "Jums reikia prisijungti su Apigee."
   "You need to log in with Azure.": "Jums reikia prisijungti su Azure."
   "You need to log in with Facebook.": "Jums reikia prisijungti su Facebook."
   "You need to log in with Google.": "Jums reikia prisijungti su Google."
