@@ -88,9 +88,9 @@ bash -c \
 
 RUN DEBIAN_FRONTEND=noninteractive TERM=xterm \
 bash -c \
-"cp /usr/share/docassemble/local3.6/lib/python3.6/site-packages/s4cmd.py /usr/share/s4cmd/ \
+"cp /usr/share/docassemble/local3.8/lib/python3.6/site-packages/s4cmd.py /usr/share/s4cmd/ \
 && chown -R www-data.www-data \
-   /usr/share/docassemble/local3.6 \
+   /usr/share/docassemble/local3.8 \
    /usr/share/docassemble/log \
    /usr/share/docassemble/files"
 
