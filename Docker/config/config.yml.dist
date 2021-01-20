@@ -2,6 +2,7 @@ debug: {{DEBUG}}
 enable playground: {{ENABLEPLAYGROUND}}
 maximum content length: {{DAMAXCONTENTLENGTH}}
 allow demo: {{ALLOWDEMO}}
+roles_map: {{ROLESMAP}}
 exitpage: https://docassemble.org
 db:
   prefix: {{DBPREFIX}}

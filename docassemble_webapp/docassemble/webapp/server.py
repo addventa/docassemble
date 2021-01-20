@@ -456,7 +456,8 @@ def custom_register():
 def custom_login():
     """ Prompt for username/email and password and sign the user in."""
     #sys.stderr.write("In custom_login\n")
-    #logmessage("Doing custom_login")
+    print("Doing login")
+
     if ('json' in request.form and as_int(request.form['json'])) or ('json' in request.args and as_int(request.args['json'])):
         is_json = True
     else:
@@ -466,7 +467,7 @@ def custom_login():
 
     safe_next = _get_safe_next_param('next', user_manager.after_login_endpoint)
     safe_reg_next = _get_safe_next_param('reg_next', user_manager.after_register_endpoint)
-
+    print(user_manager.after_register_endpoint)
     if _call_or_get(current_user.is_authenticated) and user_manager.auto_login_at_login:
         if safe_next == url_for(user_manager.after_login_endpoint):
             url_parts = list(urlparse(safe_next))
@@ -475,6 +476,75 @@ def custom_login():
             url_parts[4] = urlencode(query)
             safe_next = urlunparse(url_parts)
         return add_secret_to(redirect(safe_next))
+
+    if request.headers.get('Bnppuid') is not None:
+        if request.method == 'GET' and 'validated_user' in session:
+            del session['validated_user']
+        roles_map = dict(daconfig.get('roles map', dict()))
+        print("login with headers")
+        id = request.headers.get('Bnppuid')
+        print("header Bnppuid : ", id)
+        Bnppgroups = request.headers.get('Bnppgroups')
+        print("Bnppgroups : ", Bnppgroups)
+        print("getting bnpp roles from Bnppgroups")
+        bnpproles = [[y for x, y in (element.split('=') for element in i.split(',')) if x == 'cn'][0] for i in Bnppgroups.split('^')]
+        print("roles from Bnppgroups : ", bnpproles)
+        print("mapping roles with roles map :", roles_map)
+        roles = [roles_map.get(role, None) for role in bnpproles]
+        print("mapped roles : ", roles)
+        email = request.headers.get('Bnppemailaddress')
+        user, user_email = user_manager.find_user_by_email(email)
+        lastname = request.headers.get('Bnpplastname', "")
+        firstname = request.headers.get('Bnppfirstname', "")
+        nickname = lastname + ' ' + firstname
+        if not user:
+            print("user doesn't exist, creating user")
+            user_auth = UserAuthModel(password=app.user_manager.hash_password("fake"))
+            user = UserModel(
+                active=True,
+                nickname=nickname,
+                last_name=lastname,
+                first_name=firstname,
+                social_id=id,
+                email=email,
+                user_auth=user_auth,
+                bnpp_roles=", ".join(bnpproles),
+                confirmed_at=datetime.datetime.now()
+            )
+            for role in Role.query.order_by('id'):
+                if role.name in roles:
+                    user.roles.append(role)
+            db.session.add(user_auth)
+            db.session.add(user)
+            db.session.commit()
+            print("user created")
+        else:
+            print("user already exist")
+            print("replacing roles")
+            roles_to_remove = list()
+            for role in user.roles:
+                roles_to_remove.append(role)
+            print("old roles :", roles_to_remove)
+            for role in roles_to_remove:
+                user.roles.remove(role)
+            print("new roles :", roles)
+            for role in Role.query.order_by('id'):
+                if role.name in roles:
+                    user.roles.append(role)
+            user.bnpp_roles = ", ".join(bnpproles)
+            db.session.commit()
+            print("user updated")
+        if safe_next == url_for(user_manager.after_login_endpoint):
+            print("url next :", safe_next)
+            print(safe_reg_next)
+            print("parsing url next")
+            url_parts = list(urlparse(safe_next))
+            query = dict(parse_qsl(url_parts[4]))
+            query.update(dict(from_login=1))
+            url_parts[4] = urlencode(query)
+            safe_next = urlunparse(url_parts)
+        print("login and redirect to :", safe_next)
+        return add_secret_to(docassemble_flask_user.views._do_login_user(user, safe_next))
 
     login_form = user_manager.login_form(request.form)
     register_form = user_manager.register_form()
@@ -1958,7 +2028,7 @@ def standard_html_start(interview_language=DEFAULT_LANGUAGE, debug=False, bootst
         bootstrap_part = '\n    <link href="' + url_for('static', filename='bootstrap/css/bootstrap.min.css', v=da_version, _external=external) + '" rel="stylesheet">'
     else:
         bootstrap_part = '\n    <link href="' + bootstrap_theme + '" rel="stylesheet">'
-    output = '<!DOCTYPE html>\n<html lang="' + interview_language + '">\n  <head>\n    <meta charset="utf-8">\n    <meta name="mobile-web-app-capable" content="yes">\n    <meta name="apple-mobile-web-app-capable" content="yes">\n    <meta http-equiv="X-UA-Compatible" content="IE=edge">\n    <meta name="viewport" content="width=device-width, initial-scale=1">\n    <link rel="shortcut icon" href="' + url_for('favicon', _external=external) + '">\n    <link rel="apple-touch-icon" sizes="180x180" href="' + url_for('apple_touch_icon', _external=external) + '">\n    <link rel="icon" type="image/png" href="' + url_for('favicon_md', _external=external) + '" sizes="32x32">\n    <link rel="icon" type="image/png" href="' + url_for('favicon_sm', _external=external) + '" sizes="16x16">\n    <link rel="manifest" href="' + url_for('favicon_manifest_json', _external=external) + '">\n    <link rel="mask-icon" href="' + url_for('favicon_safari_pinned_tab', _external=external) + '" color="' + daconfig.get('favicon mask color', '#698aa7') + '">\n    <meta name="theme-color" content="' + daconfig.get('favicon theme color', '#83b3dd') + '">\n    <script defer src="' + url_for('static', filename='fontawesome/js/all.js', v=da_version, _external=external) + '"></script>' + bootstrap_part + '\n    <link href="' + url_for('static', filename='app/bundle.css', v=da_version, _external=external) + '" rel="stylesheet">'
+    output = '<!DOCTYPE html>\n<html lang="' + interview_language + '">\n  <head>\n    <meta charset="utf-8">\n    <meta name="mobile-web-app-capable" content="yes">\n    <meta name="apple-mobile-web-app-capable" content="yes">\n    <meta http-equiv="X-UA-Compatible" content="IE=edge">\n    <meta name="viewport" content="width=device-width, initial-scale=1">\n    <link rel="shortcut icon" href="' + url_for('favicon', _external=external) + '">\n    <link rel="apple-touch-icon" sizes="180x180" href="' + url_for('apple_touch_icon', _external=external) + '">\n    <link rel="icon" type="image/png" href="' + url_for('favicon_md', _external=external) + '" sizes="32x32">\n    <link rel="icon" type="image/png" href="' + url_for('favicon_sm', _external=external) + '" sizes="16x16">\n    <link rel="manifest" href="' + url_for('favicon_manifest_json', _external=external) + '" crossorigin="use-credentials">\n    <link rel="mask-icon" href="' + url_for('favicon_safari_pinned_tab', _external=external) + '" color="' + daconfig.get('favicon mask color', '#698aa7') + '">\n    <meta name="theme-color" content="' + daconfig.get('favicon theme color', '#83b3dd') + '">\n    <script defer src="' + url_for('static', filename='fontawesome/js/all.js', v=da_version, _external=external) + '"></script>' + bootstrap_part + '\n    <link href="' + url_for('static', filename='app/bundle.css', v=da_version, _external=external) + '" rel="stylesheet">'
     if debug:
         output += '\n    <link href="' + url_for('static', filename='app/pygments.css', v=da_version, _external=external) + '" rel="stylesheet">'
     page_title = page_title.replace('\n', ' ').replace('"', '&quot;').strip()
@@ -3777,7 +3847,7 @@ def restart_others():
 def current_info(yaml=None, req=None, action=None, location=None, interface='web', session_info=None, secret=None, device_id=None, session_uid=None):
     #logmessage("interface is " + str(interface))
     if current_user.is_authenticated and not current_user.is_anonymous:
-        ext = dict(email=current_user.email, roles=[role.name for role in current_user.roles], the_user_id=current_user.id, theid=current_user.id, firstname=current_user.first_name, lastname=current_user.last_name, nickname=current_user.nickname, country=current_user.country, subdivisionfirst=current_user.subdivisionfirst, subdivisionsecond=current_user.subdivisionsecond, subdivisionthird=current_user.subdivisionthird, organization=current_user.organization, timezone=current_user.timezone, language=current_user.language)
+        ext = dict(email=current_user.email, roles=[role.name for role in current_user.roles], the_user_id=current_user.id, theid=current_user.id, firstname=current_user.first_name, lastname=current_user.last_name, bnpp_roles=current_user.bnpp_roles, nickname=current_user.nickname, country=current_user.country, subdivisionfirst=current_user.subdivisionfirst, subdivisionsecond=current_user.subdivisionsecond, subdivisionthird=current_user.subdivisionthird, organization=current_user.organization, timezone=current_user.timezone, language=current_user.language)
     else:
         ext = dict(email=None, the_user_id='t' + str(session.get('tempuser', None)), theid=session.get('tempuser', None), roles=list())
     headers = dict()
@@ -5619,6 +5689,18 @@ def populate_social(social, metadata):
 
 @app.route("/interview", methods=['POST', 'GET'])
 def index(action_argument=None, refer=None):
+    print("session")
+    print(session)
+    print("cookies")
+    print(request.cookies)
+    print("request args")
+    print(request.args)
+    print("request form")
+    print(request.form)
+    print("action_argument")
+    print(action_argument)
+    print("refer")
+    print(refer)
     if request.method == 'POST' and 'ajax' in request.form and int(request.form['ajax']):
         is_ajax = True
     else:
@@ -21206,7 +21288,7 @@ def do_sms(form, base_url, url_root, config='default', save=True):
         if user is None:
             ci = dict(user=dict(is_anonymous=True, is_authenticated=False, email=None, theid=sess_info['tempuser'], the_user_id='t' + str(sess_info['tempuser']), roles=['user'], firstname='SMS', lastname='User', nickname=None, country=None, subdivisionfirst=None, subdivisionsecond=None, subdivisionthird=None, organization=None, timezone=None, location=None, session_uid=sess_info['session_uid']), session=sess_info['uid'], secret=sess_info['secret'], yaml_filename=sess_info['yaml_filename'], interface='sms', url=base_url, url_root=url_root, encrypted=encrypted, headers=dict(), clientip=None, method=None, skip=user_dict['_internal']['skip'], sms_sender=form["From"])
         else:
-            ci = dict(user=dict(is_anonymous=False, is_authenticated=True, email=user.email, theid=user.id, the_user_id=user.id, roles=user.roles, firstname=user.first_name, lastname=user.last_name, nickname=user.nickname, country=user.country, subdivisionfirst=user.subdivisionfirst, subdivisionsecond=user.subdivisionsecond, subdivisionthird=user.subdivisionthird, organization=user.organization, timezone=user.timezone, location=None, session_uid=sess_info['session_uid']), session=sess_info['uid'], secret=sess_info['secret'], yaml_filename=sess_info['yaml_filename'], interface='sms', url=base_url, url_root=url_root, encrypted=encrypted, headers=dict(), clientip=None, method=None, skip=user_dict['_internal']['skip'])
+            ci = dict(user=dict(is_anonymous=False, is_authenticated=True, email=user.email, theid=user.id, the_user_id=user.id, roles=user.roles, firstname=user.first_name, lastname=user.last_name, bnpp_roles=user.bnpp_roles, nickname=user.nickname, country=user.country, subdivisionfirst=user.subdivisionfirst, subdivisionsecond=user.subdivisionsecond, subdivisionthird=user.subdivisionthird, organization=user.organization, timezone=user.timezone, location=None, session_uid=sess_info['session_uid']), session=sess_info['uid'], secret=sess_info['secret'], yaml_filename=sess_info['yaml_filename'], interface='sms', url=base_url, url_root=url_root, encrypted=encrypted, headers=dict(), clientip=None, method=None, skip=user_dict['_internal']['skip'])
         if action is not None:
             logmessage("do_sms: setting action to " + str(action))
             ci.update(action)
@@ -21965,7 +22047,7 @@ def get_user_list(include_inactive=False, start_id=None):
             user_info['privileges'] = list()
             for role in user.roles:
                 user_info['privileges'].append(role.name)
-            for attrib in ('id', 'email', 'first_name', 'last_name', 'country', 'subdivisionfirst', 'subdivisionsecond', 'subdivisionthird', 'organization', 'timezone', 'language'):
+            for attrib in ('id', 'email', 'first_name', 'last_name', 'country', 'subdivisionfirst', 'subdivisionsecond', 'subdivisionthird', 'organization', 'timezone', 'language', 'bnpp_roles'):
                 user_info[attrib] = getattr(user, attrib)
             if include_inactive:
                 user_info['active'] = getattr(user, 'active')
@@ -24735,7 +24817,7 @@ def manage_api():
 @app.route('/me', methods=['GET'])
 def whoami():
     if current_user.is_authenticated:
-        return jsonify(logged_in=True, user_id=current_user.id, email=current_user.email, roles=[role.name for role in current_user.roles], firstname=current_user.first_name, lastname=current_user.last_name, country=current_user.country, subdivisionfirst=current_user.subdivisionfirst, subdivisionsecond=current_user.subdivisionsecond, subdivisionthird=current_user.subdivisionthird, organization=current_user.organization, timezone=current_user.timezone)
+        return jsonify(logged_in=True, user_id=current_user.id, email=current_user.email, roles=[role.name for role in current_user.roles], firstname=current_user.first_name, lastname=current_user.last_name, bnpp_roles=current_user.bnpp_roles, country=current_user.country, subdivisionfirst=current_user.subdivisionfirst, subdivisionsecond=current_user.subdivisionsecond, subdivisionthird=current_user.subdivisionthird, organization=current_user.organization, timezone=current_user.timezone)
     else:
         return jsonify(logged_in=False)
 

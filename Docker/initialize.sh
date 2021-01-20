@@ -38,6 +38,9 @@ function cmd_retry() {
 echo "config.yml is at" $DA_CONFIG_FILE >&2
 
 echo "1" >&2
+echo "--------------------------" >&2
+echo "Docassemble V1.1.1-19" >&2
+echo "--------------------------" >&2
 
 export DEBIAN_FRONTEND=noninteractive
 if [ "${DAALLOWUPDATES:-true}" == "true" ]; then
@@ -407,6 +410,7 @@ if [ ! -f "$DA_CONFIG_FILE" ]; then
     sed -e 's/{{DEBUG}}/'"${DEBUG:-true}"'/' \
         -e 's/{{ENABLEPLAYGROUND}}/'"${ENABLEPLAYGROUND:-true}"'/' \
         -e 's@{{DAMAXCONTENTLENGTH}}@'"${DAMAXCONTENTLENGTH}"'@' \
+        -e 's/{{ROLESMAP}}/'"${ROLESMAP:-null}"'/' \
         -e 's/{{ALLOWDEMO}}/'"${ALLOWDEMO:-true}"'/' \
         -e 's@{{DBPREFIX}}@'"${DBPREFIX:-postgresql+psycopg2:\/\/}"'@' \
         -e 's/{{DBNAME}}/'"${DBNAME:-docassemble}"'/' \
