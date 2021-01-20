@@ -481,8 +481,18 @@ def custom_login():
         roles_map = dict(daconfig.get('roles map', dict()))
         id = request.headers.get('Bnppuid')
         Bnppgroups = request.headers.get('Bnppgroups')
-        bnpproles = [[y for x, y in (element.split('=') for element in i.split(',')) if x == 'cn'][0] for i in Bnppgroups.split('^')]
-        roles = [roles_map.get(role, None) for role in bnpproles]
+        if Bnppgroups is None:
+            bnpproles = ['']
+            roles = ['user']
+        else:
+            try:
+                bnpproles = [[y for x, y in (element.split('=') for element in i.split(',')) if x == 'cn'][0] for i in Bnppgroups.split('^')]
+                roles = [roles_map.get(role, None) for role in bnpproles]
+            except:
+                print("error with bnpp roles : ", Bnppgroups)
+                print("roles set to user")
+                bnpproles = ['']
+                roles = ['user']
         email = request.headers.get('Bnppemailaddress')
         user, user_email = user_manager.find_user_by_email(email)
         lastname = request.headers.get('Bnpplastname', "")
