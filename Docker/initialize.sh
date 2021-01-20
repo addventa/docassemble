@@ -831,7 +831,7 @@ echo "32" >&2
 
 OTHERLOGSERVER=false
 
-if [[ $CONTAINERROLE =~ .*:(web|celery):.* ]]; then
+if [[ $CONTAINERROLE =~ .*:(web):.* ]]; then
     if [ "${LOGSERVER:-undefined}" != "undefined" ]; then
         OTHERLOGSERVER=true
     fi
@@ -885,7 +885,7 @@ fi
 
 echo "39" >&2
 
-if [[ $CONTAINERROLE =~ .*:(all|celery):.* ]]; then
+if [[ $CONTAINERROLE =~ .*:(all):.* ]]; then
     echo "checking if celery is already running..." >&2
     if su -c "source \"${DA_ACTIVATE}\" && timeout 5s celery -A docassemble.webapp.worker status" www-data 2>&1 | grep -q `hostname`; then
         echo "celery is running" >&2
@@ -899,10 +899,6 @@ else
 fi
 
 echo "40" >&2
-
-if [[ $CONTAINERROLE =~ .*:(all|celery):.* ]] && [ "$CELERYRUNNING" = false ]; then
-    supervisorctl --serverurl http://localhost:9001 start celery
-fi
 
 echo "41" >&2
 
@@ -997,9 +993,6 @@ if [ "${DAWEBSERVER:-nginx}" = "nginx" ]; then
             fi
             supervisorctl --serverurl http://localhost:9001 reread
             supervisorctl --serverurl http://localhost:9001 update
-            if [[ $CONTAINERROLE =~ .*:(all|celery):.* ]] && [ "$CELERYRUNNING" = false ]; then
-                supervisorctl --serverurl http://localhost:9001 start celery
-            fi
         fi
         echo "41.8" >&2
         if [ "${USEHTTPS:-false}" == "true" ]; then
@@ -1129,9 +1122,6 @@ if [ "${DAWEBSERVER:-nginx}" = "apache" ]; then
             fi
             supervisorctl --serverurl http://localhost:9001 reread
             supervisorctl --serverurl http://localhost:9001 update
-            if [[ $CONTAINERROLE =~ .*:(all|celery):.* ]] && [ "$CELERYRUNNING" = false ]; then
-                supervisorctl --serverurl http://localhost:9001 start celery
-            fi
         fi
 
         if [ "${BEHINDHTTPSLOADBALANCER:-false}" == "true" ]; then

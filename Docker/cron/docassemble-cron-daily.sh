@@ -123,7 +123,7 @@ if [ "${DABACKUPDAYS}" != "0" ]; then
     BACKUPDIR="${DA_ROOT}/backup/$MONTHDAY"
     rm -rf $BACKUPDIR
     mkdir -p $BACKUPDIR
-    if [[ $CONTAINERROLE =~ .*:(all|web|celery|log|cron):.* ]]; then
+    if [[ $CONTAINERROLE =~ .*:(all|web|log|cron):.* ]]; then
 	if [[ $CONTAINERROLE =~ .*:all:.* ]] && [ "${S3ENABLE:-false}" == "false" ] && [ "${AZUREENABLE:-false}" == "false" ]; then
 	    rsync -auq "${DA_ROOT}/files" "${BACKUPDIR}/"
 	fi
