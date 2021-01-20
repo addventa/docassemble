@@ -12,6 +12,7 @@ from twilio.rest import Client as TwilioRestClient
 import pycountry
 import docassemble.base.ocr
 import pickle
+from itertools import chain
 from docassemble.base.logger import logmessage
 from docassemble.base.error import DAError, DAValidationError, DAIndexError, DAWebError
 from jinja2.runtime import UndefinedError
@@ -21,8 +22,8 @@ import docassemble.base.pandoc
 import docassemble.base.pdftk
 import docassemble.base.file_docx
 from docassemble.base.file_docx import include_docx_template
-from docassemble.base.functions import alpha, roman, item_label, comma_and_list, get_language, set_language, get_dialect, set_country, get_country, word, comma_list, ordinal, ordinal_number, need, nice_number, quantity_noun, possessify, verb_past, verb_present, noun_plural, noun_singular, space_to_underscore, force_ask, force_gather, period_list, name_suffix, currency_symbol, currency, indefinite_article, nodoublequote, capitalize, title_case, url_of, do_you, did_you, does_a_b, did_a_b, were_you, was_a_b, have_you, has_a_b, your, her, his, their, is_word, get_locale, set_locale, process_action, url_action, get_info, set_info, get_config, prevent_going_back, qr_code, action_menu_item, from_b64_json, defined, define, value, message, response, json_response, command, single_paragraph, quote_paragraphs, location_returned, location_known, user_lat_lon, interview_url, interview_url_action, interview_url_as_qr, interview_url_action_as_qr, interview_email, get_emails, this_thread, static_image, action_arguments, action_argument, language_functions, language_function_constructor, get_default_timezone, user_logged_in, interface, user_privileges, user_has_privilege, user_info, background_action, background_response, background_response_action, background_error_action, us, set_live_help_status, chat_partners_available, phone_number_in_e164, phone_number_formatted, phone_number_is_valid, countries_list, country_name, write_record, read_records, delete_record, variables_as_json, all_variables, server, language_from_browser, device, plain, bold, italic, states_list, state_name, subdivision_type, indent, raw, fix_punctuation, set_progress, get_progress, referring_url, undefine, invalidate, dispatch, yesno, noyes, split, showif, showifdef, phone_number_part, set_parts, log, encode_name, decode_name, interview_list, interview_menu, server_capabilities, session_tags, get_chat_log, get_user_list, get_user_info, set_user_info, get_user_secret, create_user, create_session, get_session_variables, set_session_variables, get_question_data, go_back_in_session, manage_privileges, salutation, redact, ensure_definition, forget_result_of, re_run_logic, reconsider, set_title, set_save_status, single_to_double_newlines, CustomDataType, verbatim, add_separators, update_ordinal_numbers, update_ordinal_function, update_language_function, update_nice_numbers, update_word_collection, store_variables_snapshot, get_uid
-from docassemble.base.core import DAObject, DAList, DADict, DAOrderedDict, DASet, DAFile, DAFileCollection, DAStaticFile, DAFileList, DAEmail, DAEmailRecipient, DAEmailRecipientList, DATemplate, DAEmpty, DALink, selections, objects_from_file, RelationshipTree, DAContext, DACatchAll
+from docassemble.base.functions import alpha, roman, item_label, comma_and_list, get_language, set_language, get_dialect, set_country, get_country, word, comma_list, ordinal, ordinal_number, need, nice_number, quantity_noun, possessify, verb_past, verb_present, noun_plural, noun_singular, space_to_underscore, force_ask, force_gather, period_list, name_suffix, currency_symbol, currency, indefinite_article, nodoublequote, capitalize, title_case, url_of, do_you, did_you, does_a_b, did_a_b, were_you, was_a_b, have_you, has_a_b, your, her, his, their, is_word, get_locale, set_locale, process_action, url_action, get_info, set_info, get_config, prevent_going_back, qr_code, action_menu_item, from_b64_json, defined, define, value, message, response, json_response, command, single_paragraph, quote_paragraphs, location_returned, location_known, user_lat_lon, interview_url, interview_url_action, interview_url_as_qr, interview_url_action_as_qr, interview_email, get_emails, this_thread, static_image, action_arguments, action_argument, language_functions, language_function_constructor, get_default_timezone, user_logged_in, interface, user_privileges, user_has_privilege, user_info, background_action, background_response, background_response_action, background_error_action, us, set_live_help_status, chat_partners_available, phone_number_in_e164, phone_number_formatted, phone_number_is_valid, countries_list, country_name, write_record, read_records, delete_record, variables_as_json, all_variables, server, language_from_browser, device, plain, bold, italic, states_list, state_name, subdivision_type, indent, raw, fix_punctuation, set_progress, get_progress, referring_url, undefine, invalidate, dispatch, yesno, noyes, split, showif, showifdef, phone_number_part, set_parts, log, encode_name, decode_name, interview_list, interview_menu, server_capabilities, session_tags, get_chat_log, get_user_list, get_user_info, set_user_info, get_user_secret, create_user, create_session, get_session_variables, set_session_variables, get_question_data, go_back_in_session, manage_privileges, salutation, redact, ensure_definition, forget_result_of, re_run_logic, reconsider, set_title, set_save_status, single_to_double_newlines, CustomDataType, verbatim, add_separators, update_ordinal_numbers, update_ordinal_function, update_language_function, update_nice_numbers, update_word_collection, store_variables_snapshot, get_uid, update_terms
+from docassemble.base.core import DAObject, DAList, DADict, DAOrderedDict, DASet, DAFile, DAFileCollection, DAStaticFile, DAFileList, DAEmail, DAEmailRecipient, DAEmailRecipientList, DATemplate, DAEmpty, DALink, selections, objects_from_file, RelationshipTree, DAContext, DACatchAll, DALazyTemplate
 from decimal import Decimal
 import sys
 #sys.stderr.write("importing async mail now from util\n")
@@ -299,7 +300,9 @@ __all__ = [
     'docx_concatenate',
     'store_variables_snapshot',
     'stash_data',
-    'retrieve_stashed_data'
+    'retrieve_stashed_data',
+    'update_terms',
+    'chain'
 ]
 
 #knn_machine_learner = DummyObject
@@ -1280,6 +1283,9 @@ class Name(DAObject):
     def lastfirst(self):
         """This method is included for compatibility with other types of names."""
         return(self.text)
+    def middle_initial(self, with_period=True):
+        """This method is included for compatibility with other types of names."""
+        return('')
     def defined(self):
         """Returns True if the name has been defined.  Otherwise, returns False."""
         return hasattr(self, 'text')
@@ -1309,23 +1315,25 @@ class IndividualName(Name):
         and use_suffix."""
         if not self.uses_parts:
             return super().full()
-        names = [self.first]
-        if hasattr(self, 'middle') and len(self.middle):
+        names = [self.first.strip()]
+        if hasattr(self, 'middle'):
             if middle is False or middle is None:
                 pass
             elif middle == 'initial':
-                names.append(self.middle[0] + '.')
-            else:
-                names.append(self.middle)
-        if hasattr(self, 'last') and len(self.last):
-            names.append(self.last)
+                initial = self.middle_initial()
+                if initial:
+                    names.append(initial)
+            elif len(self.middle.strip()):
+                names.append(self.middle.strip())
+        if hasattr(self, 'last') and len(self.last.strip()):
+            names.append(self.last.strip())
         else:
-            if hasattr(self, 'paternal_surname'):
-                names.append(self.paternal_surname)
-            if hasattr(self, 'maternal_surname'):
-                names.append(self.maternal_surname)
-        if hasattr(self, 'suffix') and use_suffix and len(self.suffix):
-            names.append(self.suffix)
+            if hasattr(self, 'paternal_surname') and len(self.paternal_surname.strip()):
+                names.append(self.paternal_surname.strip())
+            if hasattr(self, 'maternal_surname') and len(self.maternal_surname.strip()):
+                names.append(self.maternal_surname.strip())
+        if hasattr(self, 'suffix') and use_suffix and len(self.suffix.strip()):
+            names.append(self.suffix.strip())
         return(" ".join(names))
     def firstlast(self):
         """Returns the first name followed by the last name."""
@@ -1338,12 +1346,22 @@ class IndividualName(Name):
         if not self.uses_parts:
             return super().lastfirst()
         output = self.last
-        if hasattr(self, 'suffix') and self.suffix:
+        if hasattr(self, 'suffix') and self.suffix and len(self.suffix.strip()):
             output += " " + self.suffix
         output += ", " + self.first
-        if hasattr(self, 'middle') and self.middle:
-            output += " " + self.middle[0] + '.'
+        if hasattr(self, 'middle'):
+            initial = self.middle_initial()
+            if initial:
+                output += " " + initial
         return output
+    def middle_initial(self, with_period=True):
+        """Returns the middle initial, or the empty string if the name does not have a middle component."""
+        if len(self.middle.strip()) == 0:
+            return ''
+        if with_period:
+            return self.middle[0].strip() + '.'
+        else:
+            return self.middle[0].strip() + '.'
 
 class Address(DAObject):
     """A geographic address."""
@@ -1398,8 +1416,10 @@ class Address(DAObject):
                 result['icon'] = self.icon
             return [result]
         return None
-    def geolocate(self, address=None):
+    def geolocate(self, address=None, reset=False):
         """Determines the latitude and longitude of the location from its components.  If an address is supplied, the address fields that are not already populated will be populated with the result of the geolocation of the selected address."""
+        if reset:
+            self.reset_geolocation()
         if address is None:
             if self.geolocated:
                 return self.geolocate_success
@@ -1584,6 +1604,11 @@ class Address(DAObject):
         self.norm = the_norm
         self.norm_long = the_norm_long
         return True
+    def reset_geolocation(self):
+        """Resets the geolocation information"""
+        self.delattr('norm', 'geolocate_success', 'geolocate_response', 'norm_long', 'one_line')
+        self.geolocated = False
+        self.location.delattr('gathered', 'known', 'latitude', 'longitude', 'description')
     def block(self, language=None, international=False, show_country=None):
         """Returns the address formatted as a block, as in a mailing."""
         if this_thread.evaluation_context == 'docx':
@@ -2311,6 +2336,7 @@ def send_sms(to=None, body=None, template=None, task=None, task_persistent=False
         if template.subject is not None:
             body_html += markdown_to_html(template.subject, external=True)
         body_html += markdown_to_html(template.content, external=True) + '</body></html>'
+        body_html = re.sub(r'\n', ' ', body_html)
         body = BeautifulSoup(body_html, "html.parser").get_text('\n')
     if body is None:
         body = word("blank message")
@@ -2592,11 +2618,13 @@ def ocr_file_in_background(*pargs, **kwargs):
         ui_notification = pargs[1]
     else:
         ui_notification = None
-    args = dict(yaml_filename=this_thread.current_info['yaml_filename'], user=this_thread.current_info['user'], user_code=this_thread.current_info['session'], secret=this_thread.current_info['secret'], url=this_thread.current_info['url'], url_root=this_thread.current_info['url_root'], language=language, psm=psm, x=x, y=y, W=W, H=H, extra=ui_notification, message=message)
+    args = dict(yaml_filename=this_thread.current_info['yaml_filename'], user=this_thread.current_info['user'], user_code=this_thread.current_info['session'], secret=this_thread.current_info['secret'], url=this_thread.current_info['url'], url_root=this_thread.current_info['url_root'], language=language, psm=psm, x=x, y=y, W=W, H=H, extra=ui_notification, message=message, pdf=False, preserve_color=False)
     collector = server.ocr_finalize.s(**args)
     todo = list()
+    indexno = 0
     for item in docassemble.base.ocr.ocr_page_tasks(image_file, **args):
-        todo.append(server.ocr_page.s(**item))
+        todo.append(server.ocr_page.s(indexno, **item))
+        indexno += 1
     the_chord = server.chord(todo)(collector)
     if ui_notification is not None:
         worker_key = 'da:worker:uid:' + str(this_thread.current_info['session']) + ':i:' + str(this_thread.current_info['yaml_filename']) + ':userid:' + str(this_thread.current_info['user']['the_user_id'])
@@ -2622,35 +2650,7 @@ def ocr_file(image_file, language=None, psm=6, f=None, l=None, x=None, y=None, W
     ocr_resolution = get_config("ocr dpi")
     if ocr_resolution is None:
         ocr_resolution = '300'
-    langs = docassemble.base.ocr.get_available_languages()
-    if language is None:
-        language = get_language()
-    ocr_langs = get_config("ocr languages")
-    if ocr_langs is None:
-        ocr_langs = dict()
-    if language in langs:
-        lang = language
-    else:
-        if language in ocr_langs and ocr_langs[language] in langs:
-            lang = ocr_langs[language]
-        else:
-            try:
-                pc_lang = pycountry.languages.get(alpha_2=language)
-                lang_three_letter = pc_lang.alpha_3
-                if lang_three_letter in langs:
-                    lang = lang_three_letter
-                else:
-                    if 'eng' in langs:
-                        lang = 'eng'
-                    else:
-                        lang = langs[0]
-                    logmessage("ocr_file: could not get OCR language for language " + str(language) + "; using language " + str(lang))
-            except Exception as the_error:
-                if 'eng' in langs:
-                    lang = 'eng'
-                else:
-                    lang = langs[0]
-                logmessage("ocr_file: could not get OCR language for language " + str(language) + "; using language " + str(lang) + "; error was " + str(the_error))
+    lang = docassemble.base.ocr.get_ocr_language(language)
     if isinstance(image_file, DAFile):
         image_file = [image_file]
     temp_directory_list = list()
@@ -3072,7 +3072,7 @@ def url_ask(data):
             raise DAError("url_ask cannot be used with a generic object or a variable iterator")
     return url_action('_da_force_ask', variables=variables)
 
-def action_button_html(url, icon=None, color='success', size='sm', block=False, label='Edit', classname=None, new_window=True, id_tag=None):
+def action_button_html(url, icon=None, color='success', size='sm', block=False, label='Edit', classname=None, new_window=None, id_tag=None):
     """Returns HTML for a button that visits a particular URL."""
     if not isinstance(label, str):
         label = 'Edit'
@@ -3100,11 +3100,13 @@ def action_button_html(url, icon=None, color='success', size='sm', block=False, 
     else:
         icon = ''
     if new_window is True:
-        target = ''
+        target = 'target="_blank"'
     elif new_window is False:
         target = 'target="_self" '
-    else:
+    elif new_window:
         target = 'target="' + str(new_window) + '" '
+    else:
+        target = ''
     if id_tag is None:
         id_tag = ''
     else:
@@ -3188,7 +3190,7 @@ def prevent_dependency_satisfaction(f):
         #     raise Exception("Reference to undefined variable in context where dependency satisfaction not allowed") from err
     return wrapper
 
-def assemble_docx(input_file, fields=None, output_path=None, output_format='docx', return_content=False, pdf_options=None):
+def assemble_docx(input_file, fields=None, output_path=None, output_format='docx', return_content=False, pdf_options=None, filename=None):
     import docassemble.base.parse
     input_file = path_and_mimetype(input_file)[0]
     if not (isinstance(input_file, str) and os.path.isfile(input_file)):
@@ -3239,7 +3241,7 @@ def assemble_docx(input_file, fields=None, output_path=None, output_format='docx
         docx_template.save(temp_file.name)
         if not isinstance(pdf_options, dict):
             pdf_options = dict()
-        result = docassemble.base.pandoc.word_to_pdf(temp_file.name, 'docx', output_path, pdfa=pdf_options.get('pdfa', False), password=pdf_options.get('password', None), update_refs=pdf_options.get('update_refs', False), tagged=pdf_options.get('tagged', False))
+        result = docassemble.base.pandoc.word_to_pdf(temp_file.name, 'docx', output_path, pdfa=pdf_options.get('pdfa', False), password=pdf_options.get('password', None), update_refs=pdf_options.get('update_refs', False), tagged=pdf_options.get('tagged', False), filename=filename)
         if not result:
             raise DAError("Error converting to PDF")
     elif output_format == 'md':

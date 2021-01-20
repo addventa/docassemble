@@ -570,6 +570,10 @@ def as_html(status, url_for, debug, root, validation_rules, field_error, the_pro
                 action_data = 'data-embaction="' + action_search.group(1) + '" '
             else:
                 action_data = ''
+            if item['target'] is not None and action_data == '':
+                target_string = 'target=' + json.dumps(item['target']) + ' '
+            else:
+                target_string = ''
             js_search = re.search(r'^javascript:(.*)', item['action'])
             if js_search:
                 js_data = 'data-js="' + js_search.group(1) + '" '
@@ -577,9 +581,9 @@ def as_html(status, url_for, debug, root, validation_rules, field_error, the_pro
                 js_data = ''
             status.linkcounter += 1
             if item['placement'] == 'before':
-                additional_buttons_before += '\n                  <a data-linknum="' + str(status.linkcounter) + '" ' + action_data + js_data + 'href="' + item['action'] + '" class="btn ' + BUTTON_STYLE + item['color'] + ' ' + BUTTON_CLASS + ' daquestionactionbutton danonsubmit">' + icon + markdown_to_html(item['label'], trim=True, do_terms=False, status=status) + '</a>'
+                additional_buttons_before += '\n                  <a ' + target_string + 'data-linknum="' + str(status.linkcounter) + '" ' + action_data + js_data + 'href="' + item['action'] + '" class="btn ' + BUTTON_STYLE + item['color'] + ' ' + BUTTON_CLASS + ' daquestionactionbutton danonsubmit">' + icon + markdown_to_html(item['label'], trim=True, do_terms=False, status=status) + '</a>'
             else:
-                additional_buttons_after += '\n                  <a data-linknum="' + str(status.linkcounter) + '" ' + action_data + js_data + 'href="' + item['action'] + '" class="btn ' + BUTTON_STYLE + item['color'] + ' ' + BUTTON_CLASS + ' daquestionactionbutton danonsubmit">' + icon + markdown_to_html(item['label'], trim=True, do_terms=False, status=status) + '</a>'
+                additional_buttons_after += '\n                  <a ' + target_string + 'data-linknum="' + str(status.linkcounter) + '" ' + action_data + js_data + 'href="' + item['action'] + '" class="btn ' + BUTTON_STYLE + item['color'] + ' ' + BUTTON_CLASS + ' daquestionactionbutton danonsubmit">' + icon + markdown_to_html(item['label'], trim=True, do_terms=False, status=status) + '</a>'
     else:
         additional_buttons_before = ''
         additional_buttons_after = ''
@@ -903,15 +907,23 @@ def as_html(status, url_for, debug, root, validation_rules, field_error, the_pro
                     if 'ml_train' in field.extras:
                         ml_info[field.saveas]['train'] = status.extras['ml_train'][field.number]
                 if 'show_if_var' in field.extras and 'show_if_val' in status.extras:
-                    if hasattr(field, 'saveas'):
-                        fieldlist.append('                <div style="display: none;" class="dashowif" data-saveas="' + escape_id(field.saveas) + '" data-showif-sign="' + escape_id(field.extras['show_if_sign']) + '" data-showif-var="' + escape_id(field.extras['show_if_var']) + '" data-showif-val=' + noquote(str(status.extras['show_if_val'][field.number])) + '>\n')
+                    if field.extras['show_if_mode'] == 0:
+                        display_style = 'style="display: none;" '
                     else:
-                        fieldlist.append('                <div style="display: none;" class="dashowif" data-showif-sign="' + escape_id(field.extras['show_if_sign']) + '" data-showif-var="' + escape_id(field.extras['show_if_var']) + '" data-showif-val=' + noquote(str(status.extras['show_if_val'][field.number])) + '>\n')
+                        display_style = ''
+                    if hasattr(field, 'saveas'):
+                        fieldlist.append('                <div ' + display_style + 'class="dashowif" data-saveas="' + escape_id(field.saveas) + '" data-showif-sign="' + escape_id(field.extras['show_if_sign']) + '" data-showif-mode="' + str(field.extras['show_if_mode']) + '" data-showif-var="' + escape_id(field.extras['show_if_var']) + '" data-showif-val=' + noquote(str(status.extras['show_if_val'][field.number])) + '>\n')
+                    else:
+                        fieldlist.append('                <div ' + display_style + 'class="dashowif" data-showif-sign="' + escape_id(field.extras['show_if_sign']) + '" data-showif-mode="' + str(field.extras['show_if_mode']) + '" data-showif-var="' + escape_id(field.extras['show_if_var']) + '" data-showif-val=' + noquote(str(status.extras['show_if_val'][field.number])) + '>\n')
                 if 'show_if_js' in field.extras:
-                    if hasattr(field, 'saveas'):
-                        fieldlist.append('                <div style="display: none;" class="dajsshowif" data-saveas="' + escape_id(field.saveas) + '" data-jsshowif=' + myb64doublequote(json.dumps(status.extras['show_if_js'][field.number])) + '>\n')
+                    if status.extras['show_if_js'][field.number]['mode'] == 0:
+                        display_style = 'style="display: none;" '
                     else:
-                        fieldlist.append('                <div style="display: none;" class="dajsshowif" data-jsshowif=' + myb64doublequote(json.dumps(status.extras['show_if_js'][field.number])) + '>\n')
+                        display_style = ''
+                    if hasattr(field, 'saveas'):
+                        fieldlist.append('                <div ' + display_style + 'class="dajsshowif" data-saveas="' + escape_id(field.saveas) + '" data-jsshowif=' + myb64doublequote(json.dumps(status.extras['show_if_js'][field.number])) + '>\n')
+                    else:
+                        fieldlist.append('                <div ' + display_style + 'class="dajsshowif" data-jsshowif=' + myb64doublequote(json.dumps(status.extras['show_if_js'][field.number])) + '>\n')
             if hasattr(field, 'datatype'):
                 if field.datatype in custom_types:
                     field_class = ' da-field-container ' + custom_types[field.datatype]['container_class']
@@ -958,17 +970,18 @@ def as_html(status, url_for, debug, root, validation_rules, field_error, the_pro
                         else:
                             fieldlist.append('                <div ' + style_def + data_def + 'class="form-group row' + class_def + '"><div class="col-md-12"><hr><span class="dacollectnum">' + list_message + '</span><span class="dacollectremoved text-danger dainvisible"> ' + word("(Deleted)") + '</span><button type="button" class="btn btn-sm ' + BUTTON_STYLE + 'info float-right dainvisible dacollectunremove"><i class="fas fa-trash-restore"></i> ' + word("Undelete") + '</button>' + da_remove_existing + '</div></div>\n')
                     else:
+                        if field.number in note_fields:
+                            if field.number in status.helptexts:
+                                fieldlist.append('                <div ' + style_def + data_def + 'class="form-group row da-field-container da-field-container-note' + class_def + '"><div class="col-md-12">' + help_wrap(note_fields[field.number], status.helptexts[field.number], status) + '</div></div>\n')
+                            else:
+                                fieldlist.append('                <div ' + style_def + data_def + 'class="form-group row da-field-container da-field-container-note' + class_def + '"><div class="col-md-12"><div>' + note_fields[field.number] + '</div></div></div>\n')
+                    #continue
+                elif field.datatype == 'note':
+                    if field.number in note_fields:
                         if field.number in status.helptexts:
                             fieldlist.append('                <div ' + style_def + data_def + 'class="form-group row da-field-container da-field-container-note' + class_def + '"><div class="col-md-12">' + help_wrap(note_fields[field.number], status.helptexts[field.number], status) + '</div></div>\n')
                         else:
-                            fieldlist.append('                <div ' + style_def + data_def + 'class="form-group row da-field-container da-field-container-note' + class_def + '"><div class="col-md-12"><div>' + note_fields[field.number] + '</div></div></div>\n')
-                    #continue
-                elif field.datatype == 'note':
-                    if field.number in status.helptexts:
-                        fieldlist.append('                <div ' + style_def + data_def + 'class="form-group row da-field-container da-field-container-note' + class_def + '"><div class="col-md-12">' + help_wrap(note_fields[field.number], status.helptexts[field.number], status) + '</div></div>\n')
-
-                    else:
-                        fieldlist.append('                <div ' + style_def + data_def + 'class="form-group row da-field-container da-field-container-note' + class_def + '"><div class="col-md-12">' + note_fields[field.number] + '</div></div>\n')
+                            fieldlist.append('                <div ' + style_def + data_def + 'class="form-group row da-field-container da-field-container-note' + class_def + '"><div class="col-md-12">' + note_fields[field.number] + '</div></div>\n')
                     #continue
                 # elif field.datatype in ['script', 'css']:
                 #     continue
@@ -1003,7 +1016,7 @@ def as_html(status, url_for, debug, root, validation_rules, field_error, the_pro
                 else:
                     field_class += ' da-field-container-inputtype-dropdown'
             if field.number in status.helptexts:
-                helptext_start = '<a tabindex="0" class="daterm" data-container="body" data-toggle="popover" data-placement="bottom" data-content=' + noquote(status.helptexts[field.number]) + '>'
+                helptext_start = '<a tabindex="0" class="daterm" data-container="body" data-toggle="popover" data-placement="bottom" data-content=' + noquote(markdown_to_html(status.helptexts[field.number], trim=True)) + '>'
                 helptext_end = '&nbsp;<sup style="white-space: nowrap"><i class="fas fa-question-circle"></i></sup></a>'
             else:
                 helptext_start = ''
@@ -1054,7 +1067,7 @@ def as_html(status, url_for, debug, root, validation_rules, field_error, the_pro
                     for key in ('minlength', 'maxlength'):
                         if hasattr(field, 'extras') and key in field.extras and key in status.extras:
                             #sys.stderr.write("Adding validation rule for " + str(key) + "\n")
-                            validation_rules['rules'][the_saveas][key] = int(status.extras[key][field.number])
+                            validation_rules['rules'][the_saveas][key] = int(float(status.extras[key][field.number]))
                             if key == 'minlength':
                                 validation_rules['messages'][the_saveas][key] = field.validation_message(key, status, word("You must type at least %s characters."), parameters=tuple([status.extras[key][field.number]]))
                             elif key == 'maxlength':
@@ -1082,7 +1095,7 @@ def as_html(status, url_for, debug, root, validation_rules, field_error, the_pro
                                     checkbox_messages['checkatleast'] = field.validation_message('checkbox minlength', status, word("Please select one."))
                                 else:
                                     checkbox_messages['checkatleast'] = field.validation_message('checkbox minlength', status, word("Please select at least %s."), parameters=tuple([status.extras['minlength'][field.number]]))
-                                if int(status.extras['minlength'][field.number]) > 0:
+                                if int(float(status.extras['minlength'][field.number])) > 0:
                                     if 'nota' not in status.extras:
                                         status.extras['nota'] = dict()
                                     status.extras['nota'][field.number] = False
@@ -1169,6 +1182,9 @@ def as_html(status, url_for, debug, root, validation_rules, field_error, the_pro
                     validation_rules['messages'][the_saveas]['required'] = field.validation_message('file required', status, word("You must provide a file."))
                     if 'accept' in status.extras and field.number in status.extras['accept']:
                         validation_rules['messages'][the_saveas]['accept'] = field.validation_message('accept', status, word("Please upload a file with a valid file format."))
+                    if daconfig['maximum content length'] is not None:
+                        validation_rules['rules'][the_saveas]['maxuploadsize'] = daconfig['maximum content length']
+                        validation_rules['messages'][the_saveas]['maxuploadsize'] = field.validation_message('maxuploadsize', status, word("Your file upload is larger than the server can accept. Please reduce the size of your file upload."))
                 if field.datatype in custom_types:
                     if custom_types[field.datatype]['jq_rule'] is not None:
                         if not isinstance(custom_types[field.datatype]['jq_rule'], list):
@@ -1219,24 +1235,28 @@ def as_html(status, url_for, debug, root, validation_rules, field_error, the_pro
             if hasattr(field, 'saveas') and field.saveas in status.embedded:
                 continue
             if hasattr(field, 'label'):
+                if hasattr(field, 'datatype') and field.datatype not in ('checkboxes', 'object_checkboxes'):
+                    label_for = ' for="' + escape_id(label_saveas) + '"'
+                else:
+                    label_for = ''
                 if status.labels[field.number] == 'no label':
-                    fieldlist.append('                <div ' + style_def + data_def + 'class="form-group row' + class_def + '' + side_note_parent + req_tag + field_class + ' da-field-container-nolabel">\n                  <label for="' + escape_id(label_saveas) + '" class="sr-only">' + word("Answer here") + '</label>\n                  <div class="col dawidecol dafieldpart">' + input_for(status, field, wide=True) + '</div>' + side_note + '\n                </div>\n')
+                    fieldlist.append('                <div ' + style_def + data_def + 'class="form-group row' + class_def + '' + side_note_parent + req_tag + field_class + ' da-field-container-nolabel">\n                  <label' + label_for + ' class="sr-only">' + word("Answer here") + '</label>\n                  <div class="col dawidecol dafieldpart">' + input_for(status, field, wide=True) + '</div>' + side_note + '\n                </div>\n')
                 elif hasattr(field, 'inputtype') and field.inputtype in ['yesnowide', 'noyeswide']:
-                    fieldlist.append('                <div ' + style_def + data_def + 'class="form-group row dayesnospacing ' + side_note_parent + field_class + ' da-field-container-nolabel' + class_def + '">\n                  <label for="' + escape_id(label_saveas) + '" class="sr-only">' + word("Check if applicable") + '</label>\n                  <div class="col dawidecol dafieldpart">' + input_for(status, field) + '</div>' + side_note + '\n                </div>\n')
+                    fieldlist.append('                <div ' + style_def + data_def + 'class="form-group row dayesnospacing ' + side_note_parent + field_class + ' da-field-container-nolabel' + class_def + '">\n                  <label' + label_for + ' class="sr-only">' + word("Check if applicable") + '</label>\n                  <div class="col dawidecol dafieldpart">' + input_for(status, field) + '</div>' + side_note + '\n                </div>\n')
                 elif labels_above:
                     if hasattr(field, 'inputtype') and field.inputtype in ['yesno', 'noyes']:
-                        fieldlist.append('                <div ' + style_def + data_def + 'class="form-group dayesnospacing' + side_note_parent + field_class + ' da-field-container-nolabel' + class_def + '">\n                  <label for="' + escape_id(label_saveas) + '" class="sr-only">' + word("Check if applicable") + '</label>\n                  <div class="dafieldpart">' + input_for(status, field) + side_note + '</div>\n                </div>\n')
+                        fieldlist.append('                <div ' + style_def + data_def + 'class="form-group dayesnospacing' + side_note_parent + field_class + ' da-field-container-nolabel' + class_def + '">\n                  <label' + label_for + ' class="sr-only">' + word("Check if applicable") + '</label>\n                  <div class="dafieldpart">' + input_for(status, field) + side_note + '</div>\n                </div>\n')
                     elif status.labels[field.number] == '':
-                        fieldlist.append('                <div ' + style_def + data_def + 'class="form-group' + side_note_parent + req_tag + field_class + ' da-field-container-emptylabel' + class_def + '">\n                  <label for="' + escape_id(label_saveas) + '" class="sr-only">' + word("Answer here") + '</label>\n                  <div class="dafieldpart">' + input_for(status, field) + side_note + '</div>\n                </div>\n')
+                        fieldlist.append('                <div ' + style_def + data_def + 'class="form-group' + side_note_parent + req_tag + field_class + ' da-field-container-emptylabel' + class_def + '">\n                  <label' + label_for + ' class="sr-only">' + word("Answer here") + '</label>\n                  <div class="dafieldpart">' + input_for(status, field) + side_note + '</div>\n                </div>\n')
                     else:
-                        fieldlist.append('                <div ' + style_def + data_def + 'class="form-group' + side_note_parent + req_tag + field_class + class_def + '">\n                  <label class="da-top-label" for="' + escape_id(label_saveas) + '">' + helptext_start + markdown_to_html(status.labels[field.number], trim=True, status=status, strip_newlines=True) + helptext_end + '</label>\n                  <div class="dafieldpart">' + input_for(status, field) + side_note + '</div>\n                </div>\n')
+                        fieldlist.append('                <div ' + style_def + data_def + 'class="form-group' + side_note_parent + req_tag + field_class + class_def + '">\n                  <label class="da-top-label"' + label_for + '>' + helptext_start + markdown_to_html(status.labels[field.number], trim=True, status=status, strip_newlines=True) + helptext_end + '</label>\n                  <div class="dafieldpart">' + input_for(status, field) + side_note + '</div>\n                </div>\n')
                 else:
                     if hasattr(field, 'inputtype') and field.inputtype in ['yesno', 'noyes']:
-                        fieldlist.append('                <div ' + style_def + data_def + 'class="form-group row dayesnospacing' + side_note_parent + req_tag + field_class + ' da-field-container-emptylabel' + class_def + '"><label for="' + escape_id(label_saveas) + '" class="sr-only">' + word("Check if applicable") + '</label><div class="offset-md-4 col-md-8 dafieldpart">' + input_for(status, field) + '</div>' + side_note + '</div>\n')
+                        fieldlist.append('                <div ' + style_def + data_def + 'class="form-group row dayesnospacing' + side_note_parent + req_tag + field_class + ' da-field-container-emptylabel' + class_def + '"><label' + label_for + ' class="sr-only">' + word("Check if applicable") + '</label><div class="offset-md-4 col-md-8 dafieldpart">' + input_for(status, field) + '</div>' + side_note + '</div>\n')
                     elif status.labels[field.number] == '':
-                        fieldlist.append('                <div ' + style_def + data_def + 'class="form-group row' + side_note_parent + req_tag + field_class + ' da-field-container-emptylabel' + class_def + '"><label for="' + escape_id(label_saveas) + '" class="sr-only">' + word("Answer here") + '</label><div class="offset-md-4 col-md-8 dafieldpart danolabel">' + input_for(status, field) + '</div>' + side_note + '</div>\n')
+                        fieldlist.append('                <div ' + style_def + data_def + 'class="form-group row' + side_note_parent + req_tag + field_class + ' da-field-container-emptylabel' + class_def + '"><label' + label_for + ' class="sr-only">' + word("Answer here") + '</label><div class="offset-md-4 col-md-8 dafieldpart danolabel">' + input_for(status, field) + '</div>' + side_note + '</div>\n')
                     else:
-                        fieldlist.append('                <div ' + style_def + data_def + 'class="form-group row' + side_note_parent + req_tag + field_class + class_def + '"><label for="' + escape_id(label_saveas) + '" class="col-md-4 col-form-label da-form-label datext-right">' + helptext_start + markdown_to_html(status.labels[field.number], trim=True, status=status, strip_newlines=True) + helptext_end + '</label><div class="col-md-8 dafieldpart">' + input_for(status, field) + '</div>' + side_note + '</div>\n')
+                        fieldlist.append('                <div ' + style_def + data_def + 'class="form-group row' + side_note_parent + req_tag + field_class + class_def + '"><label' + label_for + ' class="col-md-4 col-form-label da-form-label datext-right">' + helptext_start + markdown_to_html(status.labels[field.number], trim=True, status=status, strip_newlines=True) + helptext_end + '</label><div class="col-md-8 dafieldpart">' + input_for(status, field) + '</div>' + side_note + '</div>\n')
             if hasattr(field, 'extras') and (('show_if_var' in field.extras and 'show_if_val' in status.extras) or 'show_if_js' in field.extras):
                 fieldlist.append('                </div>\n')
         output += status.pre
@@ -1789,7 +1809,7 @@ def as_html(status, url_for, debug, root, validation_rules, field_error, the_pro
                     <div class="input-group">
                       <label for="daMessage" class="sr-only">""" + word("Chat message you want to send") + """</label>
                       <input type="text" class="form-control daChatMessage" id="daMessage" placeholder=""" + fix_double_quote(word("Type your message here.")) + """>
-                      <button class="btn """ + BUTTON_STYLE + """-secondary daChatButton" id="daSend" type="button">""" + word("Send") + """</button>
+                      <button class="btn """ + BUTTON_STYLE + """secondary daChatButton" id="daSend" type="button">""" + word("Send") + """</button>
                     </div>
                   </div>
                 </div>
@@ -2437,9 +2457,9 @@ def input_for(status, field, wide=False, embedded=False):
             maximagesize = ''
             if 'max_image_size' in status.extras:
                 if status.extras['max_image_size']:
-                    maximagesize = 'data-maximagesize="' + str(int(status.extras['max_image_size'])) + '" '
+                    maximagesize = 'data-maximagesize="' + str(int(float(status.extras['max_image_size']))) + '" '
             elif status.question.interview.max_image_size:
-                maximagesize = 'data-maximagesize="' + str(int(status.question.interview.max_image_size)) + '" '
+                maximagesize = 'data-maximagesize="' + str(int(float(status.question.interview.max_image_size))) + '" '
             imagetype = ''
             if 'image_type' in status.extras:
                 if status.extras['image_type']:
@@ -2489,7 +2509,7 @@ def input_for(status, field, wide=False, embedded=False):
                 output += '</span>'
         elif hasattr(field, 'inputtype') and field.inputtype == 'ajax':
             if defaultvalue is not None and isinstance(defaultvalue, (str, int, bool, float)):
-                if field.datatype in ('currency', 'number') and hasattr(field, 'extras') and 'step' in field.extras and 'step' in status.extras and field.number in status.extras['step'] and int(status.extras['step'][field.number]) == float(status.extras['step'][field.number]):
+                if field.datatype in ('currency', 'number') and hasattr(field, 'extras') and 'step' in field.extras and 'step' in status.extras and field.number in status.extras['step'] and int(float(status.extras['step'][field.number])) == float(status.extras['step'][field.number]):
                     defaultvalue = int(float(defaultvalue))
                 defaultstring = ' value=' + fix_double_quote(str(defaultvalue))
                 default_val = defaultvalue
@@ -2528,7 +2548,7 @@ def input_for(status, field, wide=False, embedded=False):
                     the_date = format_datetime(defaultvalue, format='yyyy-MM-ddTHH:mm')
                     if the_date != word("Bad date"):
                         defaultvalue = the_date
-                elif field.datatype in ('currency', 'number') and hasattr(field, 'extras') and 'step' in field.extras and 'step' in status.extras and field.number in status.extras['step'] and int(status.extras['step'][field.number]) == float(status.extras['step'][field.number]):
+                elif field.datatype in ('currency', 'number') and hasattr(field, 'extras') and 'step' in field.extras and 'step' in status.extras and field.number in status.extras['step'] and int(float(status.extras['step'][field.number])) == float(status.extras['step'][field.number]):
                     defaultvalue = int(float(defaultvalue))
                 defaultstring = ' value=' + fix_double_quote(str(defaultvalue))
             elif isinstance(defaultvalue, datetime.datetime):
@@ -2561,7 +2581,7 @@ def input_for(status, field, wide=False, embedded=False):
                         output += '<span class="da-embed-currency-wrapper"><span class="da-embed-currency-symbol">' + the_currency_symbol(status, field) + '</span>'
                     else:
                         output += '<div class="input-group mb-2"><div class="input-group-prepend" id="addon-' + do_escape_id(saveas_string) + '"><div class="input-group-text">' + the_currency_symbol(status, field) + '</div></div>'
-            if field.datatype == 'ml':
+            if field.datatype in ('ml', 'raw'):
                 input_type = 'text'
             if embedded:
                 output += '<span class="da-inline-error-wrapper">'

@@ -39,6 +39,10 @@ import docassemble.webapp.worker
 from docassemble.webapp.mailgun_mail import Mail as MailgunMail
 from docassemble.webapp.sendgrid_mail import Mail as SendgridMail
 from docassemble.webapp.fixpickle import fix_pickle_obj, fix_pickle_dict
+from docassemble.webapp.screenreader import to_text
+import pandas
+import math
+import xml.etree.ElementTree as ET
 
 #sys.stderr.write("I am in backend\n")
 
@@ -274,6 +278,14 @@ def get_info_from_file_number_with_uids(*pargs, **kwargs):
     return get_info_from_file_number(*pargs, **kwargs)
 
 
+classes = daconfig['table css class'].split(',')
+DEFAULT_TABLE_CLASS = json.dumps(classes[0].strip())
+if len(classes) > 1:
+    DEFAULT_THEAD_CLASS = json.dumps(classes[1].strip())
+else:
+    DEFAULT_THEAD_CLASS = None
+del classes
+
 docassemble.base.functions.update_server(default_language=DEFAULT_LANGUAGE,
                                          default_locale=DEFAULT_LOCALE,
                                          default_dialect=DEFAULT_DIALECT,
@@ -299,7 +311,10 @@ docassemble.base.functions.update_server(default_language=DEFAULT_LANGUAGE,
                                          server_sql_set=sql_set,
                                          server_sql_delete=sql_delete,
                                          server_sql_keys=sql_keys,
-                                         alchemy_url=docassemble.webapp.user_database.alchemy_url)
+                                         alchemy_url=docassemble.webapp.user_database.alchemy_url,
+                                         default_table_class=DEFAULT_TABLE_CLASS,
+                                         default_thead_class=DEFAULT_THEAD_CLASS,
+                                         to_text=to_text)
 docassemble.base.functions.set_language(DEFAULT_LANGUAGE, dialect=DEFAULT_DIALECT)
 docassemble.base.functions.set_locale(DEFAULT_LOCALE)
 docassemble.base.functions.update_locale()
@@ -317,19 +332,127 @@ for word_file in word_file_list:
         sys.stderr.write("Error reading " + str(word_file) + ": file not found.\n")
         continue
     if os.path.isfile(filename):
-        with open(filename, 'rU', encoding='utf-8') as stream:
+        if filename.lower().endswith('.yaml') or filename.lower().endswith('.yml'):
+            with open(filename, 'rU', encoding='utf-8') as stream:
+                try:
+                    for document in ruamel.yaml.safe_load_all(stream):
+                        if document and type(document) is dict:
+                            for lang, words in document.items():
+                                if type(words) is dict:
+                                    docassemble.base.functions.update_word_collection(lang, words)
+                                else:
+                                    sys.stderr.write("Error reading " + str(word_file) + ": words not in dictionary form.\n")
+                        else:
+                            sys.stderr.write("Error reading " + str(word_file) + ": yaml file not in dictionary form.\n")
+                except:
+                    sys.stderr.write("Error reading " + str(word_file) + ": yaml could not be processed.\n")
+        elif filename.lower().endswith('.xlsx'):
             try:
-                for document in ruamel.yaml.safe_load_all(stream):
-                    if document and type(document) is dict:
-                        for lang, words in document.items():
-                            if type(words) is dict:
-                                docassemble.base.functions.update_word_collection(lang, words)
-                            else:
-                                sys.stderr.write("Error reading " + str(word_file) + ": words not in dictionary form.\n")
-                    else:
-                        sys.stderr.write("Error reading " + str(word_file) + ": yaml file not in dictionary form.\n")
-            except:
-                sys.stderr.write("Error reading " + str(word_file) + ": yaml could not be processed.\n")
+                df = pandas.read_excel(filename, na_values=['#NA', '#N/A'], keep_default_na=False)
+                invalid = False
+                for column_name in ('orig_lang', 'tr_lang', 'orig_text', 'tr_text'):
+                    if column_name not in df.columns:
+                        invalid = True
+                        break
+                if invalid:
+                    sys.stderr.write("Error reading " + str(word_file) + ": xlsx did not have the correct columns.\n")
+                    continue
+                translations = dict()
+                problems = list()
+                for indexno in df.index:
+                    try:
+                        assert df['orig_lang'][indexno]
+                        assert df['tr_lang'][indexno]
+                        assert df['orig_text'][indexno] != ''
+                        assert df['tr_text'][indexno] != ''
+                        if isinstance(df['orig_text'][indexno], float):
+                            assert not math.isnan(df['orig_text'][indexno])
+                        if isinstance(df['tr_text'][indexno], float):
+                            assert not math.isnan(df['tr_text'][indexno])
+                    except:
+                        problems.append(str(indexno + 2))
+                        continue
+                    if df['tr_lang'][indexno] not in translations:
+                        translations[df['tr_lang'][indexno]] = dict()
+                    translations[df['tr_lang'][indexno]][str(df['orig_text'][indexno])] = str(df['tr_text'][indexno])
+                for lang, the_dict in translations.items():
+                    try:
+                        docassemble.base.functions.update_word_collection(lang, the_dict)
+                    except:
+                        sys.stderr.write("Error reading " + str(word_file) + ": xlsx for language " + lang + " could not be processed.\n")
+                if len(problems) > 0:
+                    sys.stderr.write("Error reading " + str(word_file) + ": could not read lines " + ", ".join(problems) + ".\n")
+            except Exception as err:
+                sys.stderr.write("Error reading " + str(word_file) + ": xlsx processing raised exception " + err.__class__.__name__ + ": " + str(err) + "\n")
+        elif filename.lower().endswith('.xlf') or filename.lower().endswith('.xliff'):
+            try:
+                tree = ET.parse(filename)
+                root = tree.getroot()
+                translations = dict()
+                if root.attrib['version'] == "1.2":
+                    for the_file in root.iter('{urn:oasis:names:tc:xliff:document:1.2}file'):
+                        source_lang = the_file.attrib.get('source-language', 'en')
+                        target_lang = the_file.attrib.get('target-language', 'en')
+                        if target_lang not in translations:
+                            translations[target_lang] = dict()
+                        for transunit in the_file.iter('{urn:oasis:names:tc:xliff:document:1.2}trans-unit'):
+                            orig_text = ''
+                            tr_text = ''
+                            for source in transunit.iter('{urn:oasis:names:tc:xliff:document:1.2}source'):
+                                if source.text:
+                                    orig_text += source.text
+                                for mrk in source:
+                                    orig_text += mrk.text
+                                    if mrk.tail:
+                                        orig_text += mrk.tail
+                            for target in transunit.iter('{urn:oasis:names:tc:xliff:document:1.2}target'):
+                                if target.text:
+                                    tr_text += target.text
+                                for mrk in target:
+                                    tr_text += mrk.text
+                                    if mrk.tail:
+                                        tr_text += mrk.tail
+                            if orig_text == '' or tr_text == '':
+                                continue
+                            translations[target_lang][orig_text] = tr_text
+                elif root.attrib['version'] == "2.0":
+                    source_lang = root.attrib['srcLang']
+                    target_lang = root.attrib['trgLang']
+                    if target_lang not in translations:
+                        translations[target_lang] = dict()
+                    for segment in root.iter('{urn:oasis:names:tc:xliff:document:2.0}segment'):
+                        orig_text = ''
+                        tr_text = ''
+                        for source in segment.iter('{urn:oasis:names:tc:xliff:document:2.0}source'):
+                            if source.text:
+                                orig_text += source.text
+                            for mrk in source:
+                                orig_text += mrk.text
+                                if mrk.tail:
+                                    orig_text += mrk.tail
+                        for target in segment.iter('{urn:oasis:names:tc:xliff:document:2.0}target'):
+                            if target.text:
+                                tr_text += target.text
+                            for mrk in target:
+                                tr_text += mrk.text
+                                if mrk.tail:
+                                    tr_text += mrk.tail
+                        if orig_text == '' or tr_text == '':
+                            continue
+                        translations[target_lang][orig_text] = tr_text
+                else:
+                    sys.stderr.write("Error reading " + str(word_file) + ": invalid XLIFF version.\n")
+                for lang, the_dict in translations.items():
+                    try:
+                        docassemble.base.functions.update_word_collection(lang, the_dict)
+                    except:
+                        sys.stderr.write("Error reading " + str(word_file) + ": xlf for language " + lang + " could not be processed.\n")
+            except Exception as err:
+                sys.stderr.write("Error reading " + str(word_file) + ": xlf processing raised exception " + err.__class__.__name__ + ": " + str(err) + "\n")
+        else:
+            sys.stderr.write("filename " + filename + " had an unknown type\n")
+    else:
+        sys.stderr.write("filename " + filename + " did not exist\n")
 
 if 'currency symbol' in daconfig:
     docassemble.base.functions.update_language_function('*', 'currency_symbol', lambda: daconfig['currency symbol'])
@@ -491,7 +614,7 @@ def safe_pickle(the_object):
         for sub_object in the_object:
             new_set.add(safe_pickle(sub_object))
         return new_set
-    if type(the_object) in [types.ModuleType, types.FunctionType, TypeType, types.BuiltinFunctionType, types.BuiltinMethodType, types.MethodType, types.ClassType, FileType]:
+    if type(the_object) in [types.ModuleType, types.FunctionType, TypeType, types.BuiltinFunctionType, types.BuiltinMethodType, types.MethodType, FileType]:
         return None
     return the_object
 
@@ -507,54 +630,6 @@ def decrypt_dictionary(dict_string, secret):
 def unpack_dictionary(dict_string):
     dict_string = codecs.decode(bytearray(dict_string, encoding='utf-8'), 'base64')
     return fix_pickle_dict(dict_string)
-
-def safe_json(the_object, level=0):
-    if level > 20:
-        return None
-    if isinstance(the_object, (str, bool, int, float)):
-        return the_object
-    if isinstance(the_object, list):
-        return [safe_json(x, level=level+1) for x in the_object]
-    if isinstance(the_object, dict):
-        new_dict = dict()
-        for key, value in the_object.items():
-            new_dict[key] = safe_json(value, level=level+1)
-        return new_dict
-    if isinstance(the_object, set):
-        new_list = list()
-        for sub_object in the_object:
-            new_list.append(safe_json(sub_object, level=level+1))
-        return new_list
-    if type(the_object) in [types.ModuleType, types.FunctionType, TypeType, types.BuiltinFunctionType, types.BuiltinMethodType, types.MethodType, types.ClassType, FileType]:
-        return None
-    if isinstance(the_object, datetime.datetime):
-        serial = the_object.isoformat()
-        return serial
-    if isinstance(the_object, datetime.time):
-        serial = the_object.isoformat()
-        return serial
-    if isinstance(the_object, decimal.Decimal):
-        return float(the_object)
-    if isinstance(the_object, DANav):
-        return dict(past=list(the_object.past), current=the_object.current, hidden=(the_object.hidden if hasattr(the_object, 'hidden') else False), progressive=(the_object.progressive if hasattr(the_object, 'progressive') else True))
-    from docassemble.base.core import DAObject
-    if isinstance(the_object, DAObject):
-        new_dict = dict()
-        new_dict['_class'] = type_name(the_object)
-        if the_object.__class__.__name__ == 'DALazyTemplate' or the_object.__class__.__name__ == 'DALazyTableTemplate':
-            if hasattr(the_object, 'instanceName'):
-                new_dict['instanceName'] = the_object.instanceName
-            return new_dict
-        for key, data in the_object.__dict__.items():
-            if key in ['has_nonrandom_instance_name', 'attrList']:
-                continue
-            new_dict[key] = safe_json(data, level=level+1)
-        return new_dict
-    try:
-        json.dumps(the_object)
-    except:
-        return None
-    return the_object
 
 def nice_date_from_utc(timestamp, timezone=tz.tzlocal()):
     return timestamp.replace(tzinfo=tz.tzutc()).astimezone(timezone).strftime('%x %X')
@@ -869,7 +944,10 @@ def get_chat_log(chat_mode, yaml_filename, session_id, user_id, temp_user_id, se
                 if person is None:
                     sys.stderr.write("Person " + str(record.user_id) + " did not exist\n")
                     continue
-                messages.append(dict(id=record.id, is_self=is_self, temp_owner_id=record.temp_owner_id, temp_user_id=record.temp_user_id, owner_id=record.owner_id, user_id=record.user_id, first_name=person.first_name, last_name=person.last_name, email=person.email, modtime=modtime, message=message, roles=[role.name for role in person.roles]))
+                role_list = [role.name for role in person.roles]
+                if len(role_list) == 0:
+                    role_list = ['user']
+                messages.append(dict(id=record.id, is_self=is_self, temp_owner_id=record.temp_owner_id, temp_user_id=record.temp_user_id, owner_id=record.owner_id, user_id=record.user_id, first_name=person.first_name, last_name=person.last_name, email=person.email, modtime=modtime, message=message, roles=role_list))
             else:
                 messages.append(dict(id=record.id, is_self=is_self, temp_owner_id=record.temp_owner_id, temp_user_id=record.temp_user_id, owner_id=record.owner_id, user_id=record.user_id, modtime=modtime, message=message, roles=['user']))
     else:
@@ -903,7 +981,10 @@ def get_chat_log(chat_mode, yaml_filename, session_id, user_id, temp_user_id, se
                 if person is None:
                     sys.stderr.write("Person " + str(record.user_id) + " did not exist\n")
                     continue
-                messages.append(dict(id=record.id, is_self=is_self, temp_owner_id=record.temp_owner_id, temp_user_id=record.temp_user_id, owner_id=record.owner_id, user_id=record.user_id, first_name=person.first_name, last_name=person.last_name, email=person.email, modtime=modtime, message=message, roles=[role.name for role in person.roles]))
+                role_list = [role.name for role in person.roles]
+                if len(role_list) == 0:
+                    role_list = ['user']
+                messages.append(dict(id=record.id, is_self=is_self, temp_owner_id=record.temp_owner_id, temp_user_id=record.temp_user_id, owner_id=record.owner_id, user_id=record.user_id, first_name=person.first_name, last_name=person.last_name, email=person.email, modtime=modtime, message=message, roles=role_list))
             else:
                 messages.append(dict(id=record.id, is_self=is_self, temp_owner_id=record.temp_owner_id, temp_user_id=record.temp_user_id, owner_id=record.owner_id, user_id=record.user_id, modtime=modtime, message=message, roles=['user']))
     return messages

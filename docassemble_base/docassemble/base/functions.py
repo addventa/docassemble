@@ -1,12 +1,12 @@
 import types
 import markdown
 from mdx_smartypants import SmartypantsExt
-import pattern.en
-import pattern.es
-import pattern.de
-import pattern.fr
-import pattern.it
-import pattern.nl
+import docassemble_pattern.en
+import docassemble_pattern.es
+import docassemble_pattern.de
+import docassemble_pattern.fr
+import docassemble_pattern.it
+import docassemble_pattern.nl
 import re
 from pylatex.utils import escape_latex
 #import operator
@@ -43,13 +43,14 @@ from user_agents import parse as ua_parse
 import phonenumbers
 import werkzeug.utils
 import num2words
+from unicodedata import normalize
 from collections.abc import Iterable
 from jinja2.runtime import Undefined
 TypeType = type(type(None))
 locale.setlocale(locale.LC_ALL, '')
 contains_volatile = re.compile('^(x\.|x\[|.*\[[ijklmn]\])')
 
-__all__ = ['alpha', 'roman', 'item_label', 'ordinal', 'ordinal_number', 'comma_list', 'word', 'get_language', 'set_language', 'get_dialect', 'set_country', 'get_country', 'get_locale', 'set_locale', 'comma_and_list', 'need', 'nice_number', 'quantity_noun', 'currency_symbol', 'verb_past', 'verb_present', 'noun_plural', 'noun_singular', 'indefinite_article', 'capitalize', 'space_to_underscore', 'force_ask', 'period_list', 'name_suffix', 'currency', 'static_image', 'title_case', 'url_of', 'process_action', 'url_action', 'get_info', 'set_info', 'get_config', 'prevent_going_back', 'qr_code', 'action_menu_item', 'from_b64_json', 'defined', 'value', 'message', 'response', 'json_response', 'command', 'background_response', 'background_response_action', 'single_paragraph', 'quote_paragraphs', 'location_returned', 'location_known', 'user_lat_lon', 'interview_url', 'interview_url_action', 'interview_url_as_qr', 'interview_url_action_as_qr', 'interview_email', 'get_emails', 'action_arguments', 'action_argument', 'get_default_timezone', 'user_logged_in', 'user_privileges', 'user_has_privilege', 'user_info', 'set_task_counter', 'background_action', 'background_response', 'background_response_action', 'us', 'set_live_help_status', 'chat_partners_available', 'phone_number_in_e164', 'phone_number_formatted', 'phone_number_is_valid', 'countries_list', 'country_name', 'write_record', 'read_records', 'delete_record', 'variables_as_json', 'all_variables', 'language_from_browser', 'device', 'plain', 'bold', 'italic', 'subdivision_type', 'indent', 'raw', 'fix_punctuation', 'set_progress', 'get_progress', 'referring_url', 'undefine', 'invalidate', 'dispatch', 'yesno', 'noyes', 'phone_number_part', 'log', 'encode_name', 'decode_name', 'interview_list', 'interview_menu', 'server_capabilities', 'session_tags', 'get_chat_log', 'get_user_list', 'get_user_info', 'set_user_info', 'get_user_secret', 'create_user', 'create_session', 'get_session_variables', 'set_session_variables', 'go_back_in_session', 'manage_privileges', 'redact', 'forget_result_of', 're_run_logic', 'reconsider', 'get_question_data', 'set_save_status', 'single_to_double_newlines', 'verbatim', 'add_separators', 'store_variables_snapshot']
+__all__ = ['alpha', 'roman', 'item_label', 'ordinal', 'ordinal_number', 'comma_list', 'word', 'get_language', 'set_language', 'get_dialect', 'set_country', 'get_country', 'get_locale', 'set_locale', 'comma_and_list', 'need', 'nice_number', 'quantity_noun', 'currency_symbol', 'verb_past', 'verb_present', 'noun_plural', 'noun_singular', 'indefinite_article', 'capitalize', 'space_to_underscore', 'force_ask', 'period_list', 'name_suffix', 'currency', 'static_image', 'title_case', 'url_of', 'process_action', 'url_action', 'get_info', 'set_info', 'get_config', 'prevent_going_back', 'qr_code', 'action_menu_item', 'from_b64_json', 'defined', 'value', 'message', 'response', 'json_response', 'command', 'background_response', 'background_response_action', 'single_paragraph', 'quote_paragraphs', 'location_returned', 'location_known', 'user_lat_lon', 'interview_url', 'interview_url_action', 'interview_url_as_qr', 'interview_url_action_as_qr', 'interview_email', 'get_emails', 'action_arguments', 'action_argument', 'get_default_timezone', 'user_logged_in', 'user_privileges', 'user_has_privilege', 'user_info', 'set_task_counter', 'background_action', 'background_response', 'background_response_action', 'us', 'set_live_help_status', 'chat_partners_available', 'phone_number_in_e164', 'phone_number_formatted', 'phone_number_is_valid', 'countries_list', 'country_name', 'write_record', 'read_records', 'delete_record', 'variables_as_json', 'all_variables', 'language_from_browser', 'device', 'plain', 'bold', 'italic', 'subdivision_type', 'indent', 'raw', 'fix_punctuation', 'set_progress', 'get_progress', 'referring_url', 'undefine', 'invalidate', 'dispatch', 'yesno', 'noyes', 'phone_number_part', 'log', 'encode_name', 'decode_name', 'interview_list', 'interview_menu', 'server_capabilities', 'session_tags', 'get_chat_log', 'get_user_list', 'get_user_info', 'set_user_info', 'get_user_secret', 'create_user', 'create_session', 'get_session_variables', 'set_session_variables', 'go_back_in_session', 'manage_privileges', 'redact', 'forget_result_of', 're_run_logic', 'reconsider', 'get_question_data', 'set_save_status', 'single_to_double_newlines', 'verbatim', 'add_separators', 'store_variables_snapshot', 'update_terms']
 
 # debug = False
 # default_dialect = 'us'
@@ -323,7 +324,7 @@ def language_from_browser(*pargs):
 def country_name(country_code):
     """Given a two-digit country code, returns the country name."""
     ensure_definition(country_code)
-    return pycountry.countries.get(alpha_2=country_code).name
+    return word(pycountry.countries.get(alpha_2=country_code).name)
 
 def state_name(state_code, country_code=None):
     """Given a two-digit U.S. state abbreviation or the abbreviation of a
@@ -335,7 +336,7 @@ def state_name(state_code, country_code=None):
     for subdivision in pycountry.subdivisions.get(country_code=country_code):
         m = re.search(r'-([A-Z]+)$', subdivision.code)
         if m and m.group(1) == state_code:
-            return subdivision.name
+            return word(subdivision.name)
     return state_code
     #return us.states.lookup(state_code).name
 
@@ -353,15 +354,265 @@ def subdivision_type(country_code):
             counts[subdivision.type] += 1
     counts_ordered = sorted(counts.keys(), key=lambda x: counts[x], reverse=True)
     if len(counts_ordered) > 1 and counts[counts_ordered[1]] > 0.5*counts[counts_ordered[0]]:
-        return counts_ordered[0] + '/' + counts_ordered[1]
+        return word(counts_ordered[0] + '/' + counts_ordered[1])
     elif len(counts_ordered) > 0:
-        return counts_ordered[0]
+        return word(counts_ordered[0])
     else:
         return None
 
+# word('Aruba')
+# word('Afghanistan')
+# word('Angola')
+# word('Anguilla')
+# word('Åland Islands')
+# word('Albania')
+# word('Andorra')
+# word('United Arab Emirates')
+# word('Argentina')
+# word('Armenia')
+# word('American Samoa')
+# word('Antarctica')
+# word('French Southern Territories')
+# word('Antigua and Barbuda')
+# word('Australia')
+# word('Austria')
+# word('Azerbaijan')
+# word('Burundi')
+# word('Belgium')
+# word('Benin')
+# word('Bonaire, Sint Eustatius and Saba')
+# word('Burkina Faso')
+# word('Bangladesh')
+# word('Bulgaria')
+# word('Bahrain')
+# word('Bahamas')
+# word('Bosnia and Herzegovina')
+# word('Saint Barthélemy')
+# word('Belarus')
+# word('Belize')
+# word('Bermuda')
+# word('Bolivia, Plurinational State of')
+# word('Brazil')
+# word('Barbados')
+# word('Brunei Darussalam')
+# word('Bhutan')
+# word('Bouvet Island')
+# word('Botswana')
+# word('Central African Republic')
+# word('Canada')
+# word('Cocos (Keeling) Islands')
+# word('Switzerland')
+# word('Chile')
+# word('China')
+# word('Côte d'Ivoire')
+# word('Cameroon')
+# word('Congo, The Democratic Republic of the')
+# word('Congo')
+# word('Cook Islands')
+# word('Colombia')
+# word('Comoros')
+# word('Cabo Verde')
+# word('Costa Rica')
+# word('Cuba')
+# word('Curaçao')
+# word('Christmas Island')
+# word('Cayman Islands')
+# word('Cyprus')
+# word('Czechia')
+# word('Germany')
+# word('Djibouti')
+# word('Dominica')
+# word('Denmark')
+# word('Dominican Republic')
+# word('Algeria')
+# word('Ecuador')
+# word('Egypt')
+# word('Eritrea')
+# word('Western Sahara')
+# word('Spain')
+# word('Estonia')
+# word('Ethiopia')
+# word('Finland')
+# word('Fiji')
+# word('Falkland Islands (Malvinas)')
+# word('France')
+# word('Faroe Islands')
+# word('Micronesia, Federated States of')
+# word('Gabon')
+# word('United Kingdom')
+# word('Georgia')
+# word('Guernsey')
+# word('Ghana')
+# word('Gibraltar')
+# word('Guinea')
+# word('Guadeloupe')
+# word('Gambia')
+# word('Guinea-Bissau')
+# word('Equatorial Guinea')
+# word('Greece')
+# word('Grenada')
+# word('Greenland')
+# word('Guatemala')
+# word('French Guiana')
+# word('Guam')
+# word('Guyana')
+# word('Hong Kong')
+# word('Heard Island and McDonald Islands')
+# word('Honduras')
+# word('Croatia')
+# word('Haiti')
+# word('Hungary')
+# word('Indonesia')
+# word('Isle of Man')
+# word('India')
+# word('British Indian Ocean Territory')
+# word('Ireland')
+# word('Iran, Islamic Republic of')
+# word('Iraq')
+# word('Iceland')
+# word('Israel')
+# word('Italy')
+# word('Jamaica')
+# word('Jersey')
+# word('Jordan')
+# word('Japan')
+# word('Kazakhstan')
+# word('Kenya')
+# word('Kyrgyzstan')
+# word('Cambodia')
+# word('Kiribati')
+# word('Saint Kitts and Nevis')
+# word('Korea, Republic of')
+# word('Kuwait')
+# word('Lao People's Democratic Republic')
+# word('Lebanon')
+# word('Liberia')
+# word('Libya')
+# word('Saint Lucia')
+# word('Liechtenstein')
+# word('Sri Lanka')
+# word('Lesotho')
+# word('Lithuania')
+# word('Luxembourg')
+# word('Latvia')
+# word('Macao')
+# word('Saint Martin (French part)')
+# word('Morocco')
+# word('Monaco')
+# word('Moldova, Republic of')
+# word('Madagascar')
+# word('Maldives')
+# word('Mexico')
+# word('Marshall Islands')
+# word('North Macedonia')
+# word('Mali')
+# word('Malta')
+# word('Myanmar')
+# word('Montenegro')
+# word('Mongolia')
+# word('Northern Mariana Islands')
+# word('Mozambique')
+# word('Mauritania')
+# word('Montserrat')
+# word('Martinique')
+# word('Mauritius')
+# word('Malawi')
+# word('Malaysia')
+# word('Mayotte')
+# word('Namibia')
+# word('New Caledonia')
+# word('Niger')
+# word('Norfolk Island')
+# word('Nigeria')
+# word('Nicaragua')
+# word('Niue')
+# word('Netherlands')
+# word('Norway')
+# word('Nepal')
+# word('Nauru')
+# word('New Zealand')
+# word('Oman')
+# word('Pakistan')
+# word('Panama')
+# word('Pitcairn')
+# word('Peru')
+# word('Philippines')
+# word('Palau')
+# word('Papua New Guinea')
+# word('Poland')
+# word('Puerto Rico')
+# word('Korea, Democratic People's Republic of')
+# word('Portugal')
+# word('Paraguay')
+# word('Palestine, State of')
+# word('French Polynesia')
+# word('Qatar')
+# word('Réunion')
+# word('Romania')
+# word('Russian Federation')
+# word('Rwanda')
+# word('Saudi Arabia')
+# word('Sudan')
+# word('Senegal')
+# word('Singapore')
+# word('South Georgia and the South Sandwich Islands')
+# word('Saint Helena, Ascension and Tristan da Cunha')
+# word('Svalbard and Jan Mayen')
+# word('Solomon Islands')
+# word('Sierra Leone')
+# word('El Salvador')
+# word('San Marino')
+# word('Somalia')
+# word('Saint Pierre and Miquelon')
+# word('Serbia')
+# word('South Sudan')
+# word('Sao Tome and Principe')
+# word('Suriname')
+# word('Slovakia')
+# word('Slovenia')
+# word('Sweden')
+# word('Eswatini')
+# word('Sint Maarten (Dutch part)')
+# word('Seychelles')
+# word('Syrian Arab Republic')
+# word('Turks and Caicos Islands')
+# word('Chad')
+# word('Togo')
+# word('Thailand')
+# word('Tajikistan')
+# word('Tokelau')
+# word('Turkmenistan')
+# word('Timor-Leste')
+# word('Tonga')
+# word('Trinidad and Tobago')
+# word('Tunisia')
+# word('Turkey')
+# word('Tuvalu')
+# word('Taiwan, Province of China')
+# word('Tanzania, United Republic of')
+# word('Uganda')
+# word('Ukraine')
+# word('United States Minor Outlying Islands')
+# word('Uruguay')
+# word('United States')
+# word('Uzbekistan')
+# word('Holy See (Vatican City State)')
+# word('Saint Vincent and the Grenadines')
+# word('Venezuela, Bolivarian Republic of')
+# word('Virgin Islands, British')
+# word('Virgin Islands, U.S.')
+# word('Viet Nam')
+# word('Vanuatu')
+# word('Wallis and Futuna')
+# word('Samoa')
+# word('Yemen')
+# word('South Africa')
+# word('Zambia')
+# word('Zimbabwe')
+
 def countries_list():
     """Returns a list of countries, suitable for use in a multiple choice field."""
-    return [{country.alpha_2: country.name} for country in sorted(pycountry.countries, key=lambda x: x.name)]
+    return [{country.alpha_2: word(country.name)} for country in sorted(pycountry.countries, key=lambda x: x.name)]
 
 def states_list(country_code=None):
     """Returns a list of U.S. states or subdivisions of another country,
@@ -375,7 +626,7 @@ def states_list(country_code=None):
             continue
         m = re.search(r'-([A-Z0-9]+)$', subdivision.code)
         if m:
-            mapping[m.group(1)] = subdivision.name
+            mapping[m.group(1)] = word(subdivision.name)
     return mapping
 
 def interface():
@@ -450,6 +701,10 @@ def user_info():
         user.question_id = this_thread.current_question.id
     except:
         user.question_id = None
+    try:
+        user.variable = this_thread.current_variable[-1]
+    except:
+        user.variable = None
     return user
 
 def action_arguments():
@@ -598,8 +853,10 @@ def interview_url(**kwargs):
                 url = url_of('run_new', **args)
             else:
                 url = url_of('run', **args)
-    else:
+    elif 'style' not in args and args['i'] == this_thread.current_info['yaml_filename']:
         url = url_of('flex_interview', **args)
+    else:
+        url = url_of('interview', **args)
     if 'temporary' in args:
         if isinstance(args['temporary'], (int, float)) and args['temporary'] > 0:
             expire_seconds = int(args['temporary'] * 60 * 60)
@@ -831,8 +1088,10 @@ def interview_url_action(action, **kwargs):
                 url = url_of('run_new', **args)
             else:
                 url = url_of('run', **args)
-    else:
+    elif 'style' not in args and args['i'] == this_thread.current_info['yaml_filename']:
         url = url_of('flex_interview', **args)
+    else:
+        url = url_of('interview', **args)
     if 'temporary' in kwargs:
         args['temporary'] = kwargs['temporary']
     if 'once_temporary' in kwargs:
@@ -884,7 +1143,7 @@ def interview_url_action_as_qr(action, **kwargs):
 
 def get_info(att):
     """Used to retrieve the values of global variables set through set_info()."""
-    if hasattr(this_thread, att):
+    if hasattr(this_thread.global_vars, att):
         return getattr(this_thread.global_vars, att)
     return None
 
@@ -903,6 +1162,42 @@ def set_progress(number):
 def get_progress():
     """Returns the position of the progress meter."""
     return this_thread.internal['progress']
+
+def update_terms(dictionary, auto=False, language='*'):
+    """Defines terms and auto terms"""
+    if auto:
+        type_of_term = 'autoterms'
+    else:
+        type_of_term = 'terms'
+    if type_of_term not in this_thread.internal:
+        this_thread.internal[type_of_term] = dict()
+    if language not in this_thread.internal[type_of_term]:
+        this_thread.internal[type_of_term][language] = dict()
+    terms = this_thread.internal[type_of_term][language]
+    if isinstance(dictionary, list):
+        for termitem in dictionary:
+            if isinstance(termitem, dict):
+                if len(termitem) == 2 and 'phrases' in termitem and isinstance(termitem['phrases'], list) and 'definition' in termitem:
+                    termitems = [(phrase, termitem['definition']) for phrase in termitem['phrases']]
+                else:
+                    termitems = termitem.items()
+                for term, definition in termitems:
+                    lower_term = re.sub(r'\s+', ' ', term.lower())
+                    if auto:
+                        terms[lower_term] = {'definition': str(definition), 're': re.compile(r"{?(?i)\b(%s)\b}?" % (re.sub(r'\s', '\\\s+', lower_term),), re.IGNORECASE | re.DOTALL)}
+                    else:
+                        terms[lower_term] = {'definition': str(definition), 're': re.compile(r"{(?i)(%s)(\|[^\}]*)?}" % (re.sub(r'\s', '\\\s+', lower_term),), re.IGNORECASE | re.DOTALL)}
+            else:
+                raise DAError("update_terms: terms organized as a list must be a list of dictionary items.")
+    elif isinstance(dictionary, dict):
+        for term in dictionary:
+            lower_term = re.sub(r'\s+', ' ', term.lower())
+            if auto:
+                terms[lower_term] = {'definition': str(dictionary[term]), 're': re.compile(r"{?(?i)\b(%s)\b}?" % (re.sub(r'\s', '\\\s+', lower_term),), re.IGNORECASE | re.DOTALL)}
+            else:
+                terms[lower_term] = {'definition': str(dictionary[term]), 're': re.compile(r"{(?i)(%s)(\|[^\}]*)?}" % (re.sub(r'\s', '\\\s+', lower_term),), re.IGNORECASE | re.DOTALL)}
+    else:
+        raise DAError("update_terms: terms must be organized as a dictionary or a list.")
 
 def set_save_status(status):
     """Indicates whether the current processing of the interview logic should result in a new step in the interview."""
@@ -1179,6 +1474,7 @@ server.wait_for_task = null_func
 server.worker_convert = null_func
 server.write_answer_json = null_func
 server.write_record = null_func
+server.to_text = null_func
 
 def write_record(key, data):
     """Stores the data in a SQL database for later retrieval with the
@@ -1396,7 +1692,7 @@ this_thread.gathering_mode = dict()
 this_thread.global_vars = GenericObject()
 this_thread.current_variable = list()
 this_thread.open_files = set()
-this_thread.markdown = markdown.Markdown(extensions=[smartyext, 'markdown.extensions.sane_lists', 'markdown.extensions.tables', 'markdown.extensions.attr_list'], output_format='html5')
+this_thread.markdown = markdown.Markdown(extensions=[smartyext, 'markdown.extensions.sane_lists', 'markdown.extensions.tables', 'markdown.extensions.attr_list', 'markdown.extensions.md_in_html'], output_format='html5')
 this_thread.saved_files = dict()
 this_thread.message_log = list()
 this_thread.misc = dict()
@@ -1594,7 +1890,7 @@ def roman(num, case=None):
     if not 0 < num < 4000:
         raise ValueError("Argument must be between 1 and 3999")
     ints = (1000, 900, 500,  400, 100,  90, 50,  40, 10,  9,   5,   4,  1)
-    nums = ('M',  'CM', 'D', 'CD', 'C','XC','L','XL','X','IX','V','IV','I')
+    nums = ('M', 'CM', 'D', 'CD', 'C','XC','L','XL','X','IX','V','IV','I')
     result = ""
     for i in range(len(ints)):
         count = int(num / ints[i])
@@ -1784,7 +2080,7 @@ def reset_local_variables():
     this_thread.current_package = None
     this_thread.current_question = None
     this_thread.internal = dict()
-    this_thread.markdown = markdown.Markdown(extensions=[smartyext, 'markdown.extensions.sane_lists', 'markdown.extensions.tables', 'markdown.extensions.attr_list'], output_format='html5')
+    this_thread.markdown = markdown.Markdown(extensions=[smartyext, 'markdown.extensions.sane_lists', 'markdown.extensions.tables', 'markdown.extensions.attr_list', 'markdown.extensions.md_in_html'], output_format='html5')
     this_thread.prevent_going_back = False
 
 def prevent_going_back():
@@ -1894,10 +2190,6 @@ def comma_and_list_en(*pargs, **kwargs):
     Use the optional argument oxford=False if you do not want a comma before the "and."
     See also comma_list()."""
     ensure_definition(*pargs, **kwargs)
-    if 'oxford' in kwargs and kwargs['oxford'] == False:
-        extracomma = ""
-    else:
-        extracomma = ","
     if 'and_string' in kwargs:
         and_string = kwargs['and_string']
     else:
@@ -1906,6 +2198,10 @@ def comma_and_list_en(*pargs, **kwargs):
         comma_string = kwargs['comma_string']
     else:
         comma_string = ", "
+    if 'oxford' in kwargs and kwargs['oxford'] == False:
+        extracomma = ""
+    else:
+        extracomma = comma_string.strip()
     if 'before_and' in kwargs:
         before_and = kwargs['before_and']
     else:
@@ -1982,7 +2278,7 @@ def need(*pargs):
 def pickleable_objects(input_dict):
     output_dict = dict()
     for key in input_dict:
-        if isinstance(input_dict[key], (types.ModuleType, types.FunctionType, TypeType, types.BuiltinFunctionType, types.BuiltinMethodType, types.MethodType, types.ClassType, FileType)):
+        if isinstance(input_dict[key], (types.ModuleType, types.FunctionType, TypeType, types.BuiltinFunctionType, types.BuiltinMethodType, types.MethodType, FileType)):
             continue
         if key == "__builtins__":
             continue
@@ -2245,7 +2541,7 @@ def verb_present_en(*pargs, **kwargs):
         new_args.append(str(arg))
     if len(new_args) < 2:
         new_args.append('3sg')
-    output = pattern.en.conjugate(*new_args, **kwargs)
+    output = docassemble_pattern.en.conjugate(*new_args, **kwargs)
     if 'capitalize' in kwargs and kwargs['capitalize']:
         return(capitalize(output))
     else:
@@ -2258,7 +2554,7 @@ def verb_past_en(*pargs, **kwargs):
         new_args.append(arg)
     if len(new_args) < 2:
         new_args.append('3sgp')
-    output = pattern.en.conjugate(*new_args, **kwargs)
+    output = docassemble_pattern.en.conjugate(*new_args, **kwargs)
     if 'capitalize' in kwargs and kwargs['capitalize']:
         return(capitalize(output))
     else:
@@ -2269,7 +2565,7 @@ def noun_plural_en(*pargs, **kwargs):
     noun = noun_singular_en(pargs[0])
     if len(pargs) >= 2 and pargs[1] == 1:
         return str(noun)
-    output = pattern.en.pluralize(str(noun))
+    output = docassemble_pattern.en.pluralize(str(noun))
     if 'capitalize' in kwargs and kwargs['capitalize']:
         return(capitalize(output))
     else:
@@ -2279,7 +2575,7 @@ def noun_singular_en(*pargs, **kwargs):
     ensure_definition(*pargs, **kwargs)
     if len(pargs) >= 2 and pargs[1] != 1:
         return pargs[0]
-    output = pattern.en.singularize(str(pargs[0]))
+    output = docassemble_pattern.en.singularize(str(pargs[0]))
     if 'capitalize' in kwargs and kwargs['capitalize']:
         return(capitalize(output))
     else:
@@ -2287,7 +2583,7 @@ def noun_singular_en(*pargs, **kwargs):
 
 def indefinite_article_en(*pargs, **kwargs):
     ensure_definition(*pargs, **kwargs)
-    output = pattern.en.article(str(pargs[0]).lower()) + " " + str(pargs[0])
+    output = docassemble_pattern.en.article(str(pargs[0]).lower()) + " " + str(pargs[0])
     if 'capitalize' in kwargs and kwargs['capitalize']:
         return(capitalize(output))
     else:
@@ -2302,7 +2598,7 @@ def verb_present_es(*pargs, **kwargs):
         new_args.append('3sg')
     if new_args[1] == 'pl':
         new_args[1] = '3pl'
-    output = pattern.es.conjugate(*new_args, **kwargs)
+    output = docassemble_pattern.es.conjugate(*new_args, **kwargs)
     if 'capitalize' in kwargs and kwargs['capitalize']:
         return(capitalize(output))
     else:
@@ -2317,7 +2613,7 @@ def verb_past_es(*pargs, **kwargs):
         new_args.append('3sgp')
     if new_args[1] == 'ppl':
         new_args[1] = '3ppl'
-    output = pattern.es.conjugate(*new_args, **kwargs)
+    output = docassemble_pattern.es.conjugate(*new_args, **kwargs)
     if 'capitalize' in kwargs and kwargs['capitalize']:
         return(capitalize(output))
     else:
@@ -2328,7 +2624,7 @@ def noun_plural_es(*pargs, **kwargs):
     noun = noun_singular_es(pargs[0])
     if len(pargs) >= 2 and pargs[1] == 1:
         return str(noun)
-    output = pattern.es.pluralize(str(noun))
+    output = docassemble_pattern.es.pluralize(str(noun))
     if 'capitalize' in kwargs and kwargs['capitalize']:
         return(capitalize(output))
     else:
@@ -2338,7 +2634,7 @@ def noun_singular_es(*pargs, **kwargs):
     ensure_definition(*pargs, **kwargs)
     if len(pargs) >= 2 and pargs[1] != 1:
         return pargs[0]
-    output = pattern.es.singularize(str(pargs[0]))
+    output = docassemble_pattern.es.singularize(str(pargs[0]))
     if 'capitalize' in kwargs and kwargs['capitalize']:
         return(capitalize(output))
     else:
@@ -2346,7 +2642,7 @@ def noun_singular_es(*pargs, **kwargs):
 
 def indefinite_article_es(*pargs, **kwargs):
     ensure_definition(*pargs, **kwargs)
-    output = pattern.es.article(str(pargs[0]).lower()) + " " + str(pargs[0])
+    output = docassemble_pattern.es.article(str(pargs[0]).lower()) + " " + str(pargs[0])
     if 'capitalize' in kwargs and kwargs['capitalize']:
         return(capitalize(output))
     else:
@@ -2361,7 +2657,7 @@ def verb_present_de(*pargs, **kwargs):
         new_args.append('3sg')
     if new_args[1] == 'pl':
         new_args[1] = '3pl'
-    output = pattern.de.conjugate(*new_args, **kwargs)
+    output = docassemble_pattern.de.conjugate(*new_args, **kwargs)
     if 'capitalize' in kwargs and kwargs['capitalize']:
         return(capitalize(output))
     else:
@@ -2376,7 +2672,7 @@ def verb_past_de(*pargs, **kwargs):
         new_args.append('3sgp')
     if new_args[1] == 'ppl':
         new_args[1] = '3ppl'
-    output = pattern.de.conjugate(*new_args, **kwargs)
+    output = docassemble_pattern.de.conjugate(*new_args, **kwargs)
     if 'capitalize' in kwargs and kwargs['capitalize']:
         return(capitalize(output))
     else:
@@ -2387,7 +2683,7 @@ def noun_plural_de(*pargs, **kwargs):
     noun = noun_singular_de(pargs[0])
     if len(pargs) >= 2 and pargs[1] == 1:
         return str(noun)
-    output = pattern.de.pluralize(str(noun))
+    output = docassemble_pattern.de.pluralize(str(noun))
     if 'capitalize' in kwargs and kwargs['capitalize']:
         return(capitalize(output))
     else:
@@ -2397,7 +2693,7 @@ def noun_singular_de(*pargs, **kwargs):
     ensure_definition(*pargs, **kwargs)
     if len(pargs) >= 2 and pargs[1] != 1:
         return pargs[0]
-    output = pattern.de.singularize(str(pargs[0]))
+    output = docassemble_pattern.de.singularize(str(pargs[0]))
     if 'capitalize' in kwargs and kwargs['capitalize']:
         return(capitalize(output))
     else:
@@ -2405,7 +2701,7 @@ def noun_singular_de(*pargs, **kwargs):
 
 def indefinite_article_de(*pargs, **kwargs):
     ensure_definition(*pargs, **kwargs)
-    output = pattern.de.article(str(pargs[0]).lower()) + " " + str(pargs[0])
+    output = docassemble_pattern.de.article(str(pargs[0]).lower()) + " " + str(pargs[0])
     if 'capitalize' in kwargs and kwargs['capitalize']:
         return(capitalize(output))
     else:
@@ -2420,7 +2716,7 @@ def verb_present_fr(*pargs, **kwargs):
         new_args.append('3sg')
     if new_args[1] == 'pl':
         new_args[1] = '3pl'
-    output = pattern.fr.conjugate(*new_args, **kwargs)
+    output = docassemble_pattern.fr.conjugate(*new_args, **kwargs)
     if 'capitalize' in kwargs and kwargs['capitalize']:
         return(capitalize(output))
     else:
@@ -2435,7 +2731,7 @@ def verb_past_fr(*pargs, **kwargs):
         new_args.append('3sgp')
     if new_args[1] == 'ppl':
         new_args[1] = '3ppl'
-    output = pattern.fr.conjugate(*new_args, **kwargs)
+    output = docassemble_pattern.fr.conjugate(*new_args, **kwargs)
     if 'capitalize' in kwargs and kwargs['capitalize']:
         return(capitalize(output))
     else:
@@ -2446,7 +2742,7 @@ def noun_plural_fr(*pargs, **kwargs):
     noun = noun_singular_fr(pargs[0])
     if len(pargs) >= 2 and pargs[1] == 1:
         return str(noun)
-    output = pattern.fr.pluralize(str(noun))
+    output = docassemble_pattern.fr.pluralize(str(noun))
     if 'capitalize' in kwargs and kwargs['capitalize']:
         return(capitalize(output))
     else:
@@ -2456,7 +2752,7 @@ def noun_singular_fr(*pargs, **kwargs):
     ensure_definition(*pargs, **kwargs)
     if len(pargs) >= 2 and pargs[1] != 1:
         return pargs[0]
-    output = pattern.fr.singularize(str(pargs[0]))
+    output = docassemble_pattern.fr.singularize(str(pargs[0]))
     if 'capitalize' in kwargs and kwargs['capitalize']:
         return(capitalize(output))
     else:
@@ -2464,7 +2760,7 @@ def noun_singular_fr(*pargs, **kwargs):
 
 def indefinite_article_fr(*pargs, **kwargs):
     ensure_definition(*pargs, **kwargs)
-    output = pattern.fr.article(str(pargs[0]).lower()) + " " + str(pargs[0])
+    output = docassemble_pattern.fr.article(str(pargs[0]).lower()) + " " + str(pargs[0])
     if 'capitalize' in kwargs and kwargs['capitalize']:
         return(capitalize(output))
     else:
@@ -2479,7 +2775,7 @@ def verb_present_it(*pargs, **kwargs):
         new_args.append('3sg')
     if new_args[1] == 'pl':
         new_args[1] = '3pl'
-    output = pattern.it.conjugate(*new_args, **kwargs)
+    output = docassemble_pattern.it.conjugate(*new_args, **kwargs)
     if 'capitalize' in kwargs and kwargs['capitalize']:
         return(capitalize(output))
     else:
@@ -2494,7 +2790,7 @@ def verb_past_it(*pargs, **kwargs):
         new_args.append('3sgp')
     if new_args[1] == 'ppl':
         new_args[1] = '3ppl'
-    output = pattern.it.conjugate(*new_args, **kwargs)
+    output = docassemble_pattern.it.conjugate(*new_args, **kwargs)
     if 'capitalize' in kwargs and kwargs['capitalize']:
         return(capitalize(output))
     else:
@@ -2505,7 +2801,7 @@ def noun_plural_it(*pargs, **kwargs):
     noun = noun_singular_it(pargs[0])
     if len(pargs) >= 2 and pargs[1] == 1:
         return str(noun)
-    output = pattern.it.pluralize(str(noun))
+    output = docassemble_pattern.it.pluralize(str(noun))
     if 'capitalize' in kwargs and kwargs['capitalize']:
         return(capitalize(output))
     else:
@@ -2515,7 +2811,7 @@ def noun_singular_it(*pargs, **kwargs):
     ensure_definition(*pargs, **kwargs)
     if len(pargs) >= 2 and pargs[1] != 1:
         return pargs[0]
-    output = pattern.it.singularize(str(pargs[0]))
+    output = docassemble_pattern.it.singularize(str(pargs[0]))
     if 'capitalize' in kwargs and kwargs['capitalize']:
         return(capitalize(output))
     else:
@@ -2523,7 +2819,7 @@ def noun_singular_it(*pargs, **kwargs):
 
 def indefinite_article_it(*pargs, **kwargs):
     ensure_definition(*pargs, **kwargs)
-    output = pattern.it.article(str(pargs[0]).lower()) + " " + str(pargs[0])
+    output = docassemble_pattern.it.article(str(pargs[0]).lower()) + " " + str(pargs[0])
     if 'capitalize' in kwargs and kwargs['capitalize']:
         return(capitalize(output))
     else:
@@ -2538,7 +2834,7 @@ def verb_present_nl(*pargs, **kwargs):
         new_args.append('3sg')
     if new_args[1] == 'pl':
         new_args[1] = '3pl'
-    output = pattern.nl.conjugate(*new_args, **kwargs)
+    output = docassemble_pattern.nl.conjugate(*new_args, **kwargs)
     if 'capitalize' in kwargs and kwargs['capitalize']:
         return(capitalize(output))
     else:
@@ -2553,7 +2849,7 @@ def verb_past_nl(*pargs, **kwargs):
         new_args.append('3sgp')
     if new_args[1] == 'ppl':
         new_args[1] = '3ppl'
-    output = pattern.nl.conjugate(*new_args, **kwargs)
+    output = docassemble_pattern.nl.conjugate(*new_args, **kwargs)
     if 'capitalize' in kwargs and kwargs['capitalize']:
         return(capitalize(output))
     else:
@@ -2564,7 +2860,7 @@ def noun_plural_nl(*pargs, **kwargs):
     noun = noun_singular_nl(pargs[0])
     if len(pargs) >= 2 and pargs[1] == 1:
         return str(noun)
-    output = pattern.nl.pluralize(str(noun))
+    output = docassemble_pattern.nl.pluralize(str(noun))
     if 'capitalize' in kwargs and kwargs['capitalize']:
         return(capitalize(output))
     else:
@@ -2574,7 +2870,7 @@ def noun_singular_nl(*pargs, **kwargs):
     ensure_definition(*pargs, **kwargs)
     if len(pargs) >= 2 and pargs[1] != 1:
         return pargs[0]
-    output = pattern.nl.singularize(str(pargs[0]))
+    output = docassemble_pattern.nl.singularize(str(pargs[0]))
     if 'capitalize' in kwargs and kwargs['capitalize']:
         return(capitalize(output))
     else:
@@ -2582,7 +2878,7 @@ def noun_singular_nl(*pargs, **kwargs):
 
 def indefinite_article_nl(*pargs, **kwargs):
     ensure_definition(*pargs, **kwargs)
-    output = pattern.nl.article(str(pargs[0]).lower()) + " " + str(pargs[0])
+    output = docassemble_pattern.nl.article(str(pargs[0]).lower()) + " " + str(pargs[0])
     if 'capitalize' in kwargs and kwargs['capitalize']:
         return(capitalize(output))
     else:
@@ -3909,7 +4205,7 @@ def serializable_dict(user_dict, include_internal=False):
             continue
         if key == '__builtins__':
             continue
-        if type(data) in [types.ModuleType, types.FunctionType, TypeType, types.BuiltinFunctionType, types.BuiltinMethodType, types.MethodType, types.ClassType, FileType]:
+        if type(data) in [types.ModuleType, types.FunctionType, TypeType, types.BuiltinFunctionType, types.BuiltinMethodType, types.MethodType, FileType]:
             continue
         result_dict[key] = safe_json(data)
     return result_dict
@@ -3943,7 +4239,9 @@ def safe_json(the_object, level=0, is_key=False):
         for sub_object in the_object:
             new_list.append(safe_json(sub_object, level=level+1))
         return new_list
-    if type(the_object) in [types.ModuleType, types.FunctionType, TypeType, types.BuiltinFunctionType, types.BuiltinMethodType, types.MethodType, types.ClassType, FileType]:
+    if isinstance(the_object, TypeType):
+        return {'_class': 'type', 'name': class_name(the_object)}
+    if isinstance(the_object, (types.ModuleType, types.FunctionType, TypeType, types.BuiltinFunctionType, types.BuiltinMethodType, types.MethodType, FileType)):
         return 'None' if is_key else None
     if isinstance(the_object, datetime.datetime):
         serial = the_object.isoformat()
@@ -3988,6 +4286,13 @@ def referring_url(default=None, current=False):
 
 def type_name(the_object):
     name = str(type(the_object))
+    m = re.search(r'\'(.*)\'', name)
+    if m:
+        return m.group(1)
+    return name
+
+def class_name(the_object):
+    name = str(the_object)
     m = re.search(r'\'(.*)\'', name)
     if m:
         return m.group(1)
@@ -4425,6 +4730,16 @@ def reconsider(*pargs):
 def single_to_double_newlines(text):
     """Converts single newlines to double newlines."""
     return re.sub(r'[\n\r]+', r'\n\n', str(text))
+
+def secure_filename(the_filename):
+    the_filename = normalize("NFKD", the_filename).encode("ascii", "ignore").decode("ascii")
+    for sep in (os.path.sep, os.path.altsep):
+        if sep:
+            the_filename = the_filename.replace(sep, "_")
+    the_filename = re.sub(r'[^A-Za-z0-9_\.\- ]', '', the_filename)
+    the_filename = re.sub(r'^[\._]*', '', the_filename)
+    the_filename = re.sub(r'[\._]*$', '', the_filename)
+    return the_filename
 
 custom_types = dict()
 

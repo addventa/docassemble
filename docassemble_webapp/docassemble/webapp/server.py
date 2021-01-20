@@ -1,4 +1,4 @@
-min_system_version = '0.2.36'
+min_system_version = '1.2.0'
 import re
 re._MAXCACHE = 10000
 import os
@@ -9,7 +9,7 @@ import tarfile
 import types
 import math
 from io import TextIOWrapper
-from textstat.textstat import textstat
+from docassemble_textstat.textstat import textstat
 import docassemble.base.config
 if not docassemble.base.config.loaded:
     docassemble.base.config.load()
@@ -28,6 +28,8 @@ from docassemble.base.config import daconfig, hostname, in_celery
 
 STATS = daconfig.get('collect statistics', False)
 DEBUG = daconfig.get('debug', False)
+ERROR_TYPES_NO_EMAIL = daconfig.get('suppress error notificiations', [])
+
 if DEBUG:
     PREVENT_DEMO = False
 elif daconfig.get('allow demo', False):
@@ -40,6 +42,7 @@ STRICT_MODE = daconfig.get('restrict input variables', False)
 PACKAGE_PROTECTION = daconfig.get('package protection', True)
 
 HTTP_TO_HTTPS = daconfig.get('behind https load balancer', False)
+GITHUB_BRANCH = daconfig.get('github default branch name', 'main')
 request_active = True
 
 default_playground_yaml = """metadata:
@@ -47,8 +50,25 @@ default_playground_yaml = """metadata:
   short title: Test
   comment: This is a learning tool.  Feel free to write over it.
 ---
-include:
-  - basic-questions.yml
+objects:
+  - client: Individual
+---
+question: |
+  What is your name?
+fields:
+  - First Name: client.name.first
+  - Middle Name: client.name.middle
+    required: False
+  - Last Name: client.name.last
+  - Suffix: client.name.suffix
+    required: False
+    code: name_suffix()
+---
+question: |
+  What is your date of birth?
+fields:
+  - Date of Birth: client.birthdate
+    datatype: date
 ---
 mandatory: True
 question: |
@@ -61,7 +81,7 @@ attachments:
     content: |
       Your name is ${ client }.
 
-      % if user.age_in_years() > 60:
+      % if client.age_in_years() > 60:
       You are a senior.
       % endif
       Your quest is ${ quest }.  You
@@ -74,7 +94,7 @@ fields:
     hint: to find the Loch Ness Monster
 ---
 code: |
-  if user.age_in_years() < 18:
+  if client.age_in_years() < 18:
     benefits = "CHIP"
   else:
     benefits = "Medicaid"
@@ -98,7 +118,7 @@ except:
     pass
 
 default_yaml_filename = daconfig.get('default interview', None)
-final_default_yaml_filename = daconfig.get('default interview', 'docassemble.demo:data/questions/default-interview.yml')
+final_default_yaml_filename = daconfig.get('default interview', 'docassemble.base:data/questions/default-interview.yml')
 keymap = daconfig.get('keymap', None)
 google_config = daconfig.get('google', dict())
 
@@ -217,12 +237,6 @@ else:
 def _call_or_get(function_or_property):
     return function_or_property() if callable(function_or_property) else function_or_property
 
-def _endpoint_url(endpoint):
-    url = '/'
-    if endpoint:
-        url = url_for(endpoint)
-    return url
-
 def _get_safe_next_param(param_name, default_endpoint):
     if param_name in request.args:
         #safe_next = current_app.user_manager.make_safe_url_function(unquote(request.args[param_name]))
@@ -296,6 +310,8 @@ def custom_register():
             url_parts[4] = urlencode(query)
             safe_next = urlunparse(url_parts)
         return add_secret_to(redirect(safe_next))
+
+    setup_translation()
 
     # Initialize form
     login_form = user_manager.login_form()                      # for login_or_register.html
@@ -482,6 +498,7 @@ def custom_login():
     """ Prompt for username/email and password and sign the user in."""
     #sys.stderr.write("In custom_login\n")
     #logmessage("Doing custom_login")
+
     if ('json' in request.form and as_int(request.form['json'])) or ('json' in request.args and as_int(request.args['json'])):
         is_json = True
     else:
@@ -500,6 +517,8 @@ def custom_login():
             url_parts[4] = urlencode(query)
             safe_next = urlunparse(url_parts)
         return add_secret_to(redirect(safe_next))
+
+    setup_translation()
 
     login_form = user_manager.login_form(request.form)
     register_form = user_manager.register_form()
@@ -601,7 +620,12 @@ def logout():
     #     secret = str(secret)
     #     set_cookie = False
     user_manager = current_app.user_manager
-    next = request.args.get('next', _endpoint_url(user_manager.after_logout_endpoint))
+    if 'next' in request.args:
+        next = request.args['next']
+    elif session.get('language', None) and session['language'] != DEFAULT_LANGUAGE:
+        next = _endpoint_url(user_manager.after_logout_endpoint, lang=session['language'])
+    else:
+        next = _endpoint_url(user_manager.after_logout_endpoint)
     if current_user.is_authenticated and current_user.social_id.startswith('auth0$') and 'oauth' in daconfig and 'auth0' in daconfig['oauth'] and 'domain' in daconfig['oauth']['auth0']:
         if next.startswith('/'):
             next = get_base_url() + next
@@ -712,18 +736,18 @@ def password_validator(form, field):
         if 'error message' in rules:
             error_message = str(rules['error message'])
         else:
-            error_message = 'Password must be at least ' + docassemble.base.functions.quantity_noun(rules.get('length', 6), 'character') + ' long'
+            error_message = 'Password must be at least ' + docassemble.base.functions.quantity_noun(rules.get('length', 6), 'character', language='en') + ' long'
             standards = list()
             if rules.get('lowercase', 1) > 0:
-                standards.append('at least ' + docassemble.base.functions.quantity_noun(rules.get('lowercase', 1), 'lowercase letter'))
+                standards.append('at least ' + docassemble.base.functions.quantity_noun(rules.get('lowercase', 1), 'lowercase letter', language='en'))
             if rules.get('uppercase', 1) > 0:
-                standards.append('at least ' + docassemble.base.functions.quantity_noun(rules.get('uppercase', 1), 'uppercase letter'))
+                standards.append('at least ' + docassemble.base.functions.quantity_noun(rules.get('uppercase', 1), 'uppercase letter', language='en'))
             if rules.get('digits', 1) > 0:
-                standards.append('at least ' + docassemble.base.functions.quantity_noun(rules.get('digits', 1), 'number'))
+                standards.append('at least ' + docassemble.base.functions.quantity_noun(rules.get('digits', 1), 'number', language='en'))
             if rules.get('punctuation', 0) > 0:
-                standards.append('at least ' + docassemble.base.functions.quantity_noun(rules.get('punctuation', 1), 'punctuation character'))
+                standards.append('at least ' + docassemble.base.functions.quantity_noun(rules.get('punctuation', 1), 'punctuation character', language='en'))
             if len(standards):
-                error_message += ' with ' + docassemble.base.functions.comma_and_list(standards)
+                error_message += ' with ' + docassemble.base.functions.comma_and_list_en(standards)
             error_message += '.'
         raise wtforms.ValidationError(word(error_message))
 
@@ -849,6 +873,9 @@ import uuid
 from bs4 import BeautifulSoup
 import collections
 import pandas
+import xml.etree.ElementTree as ET
+
+START_TIME = time.time()
 
 import importlib
 def import_necessary():
@@ -1902,7 +1929,7 @@ def additional_scripts(interview_status, yaml_filename, as_javascript=False):
           idToUse = daQuestionID['ga'];
         }
         if (idToUse != null){
-          gtag('config', """ + json.dumps(ga_id) + """, {'page_path': """ + json.dumps(interview_package) + """ + "/" + """ + json.dumps(interview_filename) + """ + "/" + idToUse.replace(/[^A-Za-z0-9]+/g, '_')});
+          gtag('config', """ + json.dumps(ga_id) + """, {""" + ("'cookie_flags': 'SameSite=None;Secure', " if app.config['SESSION_COOKIE_SECURE'] else '') + """'page_path': """ + json.dumps(interview_package) + """ + "/" + """ + json.dumps(interview_filename) + """ + "/" + idToUse.replace(/[^A-Za-z0-9]+/g, '_')});
         }
       }
 """
@@ -2572,7 +2599,7 @@ def make_navbar(status, steps, show_login, chat_info, debug_mode, index_params, 
     elif daconfig.get('inverse navbar', True):
         inverse = 'navbar-dark bg-dark '
     else:
-        inverse = 'navbar-light-bg-light '
+        inverse = 'navbar-light bg-light '
     if 'jsembed' in docassemble.base.functions.this_thread.misc:
         fixed_top = ''
     else:
@@ -2683,7 +2710,7 @@ def make_navbar(status, steps, show_login, chat_info, debug_mode, index_params, 
                 if not status.question.interview.options.get('hide standard menu', False):
                     if current_user.has_role('admin', 'developer'):
                         navbar += source_menu_item
-                    if current_user.has_role('admin', 'advocate'):
+                    if current_user.has_role('admin', 'advocate') and app.config['ENABLE_MONITOR']:
                         navbar += '<a class="dropdown-item" href="' + url_for('monitor') + '">' + word('Monitor') + '</a>'
                     if current_user.has_role('admin', 'developer', 'trainer'):
                         navbar += '<a class="dropdown-item" href="' + url_for('train') + '">' + word('Train') + '</a>'
@@ -2790,10 +2817,10 @@ def reset_session(yaml_filename, secret):
     update_session(yaml_filename, uid=user_code)
     return(user_code, user_dict)
 
-def _endpoint_url(endpoint):
+def _endpoint_url(endpoint, **kwargs):
     url = url_for('index')
     if endpoint:
-        url = url_for(endpoint)
+        url = url_for(endpoint, **kwargs)
     return url
 
 def user_can_edit_package(pkgname=None, giturl=None):
@@ -2804,6 +2831,9 @@ def user_can_edit_package(pkgname=None, giturl=None):
             return False
         return True
     if pkgname is not None:
+        pkgname = pkgname.strip()
+        if pkgname == '' or re.search(r'\s', pkgname):
+            return False
         results = db.session.query(Package.id, PackageAuth.user_id, PackageAuth.authtype).outerjoin(PackageAuth, Package.id == PackageAuth.package_id).filter(and_(Package.name == pkgname, Package.active == True))
         if results.count() == 0:
             return(True)
@@ -2811,6 +2841,9 @@ def user_can_edit_package(pkgname=None, giturl=None):
             if d.user_id == current_user.id:
                 return True
     if giturl is not None:
+        giturl = giturl.strip()
+        if giturl == '' or re.search(r'\s', giturl):
+            return False
         results = db.session.query(Package.id, PackageAuth.user_id, PackageAuth.authtype).outerjoin(PackageAuth, Package.id == PackageAuth.package_id).filter(and_(Package.giturl == giturl, Package.active == True))
         if results.count() == 0:
             return(True)
@@ -2872,10 +2905,10 @@ def install_zip_package(packagename, file_number):
     db.session.commit()
     return
 
-def install_git_package(packagename, giturl, branch=None):
+def install_git_package(packagename, giturl, branch):
     #logmessage("install_git_package: " + packagename + " " + str(giturl))
     if branch is None or str(branch).lower().strip() in ('none', ''):
-        branch = 'master'
+        branch = GITHUB_BRANCH
     if Package.query.filter_by(name=packagename).first() is None and Package.query.filter_by(giturl=giturl).with_for_update().first() is None:
         package_auth = PackageAuth(user_id=current_user.id)
         package_entry = Package(name=packagename, giturl=giturl, package_auth=package_auth, version=1, active=True, type='git', upload=None, limitation=None, gitbranch=branch)
@@ -3269,7 +3302,7 @@ def get_vars_in_use(interview, interview_status, debug_mode=False, return_json=F
             name_info[val] = copy.copy(pg_code_cache[val])
             if 'git' in name_info[val]:
                 modules.add(val)
-        elif type(user_dict[val]) is TypeType or type(user_dict[val]) is types.ClassType:
+        elif type(user_dict[val]) is TypeType:
             if val not in pg_code_cache:
                 bases = list()
                 for x in list(user_dict[val].__bases__):
@@ -3802,7 +3835,10 @@ def restart_others():
 def current_info(yaml=None, req=None, action=None, location=None, interface='web', session_info=None, secret=None, device_id=None, session_uid=None):
     #logmessage("interface is " + str(interface))
     if current_user.is_authenticated and not current_user.is_anonymous:
-        ext = dict(email=current_user.email, roles=[role.name for role in current_user.roles], the_user_id=current_user.id, theid=current_user.id, firstname=current_user.first_name, lastname=current_user.last_name, nickname=current_user.nickname, country=current_user.country, subdivisionfirst=current_user.subdivisionfirst, subdivisionsecond=current_user.subdivisionsecond, subdivisionthird=current_user.subdivisionthird, organization=current_user.organization, timezone=current_user.timezone, language=current_user.language)
+        role_list = [role.name for role in current_user.roles]
+        if len(role_list) == 0:
+            role_list = ['user']
+        ext = dict(email=current_user.email, roles=role_list, the_user_id=current_user.id, theid=current_user.id, firstname=current_user.first_name, lastname=current_user.last_name, nickname=current_user.nickname, country=current_user.country, subdivisionfirst=current_user.subdivisionfirst, subdivisionsecond=current_user.subdivisionsecond, subdivisionthird=current_user.subdivisionthird, organization=current_user.organization, timezone=current_user.timezone, language=current_user.language)
     else:
         ext = dict(email=None, the_user_id='t' + str(session.get('tempuser', None)), theid=session.get('tempuser', None), roles=list())
     headers = dict()
@@ -5067,6 +5103,14 @@ def cleanup_sessions():
 
 ready_file = os.path.join(os.path.dirname(WEBAPP_PATH), 'ready')
 
+@app.route("/health_status", methods=['GET'])
+def health_status():
+    ok = True
+    if request.args.get('ready', False):
+        if not os.path.isfile(ready_file):
+            ok = False
+    return jsonify({'ok': ok, 'server_start_time': START_TIME, 'version': da_version})
+
 @app.route("/health_check", methods=['GET'])
 def health_check():
     if request.args.get('ready', False):
@@ -5446,7 +5490,6 @@ def apply_security_headers(response):
     if app.config['SESSION_COOKIE_SECURE']:
         response.headers['Strict-Transport-Security'] = 'max-age=31536000'
     if daconfig.get('allow embedding', False) is not True:
-        response.headers["X-Frame-Options"] = "SAMEORIGIN"
         response.headers["Content-Security-Policy"] = "frame-ancestors 'self';"
     elif daconfig.get('cross site domains', []):
         response.headers["Content-Security-Policy"] = "frame-ancestors 'self' " + ' '.join(daconfig['cross site domains']) + ';'
@@ -5750,20 +5793,34 @@ def index(action_argument=None, refer=None):
                     message = "Starting a new interview.  To go back to your previous interview, log in to see a list of your interviews."
             if reset_interview and session_info is not None:
                 reset_user_dict(session_info['uid'], yaml_filename)
-            if current_user.is_anonymous:
-                if not interview.allowed_to_access(is_anonymous=True):
-                    delete_session_for_interview(yaml_filename)
-                    flash(word("You need to be logged in to access this interview."), "info")
-                    sys.stderr.write("Redirecting to login because anonymous user not allowed to access this interview.\n")
-                    return redirect(url_for('user.login', next=url_for('index', **request.args)))
-            elif not interview.allowed_to_access(has_roles=[role.name for role in current_user.roles]):
-                raise DAError(word('You are not allowed to access this interview.'), code=403)
             unique_sessions = interview.consolidated_metadata.get('sessions are unique', False)
             if unique_sessions is not False and not current_user.is_authenticated:
                 delete_session_for_interview(yaml_filename)
                 flash(word("You need to be logged in to access this interview."), "info")
                 sys.stderr.write("Redirecting to login because sessions are unique.\n")
                 return redirect(url_for('user.login', next=url_for('index', **request.args)))
+            if interview.consolidated_metadata.get('temporary session', False):
+                if session_info is not None:
+                    reset_user_dict(session_info['uid'], yaml_filename)
+                if current_user.is_authenticated:
+                    while True:
+                        session_id, encrypted = get_existing_session(yaml_filename, secret)
+                        if session_id:
+                            reset_user_dict(session_id, yaml_filename)
+                        else:
+                            break
+                    reset_interview = 1
+            if current_user.is_anonymous:
+                if (not interview.allowed_to_initiate(is_anonymous=True)) or (not interview.allowed_to_access(is_anonymous=True)):
+                    delete_session_for_interview(yaml_filename)
+                    flash(word("You need to be logged in to access this interview."), "info")
+                    sys.stderr.write("Redirecting to login because anonymous user not allowed to access this interview.\n")
+                    return redirect(url_for('user.login', next=url_for('index', **request.args)))
+            elif not interview.allowed_to_initiate(has_roles=[role.name for role in current_user.roles]):
+                delete_session_for_interview(yaml_filename)
+                raise DAError(word("You are not allowed to access this interview."), code=403)
+            elif not interview.allowed_to_access(has_roles=[role.name for role in current_user.roles]):
+                raise DAError(word('You are not allowed to access this interview.'), code=403)
             session_id = None
             if reset_interview == 2:
                 delete_session_sessions()
@@ -5777,6 +5834,23 @@ def index(action_argument=None, refer=None):
                 need_to_reset = True
             session_info = get_session(yaml_filename)
         else:
+            unique_sessions = interview.consolidated_metadata.get('sessions are unique', False)
+            if unique_sessions is not False and not current_user.is_authenticated:
+                delete_session_for_interview(yaml_filename)
+                flash(word("You need to be logged in to access this interview."), "info")
+                sys.stderr.write("Redirecting to login because sessions are unique.\n")
+                return redirect(url_for('user.login', next=url_for('index', **request.args)))
+            if current_user.is_anonymous:
+                if (not interview.allowed_to_initiate(is_anonymous=True)) or (not interview.allowed_to_access(is_anonymous=True)):
+                    delete_session_for_interview(yaml_filename)
+                    flash(word("You need to be logged in to access this interview."), "info")
+                    sys.stderr.write("Redirecting to login because anonymous user not allowed to access this interview.\n")
+                    return redirect(url_for('user.login', next=url_for('index', **request.args)))
+            elif not interview.allowed_to_initiate(has_roles=[role.name for role in current_user.roles]):
+                delete_session_for_interview(yaml_filename)
+                raise DAError(word("You are not allowed to access this interview."), code=403)
+            elif not interview.allowed_to_access(has_roles=[role.name for role in current_user.roles]):
+                raise DAError(word('You are not allowed to access this interview.'), code=403)
             if reset_interview:
                 reset_user_dict(session_parameter, yaml_filename)
                 if reset_interview == 2:
@@ -5876,7 +5950,7 @@ def index(action_argument=None, refer=None):
             if not url_args_changed:
                 old_url_args = copy.deepcopy(user_dict['url_args'])
                 url_args_changed = True
-            exec("url_args[" + repr(argname) + "] = " + repr(codecs.encode(request.args.get(argname), 'unicode_escape').decode()), user_dict)
+            exec("url_args[" + repr(argname) + "] = " + repr(request.args.get(argname)), user_dict)
         if url_args_changed:
             if old_url_args == user_dict['url_args']:
                 url_args_changed = False
@@ -6223,7 +6297,10 @@ def index(action_argument=None, refer=None):
     else:
         next_action = None
     if '_question_name' in post_data and post_data['_question_name'] in interview.questions_by_name:
-        the_question = interview.questions_by_name[post_data['_question_name']]
+        if already_assembled:
+            the_question = interview_status.question
+        else:
+            the_question = interview.questions_by_name[post_data['_question_name']]
         if not already_assembled:
             uses_permissions = False
             for the_field in the_question.fields:
@@ -6236,6 +6313,8 @@ def index(action_argument=None, refer=None):
                     if hasattr(the_field, 'validate'):
                         interview.assemble(user_dict, interview_status)
                         break
+    elif already_assembled:
+        the_question = interview_status.question
     else:
         the_question = None
     key_to_orig_key = dict()
@@ -6455,9 +6534,14 @@ def index(action_argument=None, refer=None):
                 else:
                     data = repr('')
             elif known_datatypes[real_key] == 'integer':
-                if data == '':
+                if data.strip() == '':
                     data = 0
-                test_data = int(data)
+                try:
+                    test_data = int(data)
+                except:
+                    validated = False
+                    field_error[orig_key] = word("You need to enter a valid number.")
+                    continue
                 data = "int(" + repr(data) + ")"
             elif known_datatypes[real_key] in ('ml', 'mlarea'):
                 is_ml = True
@@ -6466,7 +6550,12 @@ def index(action_argument=None, refer=None):
                     data = 0.0
                 if isinstance(data, str):
                     data = re.sub(r'[,\%]', '', data)
-                test_data = float(data)
+                try:
+                    test_data = float(data)
+                except:
+                    validated = False
+                    field_error[orig_key] = word("You need to enter a valid number.")
+                    continue
                 data = "float(" + repr(data) + ")"
             elif known_datatypes[real_key] in ('object', 'object_radio'):
                 if data == '' or set_to_empty:
@@ -6511,9 +6600,16 @@ def index(action_argument=None, refer=None):
                         data = '__DANEWOBJECT'
                     else:
                         data = repr(test_data)
+            elif known_datatypes[real_key] == 'raw':
+                if data == "None" and set_to_empty is not None:
+                    test_data = None
+                    data = "None"
+                else:
+                    test_data = data
+                    data = repr(data)
             else:
                 if isinstance(data, str):
-                    data = data.strip()
+                    data = BeautifulSoup(data, "html.parser").get_text('\n')
                 if data == "None" and set_to_empty is not None:
                     test_data = None
                     data = "None"
@@ -7535,6 +7631,26 @@ def index(action_argument=None, refer=None):
       else{
         daTargetDiv = "#dabody";
       }
+      function daGoToAnchor(target){
+        if (daJsEmbed){
+          scrollTarget = $(target).first().position().top - 60;
+        }
+        else{
+          scrollTarget = $(target).first().offset().top - 60;
+        }
+        if (scrollTarget != null){
+          if (daJsEmbed){
+            $(daTargetDiv).animate({
+              scrollTop: scrollTarget
+            }, 500);
+          }
+          else{
+            $("html, body").animate({
+              scrollTop: scrollTarget
+            }, 500);
+          }
+        }
+      }
       function getFields(){
         var allFields = [];
         for (var rawFieldName in daVarLookup){
@@ -7559,7 +7675,7 @@ def index(action_argument=None, refer=None):
           theArray.push(elem[0]);
         }
       }
-      function getField(fieldName){
+      function getField(fieldName, notInDiv){
         var fieldNameEscaped = btoa(fieldName).replace(/[\\n=]/g, '');
         var possibleElements = [];
         daAppendIfExists(fieldNameEscaped, possibleElements);
@@ -7573,6 +7689,9 @@ def index(action_argument=None, refer=None):
           if (!$(possibleElements[i]).prop('disabled')){
             var showifParents = $(possibleElements[i]).parents(".dajsshowif,.dashowif");
             if (showifParents.length == 0 || $(showifParents[0]).data("isVisible") == '1'){
+              if (notInDiv && $.contains(notInDiv, possibleElements[i])){
+                continue;
+              }
               returnVal = possibleElements[i];
             }
           }
@@ -8621,9 +8740,14 @@ def index(action_argument=None, refer=None):
         return true;
       }
       function daProcessAjaxError(xhr, status, error){
-        var theHtml = xhr.responseText;
-        theHtml = theHtml.replace(/<script[^>]*>[^<]*<\/script>/g, '');
-        $(daTargetDiv).html(theHtml);
+        if (xhr.responseType == undefined || xhr.responseType == '' || xhr.responseType == 'text'){
+          var theHtml = xhr.responseText;
+          theHtml = theHtml.replace(/<script[^>]*>[^<]*<\/script>/g, '');
+          $(daTargetDiv).html(theHtml);
+        }
+        else {
+          console.log("daProcessAjaxError: response was not text");
+        }
       }
       function daAddScriptToHead(src){
         var head = document.getElementsByTagName("head")[0];
@@ -9002,7 +9126,7 @@ def index(action_argument=None, refer=None):
                 }
                 for (i = 0; i < assignments.length; ++i){
                   var assignment = assignments[i];
-                  $('#datarget' + assignment.target.replace(/[^A-Za-z0-9\_]/g)).html(assignment.content);
+                  $('.datarget' + assignment.target.replace(/[^A-Za-z0-9\_]/g)).prop('innerHTML', assignment.content);
                 }
                 //console.log("Triggering daCheckIn");
                 $(document).trigger('daCheckIn', [command.action, command.value]);
@@ -9480,7 +9604,10 @@ def index(action_argument=None, refer=None):
             $(this).addClass("dainvisible");
             $(".da-first-delete").removeClass("dainvisible");
             rationalizeListCollect();
-            $('div[data-collectnum="' + num + '"]').find('input, textarea, select').first().focus();
+            var elem = $('div[data-collectnum="' + num + '"]').find('input, textarea, select').first();
+            if ($(elem).visible()){
+              $(elem).focus();
+            }
           }
           return false;
         });
@@ -9794,7 +9921,7 @@ def index(action_argument=None, refer=None):
         if (!daJsEmbed){
           setTimeout(function(){
             var firstInput = $("#daform .da-field-container").not(".da-field-container-note").first().find("input, textarea, select").filter(":visible").first();
-            if (firstInput.length > 0){
+            if (firstInput.length > 0 && $(firstInput).visible()){
               $(firstInput).focus();
               var inputType = $(firstInput).attr('type');
               if ($(firstInput).prop('tagName') != 'SELECT' && inputType != "checkbox" && inputType != "radio" && inputType != "hidden" && inputType != "submit" && inputType != "file" && inputType != "range" && inputType != "number" && inputType != "date" && inputType != "time"){
@@ -9811,7 +9938,7 @@ def index(action_argument=None, refer=None):
             }
             else {
               var firstButton = $("#danavbar-collapse .nav-link").filter(':visible').first();
-              if (firstButton.length > 0){
+              if (firstButton.length > 0 && $(firstButton).visible()){
                 setTimeout(function(){
                   $(firstButton).focus();
                   $(firstButton).blur();
@@ -9966,6 +10093,7 @@ def index(action_argument=None, refer=None):
           var showIfDiv = this;
           var jsInfo = JSON.parse(atob($(this).data('jsshowif')));
           var showIfSign = jsInfo['sign'];
+          var showIfMode = jsInfo['mode'];
           var jsExpression = jsInfo['expression'];
           var n = jsInfo['vars'].length;
           for (var i = 0; i < n; ++i){
@@ -10000,7 +10128,9 @@ def index(action_argument=None, refer=None):
                 var resultt = eval(jsExpression);
                 if(resultt){
                   if (showIfSign){
-                    $(showIfDiv).show(speed);
+                    if (showIfMode == 0){
+                      $(showIfDiv).show(speed);
+                    }
                     $(showIfDiv).data('isVisible', '1');
                     $(showIfDiv).find('input, textarea, select').prop("disabled", false);
                     $(showIfDiv).find('input.combobox').each(function(){
@@ -10008,7 +10138,9 @@ def index(action_argument=None, refer=None):
                     });
                   }
                   else{
-                    $(showIfDiv).hide(speed);
+                    if (showIfMode == 0){
+                      $(showIfDiv).hide(speed);
+                    }
                     $(showIfDiv).data('isVisible', '0');
                     $(showIfDiv).find('input, textarea, select').prop("disabled", true);
                     $(showIfDiv).find('input.combobox').each(function(){
@@ -10018,7 +10150,9 @@ def index(action_argument=None, refer=None):
                 }
                 else{
                   if (showIfSign){
-                    $(showIfDiv).hide(speed);
+                    if (showIfMode == 0){
+                      $(showIfDiv).hide(speed);
+                    }
                     $(showIfDiv).data('isVisible', '0');
                     $(showIfDiv).find('input, textarea, select').prop("disabled", true);
                     $(showIfDiv).find('input.combobox').each(function(){
@@ -10026,7 +10160,9 @@ def index(action_argument=None, refer=None):
                     });
                   }
                   else{
-                    $(showIfDiv).show(speed);
+                    if (showIfMode == 0){
+                      $(showIfDiv).show(speed);
+                    }
                     $(showIfDiv).data('isVisible', '1');
                     $(showIfDiv).find('input, textarea, select').prop("disabled", false);
                     $(showIfDiv).find('input.combobox').each(function(){
@@ -10063,6 +10199,7 @@ def index(action_argument=None, refer=None):
         $(".dashowif").each(function(){
           var showIfVars = [];
           var showIfSign = $(this).data('showif-sign');
+          var showIfMode = parseInt($(this).data('showif-mode'));
           var initShowIfVar = $(this).data('showif-var');
           var varName = atob(initShowIfVar);
           var initShowIfVarEscaped = initShowIfVar.replace(/(:|\.|\[|\]|,|=)/g, "\\\\$1");
@@ -10089,7 +10226,7 @@ def index(action_argument=None, refer=None):
             var showIfVar = showIfVars[i];
             var showIfVarEscaped = showIfVar.replace(/(:|\.|\[|\]|,|=)/g, "\\\\$1");
             var showHideDiv = function(speed){
-              var elem = daGetField(varName);
+              var elem = daGetField(varName, showIfDiv);
               if (elem != null && !$(elem).parent().is($(this).parent())){
                 return;
               }
@@ -10132,7 +10269,9 @@ def index(action_argument=None, refer=None):
               //console.log("this is " + $(this).attr('id') + " and saveAs is " + atob(saveAs) + " and showIfVar is " + atob(showIfVar) + " and val is " + String(theVal) + " and showIfVal is " + String(showIfVal));
               if(daShowIfCompare(theVal, showIfVal)){
                 if (showIfSign){
-                  $(showIfDiv).show(speed);
+                  if (showIfMode == 0){
+                    $(showIfDiv).show(speed);
+                  }
                   $(showIfDiv).data('isVisible', '1');
                   $(showIfDiv).find('input, textarea, select').prop("disabled", false);
                   $(showIfDiv).find('input.combobox').each(function(){
@@ -10140,7 +10279,9 @@ def index(action_argument=None, refer=None):
                   });
                 }
                 else{
-                  $(showIfDiv).hide(speed);
+                  if (showIfMode == 0){
+                    $(showIfDiv).hide(speed);
+                  }
                   $(showIfDiv).data('isVisible', '0');
                   $(showIfDiv).find('input, textarea, select').prop("disabled", true);
                   $(showIfDiv).find('input.combobox').each(function(){
@@ -10150,7 +10291,9 @@ def index(action_argument=None, refer=None):
               }
               else{
                 if (showIfSign){
-                  $(showIfDiv).hide(speed);
+                  if (showIfMode == 0){
+                    $(showIfDiv).hide(speed);
+                  }
                   $(showIfDiv).data('isVisible', '0');
                   $(showIfDiv).find('input, textarea, select').prop("disabled", true);
                   $(showIfDiv).find('input.combobox').each(function(){
@@ -10158,7 +10301,9 @@ def index(action_argument=None, refer=None):
                   });
                 }
                 else{
-                  $(showIfDiv).show(speed);
+                  if (showIfMode == 0){
+                    $(showIfDiv).show(speed);
+                  }
                   $(showIfDiv).data('isVisible', '1');
                   $(showIfDiv).find('input, textarea, select').prop("disabled", false);
                   $(showIfDiv).find('input.combobox').each(function(){
@@ -10283,7 +10428,7 @@ def index(action_argument=None, refer=None):
             else{
               window.scrollTo(0, 1);
             }
-          }, 10);
+          }, 20);
         }
         if (daShowingSpinner){
           daHideSpinner();
@@ -10519,6 +10664,39 @@ def index(action_argument=None, refer=None):
           var before_comparator = new Date(params[0]);
           var after_comparator = new Date(params[1]);
           if (date >= before_comparator && date <= after_comparator) {
+            return true;
+          }
+        } catch (e) {}
+        return false;
+      });
+      $.validator.addMethod('maxuploadsize', function(value, element, param){
+        try {
+          var limit = parseInt(param) - 2000;
+          if (limit <= 0){
+            return true;
+          }
+          var maxImageSize;
+          if ($(element).data('maximagesize')){
+             maxImageSize = (parseInt($(element).data('maximagesize')) * parseInt($(element).data('maximagesize'))) * 2;
+          }
+          else {
+             maxImageSize = 0;
+          }
+          if ($(element).attr("type") === "file"){
+            if (element.files && element.files.length) {
+              var totalSize = 0;
+              for ( i = 0; i < element.files.length; i++ ) {
+                if (maxImageSize > 0 && element.files[i].size > (0.20 * maxImageSize) && element.files[i].type.match(/image.*/) && !(element.files[i].type.indexOf('image/svg') == 0)){
+                  totalSize += maxImageSize;
+                }
+                else {
+                  totalSize += element.files[i].size;
+                }
+              }
+              if (totalSize > limit){
+                return false;
+              }
+            }
             return true;
           }
         } catch (e) {}
@@ -11737,6 +11915,14 @@ def observer():
           }
         }
       }
+      function daGoToAnchor(target){
+        scrollTarget = $(target).first().offset().top - 60;
+        if (scrollTarget != null){
+          $("html, body").animate({
+            scrollTop: scrollTarget
+          }, 500);
+        }
+      }
       function getFields(){
         var allFields = [];
         for (var rawFieldName in daVarLookup){
@@ -11750,26 +11936,28 @@ def observer():
         return allFields;
       }
       var daGetFields = getFields;
-      function getField(fieldName){
-        var fieldNameEscaped = btoa(fieldName).replace(/[\\n=]/g, '');//.replace(/(:|\.|\[|\]|,|=)/g, "\\\\$1");
-        if ($("[name='" + fieldNameEscaped + "']").length == 0 && typeof daVarLookup[btoa(fieldName).replace(/[\\n=]/g, '')] != "undefined"){
-          fieldName = daVarLookup[btoa(fieldName).replace(/[\\n=]/g, '')];
-          fieldNameEscaped = fieldName;//.replace(/(:|\.|\[|\]|,|=)/g, "\\\\$1");
+      function getField(fieldName, notInDiv){
+        var fieldNameEscaped = btoa(fieldName).replace(/[\\n=]/g, '');
+        var possibleElements = [];
+        daAppendIfExists(fieldNameEscaped, possibleElements);
+        if (daVarLookupMulti.hasOwnProperty(fieldNameEscaped)){
+          for (var i = 0; i < daVarLookupMulti[fieldNameEscaped].length; ++i){
+            daAppendIfExists(daVarLookupMulti[fieldNameEscaped][i], possibleElements);
+          }
         }
-        var varList = $("[name='" + fieldNameEscaped + "']");
-        if (varList.length == 0){
-          varList = $("input[type='radio'][name='" + fieldNameEscaped + "']");
+        var returnVal = null;
+        for (var i = 0; i < possibleElements.length; ++i){
+          if (!$(possibleElements[i]).prop('disabled')){
+            var showifParents = $(possibleElements[i]).parents(".dajsshowif,.dashowif");
+            if (showifParents.length == 0 || $(showifParents[0]).data("isVisible") == '1'){
+              if (notInDiv && $.contains(notInDiv, possibleElements[i])){
+                continue;
+              }
+              returnVal = possibleElements[i];
+            }
+          }
         }
-        if (varList.length == 0){
-          varList = $("input[type='checkbox'][name='" + fieldNameEscaped + "']");
-        }
-        if (varList.length > 0){
-          elem = varList[0];
-        }
-        else{
-          return null;
-        }
-        return elem;
+        return returnVal;
       }
       var daGetField = getField;
       function setField(fieldName, val){
@@ -11935,9 +12123,14 @@ def observer():
         daSocket.emit('observerChanges', {uid: """ + json.dumps(uid) + """, i: """ + json.dumps(i) + """, userid: """ + json.dumps(str(userid)) + """, parameters: JSON.stringify($("#daform").serializeArray())});
       }
       function daProcessAjaxError(xhr, status, error){
-        var theHtml = xhr.responseText;
-        theHtml = theHtml.replace(/<script[^>]*>[^<]*<\/script>/g, '');
-        $(daTargetDiv).html(theHtml);
+        if (xhr.responseType == undefined || xhr.responseType == '' || xhr.responseType == 'text'){
+          var theHtml = xhr.responseText;
+          theHtml = theHtml.replace(/<script[^>]*>[^<]*<\/script>/g, '');
+          $(daTargetDiv).html(theHtml);
+        }
+        else {
+          console.log("daProcessAjaxError: response was not text");
+        }
       }
       function daAddScriptToHead(src){
         var head = document.getElementsByTagName("head")[0];
@@ -12642,6 +12835,8 @@ def decode_dict(the_dict):
 @login_required
 @roles_required(['admin', 'advocate'])
 def monitor():
+    if not app.config['ENABLE_MONITOR']:
+        return ('File not found', 404)
     setup_translation()
     if request.method == 'GET' and needs_to_change_password():
         return redirect(url_for('user.change_password', next=url_for('monitor')))
@@ -12670,7 +12865,7 @@ def monitor():
         forwarding_phone_number = twilio_config['name']['default'].get('number', None)
         if forwarding_phone_number is not None:
             call_forwarding_on = 'true'
-    script = "\n" + '    <script type="text/javascript" src="' + url_for('static', filename='app/socket.io.min.js', v=da_version) + '"></script>' + "\n" + """    <script type="text/javascript" charset="utf-8">
+    script = "\n" + '    <script type="text/javascript" src="' + url_for('static', filename='app/socket.io.js', v=da_version) + '"></script>' + "\n" + """    <script type="text/javascript" charset="utf-8">
       var daAudioContext = null;
       var daSocket;
       var daSoundBuffer = Object();
@@ -13895,11 +14090,11 @@ def update_package_wait():
 @login_required
 @roles_required(['admin', 'developer'])
 def update_package_ajax():
-    if 'taskwait' not in session:
+    if 'taskwait' not in session or 'serverstarttime' not in session:
         return jsonify(success=False)
     setup_translation()
     result = docassemble.webapp.worker.workerapp.AsyncResult(id=session['taskwait'])
-    if result.ready():
+    if result.ready() and START_TIME > session['serverstarttime']:
         #if 'taskwait' in session:
         #    del session['taskwait']
         the_result = result.get()
@@ -13974,8 +14169,19 @@ def update_package():
         return ('File not found', 404)
     if 'taskwait' in session:
         del session['taskwait']
+    if 'serverstarttime' in session:
+        del session['serverstarttime']
     #pip.utils.logging._log_state = threading.local()
     #pip.utils.logging._log_state.indentation = 0
+    if request.method == 'GET' and app.config['USE_GITHUB'] and r.get('da:using_github:userid:' + str(current_user.id)) is not None:
+        storage = RedisCredStorage(app='github')
+        credentials = storage.get()
+        if not credentials or credentials.invalid:
+            state_string = random_string(16)
+            session['github_next'] = json.dumps(dict(state=state_string, path='playground_packages', arguments=request.args))
+            flow = get_github_flow()
+            uri = flow.step1_get_authorize_url(state=state_string)
+            return redirect(uri)
     form = UpdatePackageForm(request.form)
     form.gitbranch.choices = [('', "Not applicable")]
     if form.gitbranch.data:
@@ -14002,9 +14208,9 @@ def update_package():
                         db.session.commit()
                     if existing_package.type == 'git' and existing_package.giturl is not None:
                         if existing_package.gitbranch:
-                            install_git_package(target, existing_package.giturl, branch=existing_package.gitbranch)
+                            install_git_package(target, existing_package.giturl, existing_package.gitbranch)
                         else:
-                            install_git_package(target, existing_package.giturl)
+                            install_git_package(target, existing_package.giturl, get_master_branch(existing_package.giturl))
                     elif existing_package.type == 'pip':
                         if existing_package.name == 'docassemble.webapp' and existing_package.limitation and not limitation:
                             existing_package.limitation = None
@@ -14012,6 +14218,7 @@ def update_package():
                         install_pip_package(existing_package.name, existing_package.limitation)
         result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s())
         session['taskwait'] = result.id
+        session['serverstarttime'] = START_TIME
         return redirect(url_for('update_package_wait'))
     if request.method == 'POST' and form.validate_on_submit():
         #use_pip_cache = form.use_cache.data
@@ -14035,6 +14242,7 @@ def update_package():
                     install_zip_package(pkgname, file_number)
                     result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s())
                     session['taskwait'] = result.id
+                    session['serverstarttime'] = START_TIME
                     return redirect(url_for('update_package_wait'))
                 else:
                     flash(word("You do not have permission to install this package."), 'error')
@@ -14044,6 +14252,8 @@ def update_package():
             if form.giturl.data:
                 giturl = form.giturl.data.strip()
                 branch = form.gitbranch.data.strip()
+                if not branch:
+                    branch = get_master_branch(giturl)
                 packagename = re.sub(r'/*$', '', giturl)
                 packagename = re.sub(r'^git+', '', packagename)
                 packagename = re.sub(r'#.*', '', packagename)
@@ -14051,12 +14261,10 @@ def update_package():
                 packagename = re.sub(r'.*/', '', packagename)
                 packagename = re.sub(r'^docassemble-', 'docassemble.', packagename)
                 if user_can_edit_package(giturl=giturl) and user_can_edit_package(pkgname=packagename):
-                    if branch:
-                        install_git_package(packagename, giturl, branch=branch)
-                    else:
-                        install_git_package(packagename, giturl)
+                    install_git_package(packagename, giturl, branch)
                     result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s())
                     session['taskwait'] = result.id
+                    session['serverstarttime'] = START_TIME
                     return redirect(url_for('update_package_wait'))
                 else:
                     flash(word("You do not have permission to install this package."), 'error')
@@ -14073,6 +14281,7 @@ def update_package():
                     install_pip_package(packagename, limitation)
                     result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s())
                     session['taskwait'] = result.id
+                    session['serverstarttime'] = START_TIME
                     return redirect(url_for('update_package_wait'))
                 else:
                     flash(word("You do not have permission to install this package."), 'error')
@@ -14083,7 +14292,7 @@ def update_package():
     form.giturl.data = None
     extra_js = """
     <script>
-      var default_branch = """ + json.dumps(branch if branch else 'master') + """;
+      var default_branch = """ + json.dumps(branch if branch else 'null') + """;
       function get_branches(){
         var elem = $("#gitbranch");
         elem.empty();
@@ -14100,11 +14309,22 @@ def update_package():
           if (data.success){
             var n = data.result.length;
             if (n > 0){
+              var default_to_use = default_branch;
+              var to_try = [default_branch, """ + json.dumps(GITHUB_BRANCH) + """, 'master', 'main'];
+            outer:
+              for (var j = 0; j < 4; j++){
+                for (var i = 0; i < n; i++){
+                  if (data.result[i].name == to_try[j]){
+                    default_to_use = to_try[j];
+                    break outer;
+                  }
+                }
+              }
               elem.empty();
               for (var i = 0; i < n; i++){
                 opt = $("<option><\/option>");
                 opt.attr("value", data.result[i].name).text(data.result[i].name);
-                if (data.result[i].name == default_branch){
+                if (data.result[i].name == default_to_use){
                   opt.prop('selected', true);
                 }
                 $(elem).append(opt);
@@ -14156,9 +14376,15 @@ def update_package():
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
 
+def get_master_branch(giturl):
+    try:
+        return get_repo_info(giturl).get('default_branch', GITHUB_BRANCH)
+    except:
+        return GITHUB_BRANCH
+
 # @app.route('/testws', methods=['GET', 'POST'])
 # def test_websocket():
-#     script = '<script type="text/javascript" src="' + url_for('static', filename='app/socket.io.min.js') + '"></script>' + """<script type="text/javascript" charset="utf-8">
+#     script = '<script type="text/javascript" src="' + url_for('static', filename='app/socket.io.js') + '"></script>' + """<script type="text/javascript" charset="utf-8">
 #     var daSocket;
 #     $(document).ready(function(){
 #         if (location.protocol === 'http:' || document.location.protocol === 'http:'){
@@ -14213,6 +14439,7 @@ def create_playground_package():
         branch_is_new = True
     else:
         branch_is_new = False
+    force_branch_creation = False
     if app.config['USE_GITHUB']:
         github_auth = r.get('da:using_github:userid:' + str(current_user.id))
     else:
@@ -14343,7 +14570,7 @@ def create_playground_package():
             for field in ('dependencies', 'interview_files', 'template_files', 'module_files', 'static_files', 'sources_files'):
                 if field not in info:
                     info[field] = list()
-            info['dependencies'] = [x for x in info['dependencies'] if x not in ('docassemble', 'docassemble.base', 'docassemble.webapp')]
+            info['dependencies'] = [x for x in [z for z in map(lambda y: re.sub(r'[\>\<\=].*', '', y), info['dependencies'])] if x not in ('docassemble', 'docassemble.base', 'docassemble.webapp')]
             # for package in info['dependencies']:
             #     logmessage("create_playground_package: considering " + str(package))
             #     existing_package = Package.query.filter_by(name=package, active=True).first()
@@ -14437,13 +14664,14 @@ def create_playground_package():
                 git_prefix = "GIT_SSH=" + ssh_script.name + " "
                 ssh_url = commit_repository.get('ssh_url', None)
                 github_url = commit_repository.get('html_url', None)
+                commit_branch = commit_repository.get('default_branch', GITHUB_BRANCH)
                 if ssh_url is None:
                     raise DAError("create_playground_package: could not obtain ssh_url for package")
                 output = ''
                 if branch:
                     branch_option = '-b ' + str(branch) + ' '
                 else:
-                    branch_option = '-b master '
+                    branch_option = '-b ' + commit_branch + ' '
                 tempbranch = 'playground' + random_string(5)
                 packagedir = os.path.join(directory, 'docassemble-' + str(pkgname))
                 the_user_name = str(current_user.first_name) + " " + str(current_user.last_name)
@@ -14471,6 +14699,7 @@ def create_playground_package():
                     except subprocess.CalledProcessError as err:
                         output += err.output.decode()
                         raise DAError("create_playground_package: error running git config user.email.  " + output)
+                    output += "Doing git add README.MD\n"
                     try:
                         output += subprocess.check_output(["git", "add", "README.md"], cwd=packagedir, stderr=subprocess.STDOUT).decode()
                     except subprocess.CalledProcessError as err:
@@ -14482,15 +14711,21 @@ def create_playground_package():
                     except subprocess.CalledProcessError as err:
                         output += err.output.decode()
                         raise DAError("create_playground_package: error running git commit -m \"first commit\".  " + output)
+                    output += "Doing git branch -M " + commit_branch + "\n"
+                    try:
+                        output += subprocess.check_output(["git", "branch", "-M", commit_branch], cwd=packagedir, stderr=subprocess.STDOUT).decode()
+                    except subprocess.CalledProcessError as err:
+                        output += err.output.decode()
+                        raise DAError("create_playground_package: error running git branch -M " + commit_branch + ".  " + output)
                     output += "Doing git remote add origin " + ssh_url + "\n"
                     try:
                         output += subprocess.check_output(["git", "remote", "add", "origin", ssh_url], cwd=packagedir, stderr=subprocess.STDOUT).decode()
                     except subprocess.CalledProcessError as err:
                         output += err.output.decode()
                         raise DAError("create_playground_package: error running git remote add origin.  " + output)
-                    output += "Doing " + git_prefix + "git push -u origin master\n"
+                    output += "Doing " + git_prefix + "git push -u origin " + commit_branch + "\n"
                     try:
-                        output += subprocess.check_output(git_prefix + "git push -u origin master", cwd=packagedir, stderr=subprocess.STDOUT, shell=True).decode()
+                        output += subprocess.check_output(git_prefix + "git push -u origin " + commit_branch, cwd=packagedir, stderr=subprocess.STDOUT, shell=True).decode()
                     except subprocess.CalledProcessError as err:
                         output += err.output.decode()
                         raise DAError("create_playground_package: error running first git push.  " + output)
@@ -14516,6 +14751,10 @@ def create_playground_package():
                     the_timezone = get_default_timezone()
                 fix_ml_files(author_info['id'], current_project)
                 docassemble.webapp.files.make_package_dir(pkgname, info, author_info, the_timezone, directory=directory, current_project=current_project)
+                if branch:
+                    the_branch = branch
+                else:
+                    the_branch = commit_branch
                 if not is_empty:
                     output += "Doing git config user.email " + json.dumps(github_email) + "\n"
                     try:
@@ -14529,6 +14768,13 @@ def create_playground_package():
                     except subprocess.CalledProcessError as err:
                         output += err.output.decode()
                         raise DAError("create_playground_package: error running git config user.email.  " + output)
+                    output += "Trying git checkout " + the_branch + "\n"
+                    try:
+                        output += subprocess.check_output(["git", "checkout", the_branch], cwd=packagedir, stderr=subprocess.STDOUT).decode()
+                    except subprocess.CalledProcessError as err:
+                        output += the_branch + " is a new branch\n"
+                        force_branch_creation = True
+                        branch = the_branch
                 output += "Doing git checkout -b " + tempbranch + "\n"
                 try:
                     output += subprocess.check_output(git_prefix + "git checkout -b " + tempbranch, cwd=packagedir, stderr=subprocess.STDOUT, shell=True).decode()
@@ -14553,36 +14799,32 @@ def create_playground_package():
                 except subprocess.CalledProcessError as err:
                     output += err.output.decode()
                     raise DAError("create_playground_package: error running git commit.  " + output)
-                if branch:
-                    the_branch = branch
-                else:
-                    the_branch = 'master'
-                if branch_is_new and the_branch != 'master':
+                output += "Trying git checkout " + the_branch + "\n"
+                try:
+                    output += subprocess.check_output(git_prefix + "git checkout " + the_branch, cwd=packagedir, stderr=subprocess.STDOUT, shell=True).decode()
+                    branch_exists = True
+                except subprocess.CalledProcessError as err:
+                    branch_exists = False
+                if not branch_exists:
                     output += "Doing git checkout -b " + the_branch + "\n"
                     try:
                         output += subprocess.check_output(git_prefix + "git checkout -b " + the_branch, cwd=packagedir, stderr=subprocess.STDOUT, shell=True).decode()
                     except subprocess.CalledProcessError as err:
                         output += err.output.decode()
-                        raise DAError("create_playground_package: error running git checkout.  " + output)
+                        raise DAError("create_playground_package: error running git checkout -b " + the_branch + ".  " + output)
                 else:
-                    output += "Doing git checkout " + the_branch + "\n"
-                    try:
-                        output += subprocess.check_output(git_prefix + "git checkout " + the_branch, cwd=packagedir, stderr=subprocess.STDOUT, shell=True).decode()
-                    except subprocess.CalledProcessError as err:
-                        output += err.output.decode()
-                        raise DAError("create_playground_package: error running git checkout.  " + output)
                     output += "Doing git merge --squash " + tempbranch + "\n"
                     try:
                         output += subprocess.check_output(git_prefix + "git merge --squash " + tempbranch, cwd=packagedir, stderr=subprocess.STDOUT, shell=True).decode()
                     except subprocess.CalledProcessError as err:
                         output += err.output.decode()
-                        raise DAError("create_playground_package: error running git merge.  " + output)
+                        raise DAError("create_playground_package: error running git merge --squash " + tempbranch + ".  " + output)
                     output += "Doing git commit\n"
                     try:
                         output += subprocess.check_output(["git", "commit", "-am", str(commit_message)], cwd=packagedir, stderr=subprocess.STDOUT).decode()
                     except subprocess.CalledProcessError as err:
                         output += err.output.decode()
-                        raise DAError("create_playground_package: error running git commit.  " + output)
+                        raise DAError("create_playground_package: error running git commit -am " + str(commit_message) + ".  " + output)
                 if False:
                     try:
                         output += subprocess.check_output(["git", "remote", "add", "origin", ssh_url], cwd=packagedir, stderr=subprocess.STDOUT).decode()
@@ -14656,6 +14898,7 @@ def create_playground_package():
                 install_zip_package('docassemble.' + pkgname, file_number)
                 result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s())
                 session['taskwait'] = result.id
+                session['serverstarttime'] = START_TIME
                 return redirect(url_for('update_package_wait', next=url_for('playground_packages', project=current_project, file=current_package)))
                 #return redirect(url_for('playground_packages', file=current_package))
             else:
@@ -15014,7 +15257,7 @@ def get_gd_flow():
         scope='https://www.googleapis.com/auth/drive',
         redirect_uri=url_for('google_drive_callback', _external=True),
         access_type='offline',
-        approval_prompt='force')
+        prompt='consent')
     return flow
 
 def get_gd_folder():
@@ -15934,8 +16177,10 @@ def google_drive_page():
     #items = []
     page_token = None
     while True:
-        response = service.files().list(spaces="drive", pageToken=page_token, fields="nextPageToken, files(id, name)", q="mimeType='application/vnd.google-apps.folder' and trashed=false and 'root' in parents").execute()
+        response = service.files().list(spaces="drive", pageToken=page_token, fields="nextPageToken, files(id, name, mimeType, shortcutDetails)", q="trashed=false and 'root' in parents and (mimeType = 'application/vnd.google-apps.folder' or (mimeType = 'application/vnd.google-apps.shortcut' and shortcutDetails.targetMimeType = 'application/vnd.google-apps.folder'))").execute()
         for the_file in response.get('files', []):
+            if the_file['mimeType'] == 'application/vnd.google-apps.shortcut':
+                the_file['id'] = the_file['shortcutDetails']['targetId']
             items.append(the_file)
         page_token = response.get('nextPageToken', None)
         if page_token is None:
@@ -16971,7 +17216,7 @@ def pull_playground_package():
     branch = request.args.get('branch')
     extra_js = """
     <script>
-      var default_branch = """ + json.dumps(branch if branch else 'master') + """;
+      var default_branch = """ + json.dumps(branch if branch else GITHUB_BRANCH) + """;
       function get_branches(){
         var elem = $("#github_branch");
         elem.empty();
@@ -16988,11 +17233,22 @@ def pull_playground_package():
           if (data.success){
             var n = data.result.length;
             if (n > 0){
+              var default_to_use = default_branch;
+              var to_try = [default_branch, """ + json.dumps(GITHUB_BRANCH) + """, 'master', 'main'];
+            outer:
+              for (var j = 0; j < 4; j++){
+                for (var i = 0; i < n; i++){
+                  if (data.result[i].name == to_try[j]){
+                    default_to_use = to_try[j];
+                    break outer;
+                  }
+                }
+              }
               elem.empty();
               for (var i = 0; i < n; i++){
                 opt = $("<option><\/option>");
                 opt.attr("value", data.result[i].name).text(data.result[i].name);
-                if (data.result[i].name == default_branch){
+                if (data.result[i].name == default_to_use){
                   opt.prop('selected', true);
                 }
                 $(elem).append(opt);
@@ -17011,19 +17267,8 @@ def pull_playground_package():
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
 
-@app.route('/get_git_branches', methods=['GET'])
-@login_required
-@roles_required(['developer', 'admin'])
-def get_git_branches():
-    if not app.config['ENABLE_PLAYGROUND']:
-        return ('File not found', 404)
-    if 'url' not in request.args:
-        return ('File not found', 404)
-    if app.config['USE_GITHUB']:
-        github_auth = r.get('da:using_github:userid:' + str(current_user.id))
-    else:
-        github_auth = None
-    repo_name = re.sub(r'/*$', '', request.args['url'].strip())
+def get_branches_of_repo(giturl):
+    repo_name = re.sub(r'/*$', '', giturl)
     m = re.search(r'//(.+):x-oauth-basic@github.com', repo_name)
     if m:
         access_token = m.group(1)
@@ -17032,41 +17277,89 @@ def get_git_branches():
     repo_name = re.sub(r'^http.*github.com/', '', repo_name)
     repo_name = re.sub(r'.*@github.com:', '', repo_name)
     repo_name = re.sub(r'.git$', '', repo_name)
-    try:
-        if github_auth and access_token is None:
-            storage = RedisCredStorage(app='github')
-            credentials = storage.get()
-            if not credentials or credentials.invalid:
-                return jsonify(dict(success=False, reason="bad credentials"))
-            http = credentials.authorize(httplib2.Http())
-        else:
+    if app.config['USE_GITHUB']:
+        github_auth = r.get('da:using_github:userid:' + str(current_user.id))
+    else:
+        github_auth = None
+    if github_auth and access_token is None:
+        storage = RedisCredStorage(app='github')
+        credentials = storage.get()
+        if not credentials or credentials.invalid:
             http = httplib2.Http()
-        the_url = "https://api.github.com/repos/" + repo_name + '/branches'
-        branches = list()
-        if access_token:
-            resp, content = http.request(the_url, "GET", headers=dict(Authorization="token " + access_token))
         else:
-            resp, content = http.request(the_url, "GET")
-        if int(resp['status']) == 200:
-            branches.extend(json.loads(content.decode()))
-            while True:
-                next_link = get_next_link(resp)
-                if next_link:
-                    if access_token:
-                        resp, content = http.request(next_link, "GET", headers=dict(Authorization="token " + access_token))
-                    else:
-                        resp, content = http.request(next_link, "GET")
-                    if int(resp['status']) != 200:
-                        return jsonify(dict(success=False, reason=repo_name + " fetch failed"))
-                    else:
-                        branches.extend(json.loads(content.decode()))
+            http = credentials.authorize(httplib2.Http())
+    else:
+        http = httplib2.Http()
+    the_url = "https://api.github.com/repos/" + repo_name + '/branches'
+    branches = list()
+    if access_token:
+        resp, content = http.request(the_url, "GET", headers=dict(Authorization="token " + access_token))
+    else:
+        resp, content = http.request(the_url, "GET")
+    if int(resp['status']) == 200:
+        branches.extend(json.loads(content.decode()))
+        while True:
+            next_link = get_next_link(resp)
+            if next_link:
+                if access_token:
+                    resp, content = http.request(next_link, "GET", headers=dict(Authorization="token " + access_token))
                 else:
-                    break
-            return jsonify(dict(success=True, result=branches))
-        return jsonify(dict(success=False, reason=the_url + " fetch failed on first try; got " + str(resp['status'])))
+                    resp, content = http.request(next_link, "GET")
+                if int(resp['status']) != 200:
+                    raise Exception(repo_name + " fetch failed")
+                else:
+                    branches.extend(json.loads(content.decode()))
+            else:
+                break
+        return branches
+    raise Exception(the_url + " fetch failed on first try; got " + str(resp['status']))
+
+def get_repo_info(giturl):
+    repo_name = re.sub(r'/*$', '', giturl)
+    m = re.search(r'//(.+):x-oauth-basic@github.com', repo_name)
+    if m:
+        access_token = m.group(1)
+    else:
+        access_token = None
+    repo_name = re.sub(r'^http.*github.com/', '', repo_name)
+    repo_name = re.sub(r'.*@github.com:', '', repo_name)
+    repo_name = re.sub(r'.git$', '', repo_name)
+    if app.config['USE_GITHUB']:
+        github_auth = r.get('da:using_github:userid:' + str(current_user.id))
+    else:
+        github_auth = None
+    if github_auth and access_token is None:
+        storage = RedisCredStorage(app='github')
+        credentials = storage.get()
+        if not credentials or credentials.invalid:
+            http = httplib2.Http()
+        else:
+            http = credentials.authorize(httplib2.Http())
+    else:
+        http = httplib2.Http()
+    the_url = "https://api.github.com/repos/" + repo_name
+    branches = list()
+    if access_token:
+        resp, content = http.request(the_url, "GET", headers=dict(Authorization="token " + access_token))
+    else:
+        resp, content = http.request(the_url, "GET")
+    if int(resp['status']) == 200:
+        return(json.loads(content.decode()))
+    raise Exception(the_url + " fetch failed on first try; got " + str(resp['status']))
+
+@app.route('/get_git_branches', methods=['GET'])
+@login_required
+@roles_required(['developer', 'admin'])
+def get_git_branches():
+    if not app.config['ENABLE_PLAYGROUND']:
+        return ('File not found', 404)
+    if 'url' not in request.args:
+        return ('File not found', 404)
+    giturl = request.args['url'].strip()
+    try:
+        return jsonify(dict(success=True, result=get_branches_of_repo(giturl)))
     except Exception as err:
         return jsonify(dict(success=False, reason=str(err)))
-    return jsonify(dict(success=False))
 
 def get_user_repositories(http):
     repositories = list()
@@ -17190,6 +17483,15 @@ def playground_packages():
             can_publish_to_github = False
     else:
         can_publish_to_github = None
+    if can_publish_to_github and request.method == 'GET':
+        storage = RedisCredStorage(app='github')
+        credentials = storage.get()
+        if not credentials or credentials.invalid:
+            state_string = random_string(16)
+            session['github_next'] = json.dumps(dict(state=state_string, path='playground_packages', arguments=request.args))
+            flow = get_github_flow()
+            uri = flow.step1_get_authorize_url(state=state_string)
+            return redirect(uri)
     show_message = true_or_false(request.args.get('show_message', True))
     github_message = None
     pypi_message = None
@@ -17284,6 +17586,7 @@ def playground_packages():
     github_author_name = None
     github_url_from_file = None
     pypi_package_from_file = None
+    expected_name = 'unknown'
     if request.method == 'GET' and the_file != '':
         if the_file != '' and os.path.isfile(os.path.join(directory_for(area['playgroundpackages'], current_project), 'docassemble.' + the_file)):
             filename = os.path.join(directory_for(area['playgroundpackages'], current_project), 'docassemble.' + the_file)
@@ -17299,6 +17602,7 @@ def playground_packages():
                         else:
                             form[field].data = ''
                     if 'dependencies' in old_info and isinstance(old_info['dependencies'], list) and len(old_info['dependencies']):
+                        old_info['dependencies'] = [z for z in map(lambda y: re.sub(r'[\>\<\=].*', '', y), old_info['dependencies'])]
                         for item in ('docassemble', 'docassemble.base', 'docassemble.webapp'):
                             if item in old_info['dependencies']:
                                 del old_info['dependencies'][item]
@@ -17494,9 +17798,10 @@ def playground_packages():
                                     inner_item = re.sub(r'^"+', '', inner_item)
                                     the_list.append(inner_item)
                                 extracted[m.group(1)] = the_list
-                        info_dict = dict(readme=readme_text, interview_files=data_files['questions'], sources_files=data_files['sources'], static_files=data_files['static'], module_files=data_files['modules'], template_files=data_files['templates'], dependencies=extracted.get('install_requires', list()), description=extracted.get('description', ''), author_name=extracted.get('author', ''), author_email=extracted.get('author_email', ''), license=extracted.get('license', ''), url=extracted.get('url', ''), version=extracted.get('version', ''))
-                        info_dict['dependencies'] = [x for x in info_dict['dependencies'] if x not in ('docassemble', 'docassemble.base', 'docassemble.webapp')]
-                        package_name = re.sub(r'^docassemble\.', '', extracted.get('name', 'unknown'))
+                        info_dict = dict(readme=readme_text, interview_files=data_files['questions'], sources_files=data_files['sources'], static_files=data_files['static'], module_files=data_files['modules'], template_files=data_files['templates'], dependencies=[z for z in map(lambda y: re.sub(r'[\>\<\=].*', '', y), extracted.get('install_requires', list()))], description=extracted.get('description', ''), author_name=extracted.get('author', ''), author_email=extracted.get('author_email', ''), license=extracted.get('license', ''), url=extracted.get('url', ''), version=extracted.get('version', ''))
+
+                        info_dict['dependencies'] = [x for x in [z for z in map(lambda y: re.sub(r'[\>\<\=].*', '', y), info_dict['dependencies'])] if x not in ('docassemble', 'docassemble.base', 'docassemble.webapp')]
+                        package_name = re.sub(r'^docassemble\.', '', extracted.get('name', expected_name))
                         with open(os.path.join(directory_for(area['playgroundpackages'], current_project), 'docassemble.' + package_name), 'w', encoding='utf-8') as fp:
                             the_yaml = yaml.safe_dump(info_dict, default_flow_style=False, default_style='|')
                             fp.write(str(the_yaml))
@@ -17538,6 +17843,9 @@ def playground_packages():
         if 'github_url' in request.args:
             github_url = re.sub(r'[^A-Za-z0-9\-\.\_\~\:\/\?\#\[\]\@\!\$\&\'\(\)\*\+\,\;\=\`]', '', request.args['github_url'])
             if github_url.startswith('git@') and can_publish_to_github and github_user_name and github_email:
+                expected_name = re.sub(r'.*/', '', github_url)
+                expected_name = re.sub(r'\.git', '', expected_name)
+                expected_name = re.sub(r'docassemble-', '', expected_name)
                 (private_key_file, public_key_file) = get_ssh_keys(github_email)
                 os.chmod(private_key_file, stat.S_IRUSR | stat.S_IWUSR)
                 os.chmod(public_key_file, stat.S_IRUSR | stat.S_IWUSR)
@@ -17554,6 +17862,9 @@ def playground_packages():
                     output += err.output.decode()
                     raise DAError("playground_packages: error running git clone.  " + output)
             else:
+                expected_name = re.sub(r'.*/', '', github_url)
+                expected_name = re.sub(r'\.git', '', expected_name)
+                expected_name = re.sub(r'docassemble-', '', expected_name)
                 try:
                     if branch is not None:
                         output += subprocess.check_output(['git', 'clone', '-b', branch, github_url], cwd=directory, stderr=subprocess.STDOUT).decode()
@@ -17674,9 +17985,9 @@ def playground_packages():
                     the_list.append(inner_item)
                 extracted[m.group(1)] = the_list
         info_dict = dict(readme=readme_text, interview_files=data_files['questions'], sources_files=data_files['sources'], static_files=data_files['static'], module_files=data_files['modules'], template_files=data_files['templates'], dependencies=extracted.get('install_requires', list()), description=extracted.get('description', ''), author_name=extracted.get('author', ''), author_email=extracted.get('author_email', ''), license=extracted.get('license', ''), url=extracted.get('url', ''), version=extracted.get('version', ''), github_url=github_url, github_branch=branch, pypi_package_name=pypi_package)
-        info_dict['dependencies'] = [x for x in info_dict['dependencies'] if x not in ('docassemble', 'docassemble.base', 'docassemble.webapp')]
+        info_dict['dependencies'] = [x for x in [z for z in map(lambda y: re.sub(r'[\>\<\=].*', '', y), info_dict['dependencies'])] if x not in ('docassemble', 'docassemble.base', 'docassemble.webapp')]
         #output += "info_dict is set\n"
-        package_name = re.sub(r'^docassemble\.', '', extracted.get('name', 'unknown'))
+        package_name = re.sub(r'^docassemble\.', '', extracted.get('name', expected_name))
         # if not user_can_edit_package(pkgname='docassemble.' + package_name):
         #     index = 1
         #     orig_package_name = package_name
@@ -17733,13 +18044,12 @@ def playground_packages():
                     if os.path.isfile(old_filename):
                         os.remove(old_filename)
                 if form.pypi.data and pypi_version is not None:
-                    versions = pypi_version.split(".")
-                    while True:
+                    if not new_info['version']:
+                        new_info['version'] = pypi_version
+                    while 'releases' in pypi_info['info'] and new_info['version'] in pypi_info['info']['releases'].keys():
+                        versions = new_info['version'].split(".")
                         versions[-1] = str(int(versions[-1]) + 1)
                         new_info['version'] = ".".join(versions)
-                        if 'releases' not in pypi_info['info'] or new_info['version'] not in pypi_info['info']['releases'].keys():
-                            break
-                        versions = new_info['version'].split(".")
                 filename = os.path.join(directory_for(area['playgroundpackages'], current_project), 'docassemble.' + the_file)
                 if os.path.isfile(filename):
                     with open(filename, 'rU', encoding='utf-8') as fp:
@@ -18014,10 +18324,16 @@ def playground_packages():
         branch_choices.append((br['name'], br['name']))
     if branch and branch in branch_names:
         form.github_branch.data = branch
+        default_branch = branch
     elif 'master' in branch_names:
         form.github_branch.data = 'master'
+        default_branch = 'master'
+    elif 'main' in branch_names:
+        form.github_branch.data = 'main'
+        default_branch = 'main'
+    else:
+        default_branch = GITHUB_BRANCH
     form.github_branch.choices = branch_choices
-    default_branch = branch if branch else 'master'
     if form.author_name.data in ('', None) and current_user.first_name and current_user.last_name:
         form.author_name.data = current_user.first_name + " " + current_user.last_name
     if form.author_email.data in ('', None) and current_user.email:
@@ -19558,7 +19874,7 @@ def playground_css_bundle():
 def js_bundle():
     base_path = pkg_resources.resource_filename(pkg_resources.Requirement.parse('docassemble.webapp'), os.path.join('docassemble', 'webapp', 'static'))
     output = ''
-    for parts in [['app', 'jquery.min.js'], ['app', 'jquery.validate.min.js'], ['app', 'additional-methods.min.js'], ['popper', 'umd', 'popper.min.js'], ['popper', 'umd', 'tooltip.min.js'], ['bootstrap', 'js', 'bootstrap.min.js'], ['bootstrap-slider', 'dist', 'bootstrap-slider.js'], ['bootstrap-fileinput', 'js', 'plugins', 'piexif.min.js'], ['bootstrap-fileinput', 'js', 'fileinput.js'], ['bootstrap-fileinput', 'themes', 'fas', 'theme.min.js'], ['app', 'app.js'], ['app', 'socket.io.min.js'], ['labelauty', 'source', 'jquery-labelauty.js'], ['bootstrap-combobox', 'js', 'bootstrap-combobox.js']]:
+    for parts in [['app', 'jquery.min.js'], ['app', 'jquery.validate.min.js'], ['app', 'additional-methods.min.js'], ['app', 'jquery.visible.js'], ['bootstrap', 'js', 'bootstrap.bundle.min.js'], ['bootstrap-slider', 'dist', 'bootstrap-slider.js'], ['bootstrap-fileinput', 'js', 'plugins', 'piexif.min.js'], ['bootstrap-fileinput', 'js', 'fileinput.js'], ['bootstrap-fileinput', 'themes', 'fas', 'theme.min.js'], ['app', 'app.js'], ['app', 'socket.io.js'], ['labelauty', 'source', 'jquery-labelauty.js'], ['bootstrap-combobox', 'js', 'bootstrap-combobox.js']]:
         with open(os.path.join(base_path, *parts), encoding='utf-8') as fp:
             output += fp.read()
         output += "\n"
@@ -19578,7 +19894,7 @@ def playground_js_bundle():
 def js_admin_bundle():
     base_path = pkg_resources.resource_filename(pkg_resources.Requirement.parse('docassemble.webapp'), os.path.join('docassemble', 'webapp', 'static'))
     output = ''
-    for parts in [['app', 'jquery.min.js'], ['popper', 'umd', 'popper.min.js'], ['popper', 'umd', 'tooltip.min.js'], ['bootstrap', 'js', 'bootstrap.min.js']]:
+    for parts in [['app', 'jquery.min.js'], ['bootstrap', 'js', 'bootstrap.bundle.min.js']]:
         with open(os.path.join(base_path, *parts), encoding='utf-8') as fp:
             output += fp.read()
         output += "\n"
@@ -19588,7 +19904,7 @@ def js_admin_bundle():
 def js_bundle_wrap():
     base_path = pkg_resources.resource_filename(pkg_resources.Requirement.parse('docassemble.webapp'), os.path.join('docassemble', 'webapp', 'static'))
     output = '(function($) {'
-    for parts in [['app', 'jquery.validate.min.js'], ['app', 'additional-methods.min.js'], ['popper', 'umd', 'popper.min.js'], ['popper', 'umd', 'tooltip.min.js'], ['bootstrap', 'js', 'bootstrap.min.js'], ['bootstrap-slider', 'dist', 'bootstrap-slider.js'], ['bootstrap-fileinput', 'js', 'plugins', 'piexif.min.js'], ['bootstrap-fileinput', 'js', 'fileinput.js'], ['bootstrap-fileinput', 'themes', 'fas', 'theme.min.js'], ['app', 'app.js'], ['app', 'socket.io.min.js'], ['labelauty', 'source', 'jquery-labelauty.js'], ['bootstrap-combobox', 'js', 'bootstrap-combobox.js']]:
+    for parts in [['app', 'jquery.validate.min.js'], ['app', 'additional-methods.min.js'], ['app', 'jquery.visible.js'], ['bootstrap', 'js', 'bootstrap.bundle.min.js'], ['bootstrap-slider', 'dist', 'bootstrap-slider.js'], ['bootstrap-fileinput', 'js', 'plugins', 'piexif.min.js'], ['bootstrap-fileinput', 'js', 'fileinput.js'], ['bootstrap-fileinput', 'themes', 'fas', 'theme.min.js'], ['app', 'app.js'], ['app', 'socket.io.js'], ['labelauty', 'source', 'jquery-labelauty.js'], ['bootstrap-combobox', 'js', 'bootstrap-combobox.js']]:
         with open(os.path.join(base_path, *parts), encoding='utf-8') as fp:
             output += fp.read()
         output += "\n"
@@ -19599,7 +19915,7 @@ def js_bundle_wrap():
 def js_bundle_no_query():
     base_path = pkg_resources.resource_filename(pkg_resources.Requirement.parse('docassemble.webapp'), os.path.join('docassemble', 'webapp', 'static'))
     output = ''
-    for parts in [['app', 'jquery.validate.min.js'], ['app', 'additional-methods.min.js'], ['popper', 'umd', 'popper.min.js'], ['popper', 'umd', 'tooltip.min.js'], ['bootstrap', 'js', 'bootstrap.min.js'], ['bootstrap-slider', 'dist', 'bootstrap-slider.js'], ['bootstrap-fileinput', 'js', 'plugins', 'piexif.min.js'], ['bootstrap-fileinput', 'js', 'fileinput.js'], ['bootstrap-fileinput', 'themes', 'fas', 'theme.min.js'], ['app', 'app.js'], ['app', 'socket.io.min.js'], ['labelauty', 'source', 'jquery-labelauty.js'], ['bootstrap-combobox', 'js', 'bootstrap-combobox.js']]:
+    for parts in [['app', 'jquery.validate.min.js'], ['app', 'additional-methods.min.js'], ['app', 'jquery.visible.js'], ['bootstrap', 'js', 'bootstrap.bundle.min.js'], ['bootstrap-slider', 'dist', 'bootstrap-slider.js'], ['bootstrap-fileinput', 'js', 'plugins', 'piexif.min.js'], ['bootstrap-fileinput', 'js', 'fileinput.js'], ['bootstrap-fileinput', 'themes', 'fas', 'theme.min.js'], ['app', 'app.js'], ['app', 'socket.io.js'], ['labelauty', 'source', 'jquery-labelauty.js'], ['bootstrap-combobox', 'js', 'bootstrap-combobox.js']]:
         with open(os.path.join(base_path, *parts), encoding='utf-8') as fp:
             output += fp.read()
         output += "\n"
@@ -19939,8 +20255,105 @@ def utilities():
                     for the_word in chunk:
                         result[language][the_word] = 'XYZNULLXYZ'
                     uses_null = True
-            word_box = ruamel.yaml.safe_dump(result, default_flow_style=False, default_style = '"', allow_unicode=True, width=1000)
-            word_box = re.sub(r'"XYZNULLXYZ"', r'null', word_box)
+            if form.systemfiletype.data == 'YAML':
+                word_box = ruamel.yaml.safe_dump(result, default_flow_style=False, default_style = '"', allow_unicode=True, width=1000)
+                word_box = re.sub(r'"XYZNULLXYZ"', r'null', word_box)
+            elif form.systemfiletype.data == 'XLSX':
+                temp_file = tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False)
+                xlsx_filename = language + "-words.xlsx"
+                workbook = xlsxwriter.Workbook(temp_file.name)
+                worksheet = workbook.add_worksheet()
+                bold = workbook.add_format({'bold': 1, 'num_format': '@'})
+                text = workbook.add_format({'num_format': '@'})
+                text.set_align('top')
+                wrapping = workbook.add_format({'num_format': '@'})
+                wrapping.set_align('top')
+                wrapping.set_text_wrap()
+                wrapping.set_locked(False)
+                numb = workbook.add_format()
+                numb.set_align('top')
+                worksheet.write('A1', 'orig_lang', bold)
+                worksheet.write('B1', 'tr_lang', bold)
+                worksheet.write('C1', 'orig_text', bold)
+                worksheet.write('D1', 'tr_text', bold)
+                worksheet.set_column(0, 0, 10)
+                worksheet.set_column(1, 1, 10)
+                worksheet.set_column(2, 2, 55)
+                worksheet.set_column(3, 3, 55)
+                row = 1
+                for key, val in result[language].items():
+                    worksheet.write_string(row, 0, 'en', text)
+                    worksheet.write_string(row, 1, language, text)
+                    worksheet.write_string(row, 2, key, wrapping)
+                    worksheet.write_string(row, 3, val, wrapping)
+                    row += 1
+                workbook.close()
+                response = send_file(temp_file.name, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, attachment_filename=xlsx_filename)
+                response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
+                return(response)
+            elif form.systemfiletype.data == 'XLIFF 1.2':
+                temp_file = tempfile.NamedTemporaryFile(suffix='.xlf', delete=False)
+                xliff_filename = language + "-words.xlf"
+                xliff = ET.Element('xliff')
+                xliff.set('xmlns', 'urn:oasis:names:tc:xliff:document:1.2')
+                xliff.set('version', '1.2')
+                the_file = ET.SubElement(xliff, 'file')
+                the_file.set('source-language', 'en')
+                the_file.set('target-language', language)
+                the_file.set('datatype', 'plaintext')
+                the_file.set('original', 'self')
+                the_file.set('id', 'f1')
+                the_file.set('xml:space', 'preserve')
+                body = ET.SubElement(the_file, 'body')
+                indexno = 1
+                for key, val in result[language].items():
+                    trans_unit = ET.SubElement(body, 'trans-unit')
+                    trans_unit.set('id', str(indexno))
+                    trans_unit.set('xml:space', 'preserve')
+                    source = ET.SubElement(trans_unit, 'source')
+                    source.set('xml:space', 'preserve')
+                    target = ET.SubElement(trans_unit, 'target')
+                    target.set('xml:space', 'preserve')
+                    source.text = key
+                    target.text = val
+                    indexno += 1
+                temp_file.write(ET.tostring(xliff))
+                temp_file.close()
+                response = send_file(temp_file.name, mimetype='application/xml', as_attachment=True, attachment_filename=xliff_filename)
+                response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
+                return(response)
+            elif form.systemfiletype.data == 'XLIFF 2.0':
+                temp_file = tempfile.NamedTemporaryFile(suffix='.xlf', delete=False)
+                xliff_filename = language + "-words.xlf"
+                xliff = ET.Element('xliff')
+                xliff.set('xmlns', 'urn:oasis:names:tc:xliff:document:2.0')
+                xliff.set('version', '2.0')
+                xliff.set('srcLang', 'en')
+                xliff.set('trgLang', language)
+                file_index = 1
+                the_file = ET.SubElement(xliff, 'file')
+                the_file.set('id', 'f1')
+                the_file.set('original', 'self')
+                the_file.set('xml:space', 'preserve')
+                unit = ET.SubElement(the_file, 'unit')
+                unit.set('id', "docassemble_phrases")
+                indexno = 1
+                for key, val in result[language].items():
+                    segment = ET.SubElement(unit, 'segment')
+                    segment.set('id', str(indexno))
+                    segment.set('xml:space', 'preserve')
+                    source = ET.SubElement(segment, 'source')
+                    source.set('xml:space', 'preserve')
+                    target = ET.SubElement(segment, 'target')
+                    target.set('xml:space', 'preserve')
+                    source.text = key
+                    target.text = val
+                    indexno += 1
+                temp_file.write(ET.tostring(xliff))
+                temp_file.close()
+                response = send_file(temp_file.name, mimetype='application/xml', as_attachment=True, attachment_filename=xliff_filename)
+                response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
+                return(response)
         if 'pdfdocxfile' in request.files and request.files['pdfdocxfile'].filename:
             filename = secure_filename(request.files['pdfdocxfile'].filename)
             extension, mimetype = get_ext_and_mimetype(filename)
@@ -19979,6 +20392,10 @@ def utilities():
         $(this).next('.custom-file-label').html(fileName);
       });
     </script>"""
+    form.systemfiletype.choices = [('YAML', 'YAML'), ('XLSX', 'XLSX'), ('XLIFF 1.2', 'XLIFF 1.2'), ('XLIFF 2.0', 'XLIFF 2.0')]
+    form.systemfiletype.data = 'YAML'
+    form.filetype.choices = [('XLSX', 'XLSX'), ('XLIFF 1.2', 'XLIFF 1.2'), ('XLIFF 2.0', 'XLIFF 2.0')]
+    form.filetype.data = 'XLSX'
     response = make_response(render_template('pages/utilities.html', extra_js=Markup(extra_js), version_warning=version_warning, bodyclass='daadminbody', tab_title=word("Utilities"), page_title=word("Utilities"), form=form, fields=fields_output, word_box=word_box, uses_null=uses_null, file_type=file_type, interview_placeholder=word("E.g., docassemble.demo:data/questions/questions.yml"), language_placeholder=word("E.g., es, fr, it")), 200)
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
@@ -22057,96 +22474,6 @@ def translation_file():
     if tr_lang is None or not re.search(r'\S', tr_lang):
         flash(word("You must provide a language"), 'error')
         return redirect(url_for('utilities'))
-    temp_file = tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False)
-    xlsx_filename = docassemble.base.functions.space_to_underscore(os.path.splitext(os.path.basename(re.sub(r'.*:', '', yaml_filename)))[0]) + "_" + tr_lang + ".xlsx"
-    workbook = xlsxwriter.Workbook(temp_file.name)
-    worksheet = workbook.add_worksheet()
-    bold = workbook.add_format({'bold': 1})
-    text = workbook.add_format()
-    text.set_align('top')
-    fixedcell = workbook.add_format()
-    fixedcell.set_align('top')
-    fixedcell.set_text_wrap()
-    fixedunlockedcell = workbook.add_format()
-    fixedunlockedcell.set_align('top')
-    fixedunlockedcell.set_text_wrap()
-    fixedunlockedcell.set_locked(False)
-    fixed = workbook.add_format()
-    fixedone = workbook.add_format()
-    fixedone.set_bold()
-    fixedone.set_font_color('green')
-    fixedtwo = workbook.add_format()
-    fixedtwo.set_bold()
-    fixedtwo.set_font_color('blue')
-    fixedunlocked = workbook.add_format()
-    fixedunlockedone = workbook.add_format()
-    fixedunlockedone.set_bold()
-    fixedunlockedone.set_font_color('green')
-    fixedunlockedtwo = workbook.add_format()
-    fixedunlockedtwo.set_bold()
-    fixedunlockedtwo.set_font_color('blue')
-    wholefixed = workbook.add_format()
-    wholefixed.set_align('top')
-    wholefixed.set_text_wrap()
-    wholefixedone = workbook.add_format()
-    wholefixedone.set_bold()
-    wholefixedone.set_font_color('green')
-    wholefixedone.set_align('top')
-    wholefixedone.set_text_wrap()
-    wholefixedtwo = workbook.add_format()
-    wholefixedtwo.set_bold()
-    wholefixedtwo.set_font_color('blue')
-    wholefixedtwo.set_align('top')
-    wholefixedtwo.set_text_wrap()
-    wholefixedunlocked = workbook.add_format()
-    wholefixedunlocked.set_align('top')
-    wholefixedunlocked.set_text_wrap()
-    wholefixedunlocked.set_locked(False)
-    wholefixedunlockedone = workbook.add_format()
-    wholefixedunlockedone.set_bold()
-    wholefixedunlockedone.set_font_color('green')
-    wholefixedunlockedone.set_align('top')
-    wholefixedunlockedone.set_text_wrap()
-    wholefixedunlockedone.set_locked(False)
-    wholefixedunlockedtwo = workbook.add_format()
-    wholefixedunlockedtwo.set_bold()
-    wholefixedunlockedtwo.set_font_color('blue')
-    wholefixedunlockedtwo.set_align('top')
-    wholefixedunlockedtwo.set_text_wrap()
-    wholefixedunlockedtwo.set_locked(False)
-    numb = workbook.add_format()
-    numb.set_align('top')
-    worksheet.write('A1', 'interview', bold)
-    worksheet.write('B1', 'question_id', bold)
-    worksheet.write('C1', 'index_num', bold)
-    worksheet.write('D1', 'hash', bold)
-    worksheet.write('E1', 'orig_lang', bold)
-    worksheet.write('F1', 'tr_lang', bold)
-    worksheet.write('G1', 'orig_text', bold)
-    worksheet.write('H1', 'tr_text', bold)
-    options = {
-        'objects':               False,
-        'scenarios':             False,
-        'format_cells':          False,
-        'format_columns':        False,
-        'format_rows':           False,
-        'insert_columns':        False,
-        'insert_rows':           True,
-        'insert_hyperlinks':     False,
-        'delete_columns':        False,
-        'delete_rows':           True,
-        'select_locked_cells':   True,
-        'sort':                  True,
-        'autofilter':            True,
-        'pivot_tables':          False,
-        'select_unlocked_cells': True,
-    }
-    worksheet.protect('', options)
-    worksheet.set_column(0, 0, 25)
-    worksheet.set_column(1, 1, 15)
-    worksheet.set_column(2, 2, 12)
-    worksheet.set_column(6, 6, 75)
-    worksheet.set_column(6, 7, 75)
     try:
         interview_source = docassemble.base.parse.interview_source_from_string(yaml_filename)
     except DAError:
@@ -22158,79 +22485,299 @@ def translation_file():
     tr_cache = dict()
     if len(interview.translations):
         for item in interview.translations:
-            the_xlsx_file = docassemble.base.functions.package_data_filename(item)
-            if not os.path.isfile(the_xlsx_file):
-                continue
-            df = pandas.read_excel(the_xlsx_file)
-            invalid = False
-            for column_name in ('interview', 'question_id', 'index_num', 'hash', 'orig_lang', 'tr_lang', 'orig_text', 'tr_text'):
-                if column_name not in df.columns:
-                    invalid = True
-                    break
-            if invalid:
-                continue
-            for indexno in df.index:
-                try:
-                    assert df['interview'][indexno]
-                    assert df['question_id'][indexno]
-                    assert df['index_num'][indexno] >= 0
-                    assert df['hash'][indexno]
-                    assert df['orig_lang'][indexno]
-                    assert df['tr_lang'][indexno]
-                    assert df['orig_text'][indexno] != ''
-                    assert df['tr_text'][indexno] != ''
-                    if isinstance(df['orig_text'][indexno], float):
-                        assert not math.isnan(df['orig_text'][indexno])
-                    if isinstance(df['tr_text'][indexno], float):
-                        assert not math.isnan(df['tr_text'][indexno])
-                except:
+            if item.lower().endswith(".xlsx"):
+                the_xlsx_file = docassemble.base.functions.package_data_filename(item)
+                if not os.path.isfile(the_xlsx_file):
                     continue
-                the_dict = {'interview': str(df['interview'][indexno]), 'question_id': str(df['question_id'][indexno]), 'index_num': df['index_num'][indexno], 'hash': str(df['hash'][indexno]), 'orig_lang': str(df['orig_lang'][indexno]), 'tr_lang': str(df['tr_lang'][indexno]), 'orig_text': str(df['orig_text'][indexno]), 'tr_text': str(df['tr_text'][indexno])}
-                if df['orig_text'][indexno] not in tr_cache:
-                    tr_cache[df['orig_text'][indexno]] = dict()
-                if df['orig_lang'][indexno] not in tr_cache[df['orig_text'][indexno]]:
-                    tr_cache[df['orig_text'][indexno]][df['orig_lang'][indexno]] = dict()
-                tr_cache[df['orig_text'][indexno]][df['orig_lang'][indexno]][df['tr_lang'][indexno]] = the_dict
-    row = 1
-    seen = list()
-    for question in interview.all_questions:
-        if not hasattr(question, 'translations'):
-            continue
-        language = question.language
-        if language == '*':
-            language = interview_source.language
-        if language == '*':
-            language = DEFAULT_LANGUAGE
-        if language == tr_lang:
-            continue
-        indexno = 0
-        if hasattr(question, 'id'):
-            question_id = question.id
-        else:
-            question_id = question.name
-        for item in question.translations:
-            if item in seen:
+                df = pandas.read_excel(the_xlsx_file, na_values=['NaN', '-NaN', '#NA', '#N/A'], keep_default_na=False)
+                invalid = False
+                for column_name in ('interview', 'question_id', 'index_num', 'hash', 'orig_lang', 'tr_lang', 'orig_text', 'tr_text'):
+                    if column_name not in df.columns:
+                        invalid = True
+                        break
+                if invalid:
+                    continue
+                for indexno in df.index:
+                    try:
+                        assert df['interview'][indexno]
+                        assert df['question_id'][indexno]
+                        assert df['index_num'][indexno] >= 0
+                        assert df['hash'][indexno]
+                        assert df['orig_lang'][indexno]
+                        assert df['tr_lang'][indexno]
+                        assert df['orig_text'][indexno] != ''
+                        assert df['tr_text'][indexno] != ''
+                        if isinstance(df['orig_text'][indexno], float):
+                            assert not math.isnan(df['orig_text'][indexno])
+                        if isinstance(df['tr_text'][indexno], float):
+                            assert not math.isnan(df['tr_text'][indexno])
+                    except:
+                        continue
+                    the_dict = {'interview': str(df['interview'][indexno]), 'question_id': str(df['question_id'][indexno]), 'index_num': df['index_num'][indexno], 'hash': str(df['hash'][indexno]), 'orig_lang': str(df['orig_lang'][indexno]), 'tr_lang': str(df['tr_lang'][indexno]), 'orig_text': str(df['orig_text'][indexno]), 'tr_text': str(df['tr_text'][indexno])}
+                    if df['orig_text'][indexno] not in tr_cache:
+                        tr_cache[df['orig_text'][indexno]] = dict()
+                    if df['orig_lang'][indexno] not in tr_cache[df['orig_text'][indexno]]:
+                        tr_cache[df['orig_text'][indexno]][df['orig_lang'][indexno]] = dict()
+                    tr_cache[df['orig_text'][indexno]][df['orig_lang'][indexno]][df['tr_lang'][indexno]] = the_dict
+            elif item.lower().endswith(".xlf") or item.lower().endswith(".xliff"):
+                the_xlf_file = docassemble.base.functions.package_data_filename(item)
+                if not os.path.isfile(the_xlf_file):
+                    continue
+                tree = ET.parse(the_xlf_file)
+                root = tree.getroot()
+                indexno = 1
+                if root.attrib['version'] == "1.2":
+                    for the_file in root.iter('{urn:oasis:names:tc:xliff:document:1.2}file'):
+                        source_lang = the_file.attrib.get('source-language', 'en')
+                        target_lang = the_file.attrib.get('target-language', 'en')
+                        source_filename = the_file.attrib.get('original', yaml_filename)
+                        for transunit in the_file.iter('{urn:oasis:names:tc:xliff:document:1.2}trans-unit'):
+                            orig_text = ''
+                            tr_text = ''
+                            for source in transunit.iter('{urn:oasis:names:tc:xliff:document:1.2}source'):
+                                if source.text:
+                                    orig_text += source.text
+                                for mrk in source:
+                                    orig_text += mrk.text
+                                    if mrk.tail:
+                                        orig_text += mrk.tail
+                            for target in transunit.iter('{urn:oasis:names:tc:xliff:document:1.2}target'):
+                                if target.text:
+                                    tr_text += target.text
+                                for mrk in target:
+                                    tr_text += mrk.text
+                                    if mrk.tail:
+                                        tr_text += mrk.tail
+                            if orig_text == '' or tr_text == '':
+                                continue
+                            the_dict = {'interview': source_filename, 'question_id': 'Unknown' + str(indexno), 'index_num': transunit.attrib.get('id', str(indexno)), 'hash': hashlib.md5(orig_text.encode('utf-8')).hexdigest(), 'orig_lang': source_lang, 'tr_lang': target_lang, 'orig_text': orig_text, 'tr_text': tr_text}
+                            if orig_text not in tr_cache:
+                                tr_cache[orig_text] = dict()
+                            if source_lang not in tr_cache[orig_text]:
+                                tr_cache[orig_text][source_lang] = dict()
+                            tr_cache[orig_text][source_lang][target_lang] = the_dict
+                            indexno += 1
+                elif root.attrib['version'] == "2.0":
+                    source_lang = root.attrib['srcLang']
+                    target_lang = root.attrib['trgLang']
+                    for the_file in root.iter('{urn:oasis:names:tc:xliff:document:2.0}file'):
+                        source_filename = the_file.attrib.get('original', yaml_filename)
+                        for unit in the_file.iter('{urn:oasis:names:tc:xliff:document:2.0}unit'):
+                            question_id = unit.attrib.get('id', 'Unknown' + str(indexno))
+                            for segment in unit.iter('{urn:oasis:names:tc:xliff:document:2.0}segment'):
+                                orig_text = ''
+                                tr_text = ''
+                                for source in transunit.iter('{urn:oasis:names:tc:xliff:document:2.0}source'):
+                                    if source.text:
+                                        orig_text += source.text
+                                    for mrk in source:
+                                        orig_text += mrk.text
+                                        if mrk.tail:
+                                            orig_text += mrk.tail
+                                for target in transunit.iter('{urn:oasis:names:tc:xliff:document:2.0}target'):
+                                    if target.text:
+                                        tr_text += target.text
+                                    for mrk in target:
+                                        tr_text += mrk.text
+                                        if mrk.tail:
+                                            tr_text += mrk.tail
+                                if orig_text == '' or tr_text == '':
+                                    continue
+                                the_dict = {'interview': source_filename, 'question_id': question_id, 'index_num': segment.attrib.get('id', str(indexno)), 'hash': hashlib.md5(orig_text.encode('utf-8')).hexdigest(), 'orig_lang': source_lang, 'tr_lang': target_lang, 'orig_text': orig_text, 'tr_text': tr_text}
+                                if orig_text not in tr_cache:
+                                    tr_cache[orig_text] = dict()
+                                if source_lang not in tr_cache[orig_text]:
+                                    tr_cache[orig_text][source_lang] = dict()
+                                tr_cache[orig_text][source_lang][target_lang] = the_dict
+                                indexno += 1
+    if form.filetype.data == 'XLSX':
+        temp_file = tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False)
+        xlsx_filename = docassemble.base.functions.space_to_underscore(os.path.splitext(os.path.basename(re.sub(r'.*:', '', yaml_filename)))[0]) + "_" + tr_lang + ".xlsx"
+        workbook = xlsxwriter.Workbook(temp_file.name)
+        worksheet = workbook.add_worksheet()
+        bold = workbook.add_format({'bold': 1})
+        text = workbook.add_format()
+        text.set_align('top')
+        fixedcell = workbook.add_format()
+        fixedcell.set_align('top')
+        fixedcell.set_text_wrap()
+        fixedunlockedcell = workbook.add_format()
+        fixedunlockedcell.set_align('top')
+        fixedunlockedcell.set_text_wrap()
+        fixedunlockedcell.set_locked(False)
+        fixed = workbook.add_format()
+        fixedone = workbook.add_format()
+        fixedone.set_bold()
+        fixedone.set_font_color('green')
+        fixedtwo = workbook.add_format()
+        fixedtwo.set_bold()
+        fixedtwo.set_font_color('blue')
+        fixedunlocked = workbook.add_format()
+        fixedunlockedone = workbook.add_format()
+        fixedunlockedone.set_bold()
+        fixedunlockedone.set_font_color('green')
+        fixedunlockedtwo = workbook.add_format()
+        fixedunlockedtwo.set_bold()
+        fixedunlockedtwo.set_font_color('blue')
+        wholefixed = workbook.add_format()
+        wholefixed.set_align('top')
+        wholefixed.set_text_wrap()
+        wholefixedone = workbook.add_format()
+        wholefixedone.set_bold()
+        wholefixedone.set_font_color('green')
+        wholefixedone.set_align('top')
+        wholefixedone.set_text_wrap()
+        wholefixedtwo = workbook.add_format()
+        wholefixedtwo.set_bold()
+        wholefixedtwo.set_font_color('blue')
+        wholefixedtwo.set_align('top')
+        wholefixedtwo.set_text_wrap()
+        wholefixedunlocked = workbook.add_format()
+        wholefixedunlocked.set_align('top')
+        wholefixedunlocked.set_text_wrap()
+        wholefixedunlocked.set_locked(False)
+        wholefixedunlockedone = workbook.add_format()
+        wholefixedunlockedone.set_bold()
+        wholefixedunlockedone.set_font_color('green')
+        wholefixedunlockedone.set_align('top')
+        wholefixedunlockedone.set_text_wrap()
+        wholefixedunlockedone.set_locked(False)
+        wholefixedunlockedtwo = workbook.add_format()
+        wholefixedunlockedtwo.set_bold()
+        wholefixedunlockedtwo.set_font_color('blue')
+        wholefixedunlockedtwo.set_align('top')
+        wholefixedunlockedtwo.set_text_wrap()
+        wholefixedunlockedtwo.set_locked(False)
+        numb = workbook.add_format()
+        numb.set_align('top')
+        worksheet.write('A1', 'interview', bold)
+        worksheet.write('B1', 'question_id', bold)
+        worksheet.write('C1', 'index_num', bold)
+        worksheet.write('D1', 'hash', bold)
+        worksheet.write('E1', 'orig_lang', bold)
+        worksheet.write('F1', 'tr_lang', bold)
+        worksheet.write('G1', 'orig_text', bold)
+        worksheet.write('H1', 'tr_text', bold)
+        options = {
+            'objects':               False,
+            'scenarios':             False,
+            'format_cells':          False,
+            'format_columns':        False,
+            'format_rows':           False,
+            'insert_columns':        False,
+            'insert_rows':           True,
+            'insert_hyperlinks':     False,
+            'delete_columns':        False,
+            'delete_rows':           True,
+            'select_locked_cells':   True,
+            'sort':                  True,
+            'autofilter':            True,
+            'pivot_tables':          False,
+            'select_unlocked_cells': True,
+        }
+        worksheet.protect('', options)
+        worksheet.set_column(0, 0, 25)
+        worksheet.set_column(1, 1, 15)
+        worksheet.set_column(2, 2, 12)
+        worksheet.set_column(6, 6, 75)
+        worksheet.set_column(6, 7, 75)
+        row = 1
+        seen = list()
+        for question in interview.all_questions:
+            if not hasattr(question, 'translations'):
                 continue
-            if item in tr_cache and language in tr_cache[item] and tr_lang in tr_cache[item][language]:
-                tr_text = str(tr_cache[item][language][tr_lang]['tr_text'])
+            language = question.language
+            if language == '*':
+                language = interview_source.language
+            if language == '*':
+                language = DEFAULT_LANGUAGE
+            if language == tr_lang:
+                continue
+            indexno = 0
+            if hasattr(question, 'id'):
+                question_id = question.id
             else:
-                tr_text = ''
-            worksheet.write_string(row, 0, question.from_source.get_name(), text)
-            worksheet.write_string(row, 1, question_id, text)
-            worksheet.write_number(row, 2, indexno, numb)
-            worksheet.write_string(row, 3, hashlib.md5(item.encode('utf-8')).hexdigest(), text)
-            worksheet.write_string(row, 4, language, text)
-            worksheet.write_string(row, 5, tr_lang, text)
-            mako = mako_parts(item)
-            if len(mako) == 0:
-                worksheet.write_string(row, 6, '', wholefixed)
-            elif len(mako) == 1:
+                question_id = question.name
+            for item in question.translations:
+                if item in seen:
+                    continue
+                if item in tr_cache and language in tr_cache[item] and tr_lang in tr_cache[item][language]:
+                    tr_text = str(tr_cache[item][language][tr_lang]['tr_text'])
+                else:
+                    tr_text = ''
+                worksheet.write_string(row, 0, question.from_source.get_name(), text)
+                worksheet.write_string(row, 1, question_id, text)
+                worksheet.write_number(row, 2, indexno, numb)
+                worksheet.write_string(row, 3, hashlib.md5(item.encode('utf-8')).hexdigest(), text)
+                worksheet.write_string(row, 4, language, text)
+                worksheet.write_string(row, 5, tr_lang, text)
+                mako = mako_parts(item)
+                if len(mako) == 0:
+                    worksheet.write_string(row, 6, '', wholefixed)
+                elif len(mako) == 1:
+                    if mako[0][1] == 0:
+                        worksheet.write_string(row, 6, item, wholefixed)
+                    elif mako[0][1] == 1:
+                        worksheet.write_string(row, 6, item, wholefixedone)
+                    elif mako[0][1] == 2:
+                        worksheet.write_string(row, 6, item, wholefixedtwo)
+                else:
+                    parts = [row, 6]
+                    for part in mako:
+                        if part[1] == 0:
+                            parts.extend([fixed, part[0]])
+                        elif part[1] == 1:
+                            parts.extend([fixedone, part[0]])
+                        elif part[1] == 2:
+                            parts.extend([fixedtwo, part[0]])
+                    parts.append(fixedcell)
+                    worksheet.write_rich_string(*parts)
+                mako = mako_parts(tr_text)
+                if len(mako) == 0:
+                    worksheet.write_string(row, 7, '', wholefixedunlocked)
+                elif len(mako) == 1:
+                    if mako[0][1] == 0:
+                        worksheet.write_string(row, 7, tr_text, wholefixedunlocked)
+                    elif mako[0][1] == 1:
+                        worksheet.write_string(row, 7, tr_text, wholefixedunlockedone)
+                    elif mako[0][1] == 2:
+                        worksheet.write_string(row, 7, tr_text, wholefixedunlockedtwo)
+                else:
+                    parts = [row, 7]
+                    for part in mako:
+                        if part[1] == 0:
+                            parts.extend([fixedunlocked, part[0]])
+                        elif part[1] == 1:
+                            parts.extend([fixedunlockedone, part[0]])
+                        elif part[1] == 2:
+                            parts.extend([fixedunlockedtwo, part[0]])
+                    parts.append(fixedunlockedcell)
+                    worksheet.write_rich_string(*parts)
+                num_lines = item.count('\n')
+                #if num_lines > 25:
+                #    num_lines = 25
+                if num_lines > 0:
+                    worksheet.set_row(row, 15*(num_lines + 1))
+                indexno += 1
+                row += 1
+                seen.append(item)
+        for item in tr_cache:
+            if item in seen or language not in tr_cache[item] or tr_lang not in tr_cache[item][language]:
+                continue
+            worksheet.write_string(row, 0, tr_cache[item][language][tr_lang]['interview'], text)
+            worksheet.write_string(row, 1, tr_cache[item][language][tr_lang]['question_id'], text)
+            worksheet.write_number(row, 2, 1000 + tr_cache[item][language][tr_lang]['index_num'], numb)
+            worksheet.write_string(row, 3, tr_cache[item][language][tr_lang]['hash'], text)
+            worksheet.write_string(row, 4, tr_cache[item][language][tr_lang]['orig_lang'], text)
+            worksheet.write_string(row, 5, tr_cache[item][language][tr_lang]['tr_lang'], text)
+            mako = mako_parts(tr_cache[item][language][tr_lang]['orig_text'])
+            if len(mako) == 1:
                 if mako[0][1] == 0:
-                    worksheet.write_string(row, 6, item, wholefixed)
+                    worksheet.write_string(row, 6, tr_cache[item][language][tr_lang]['orig_text'], wholefixed)
                 elif mako[0][1] == 1:
-                    worksheet.write_string(row, 6, item, wholefixedone)
+                    worksheet.write_string(row, 6, tr_cache[item][language][tr_lang]['orig_text'], wholefixedone)
                 elif mako[0][1] == 2:
-                    worksheet.write_string(row, 6, item, wholefixedtwo)
+                    worksheet.write_string(row, 6, tr_cache[item][language][tr_lang]['orig_text'], wholefixedtwo)
             else:
                 parts = [row, 6]
                 for part in mako:
@@ -22242,16 +22789,14 @@ def translation_file():
                         parts.extend([fixedtwo, part[0]])
                 parts.append(fixedcell)
                 worksheet.write_rich_string(*parts)
-            mako = mako_parts(tr_text)
-            if len(mako) == 0:
-                worksheet.write_string(row, 7, '', wholefixedunlocked)
-            elif len(mako) == 1:
+            mako = mako_parts(tr_cache[item][language][tr_lang]['tr_text'])
+            if len(mako) == 1:
                 if mako[0][1] == 0:
-                    worksheet.write_string(row, 7, tr_text, wholefixedunlocked)
+                    worksheet.write_string(row, 7, tr_cache[item][language][tr_lang]['tr_text'], wholefixedunlocked)
                 elif mako[0][1] == 1:
-                    worksheet.write_string(row, 7, tr_text, wholefixedunlockedone)
+                    worksheet.write_string(row, 7, tr_cache[item][language][tr_lang]['tr_text'], wholefixedunlockedone)
                 elif mako[0][1] == 2:
-                    worksheet.write_string(row, 7, tr_text, wholefixedunlockedtwo)
+                    worksheet.write_string(row, 7, tr_cache[item][language][tr_lang]['tr_text'], wholefixedunlockedtwo)
             else:
                 parts = [row, 7]
                 for part in mako:
@@ -22263,69 +22808,204 @@ def translation_file():
                         parts.extend([fixedunlockedtwo, part[0]])
                 parts.append(fixedunlockedcell)
                 worksheet.write_rich_string(*parts)
-            num_lines = item.count('\n')
-            #if num_lines > 25:
-            #    num_lines = 25
+            num_lines = tr_cache[item][language][tr_lang]['orig_text'].count('\n')
             if num_lines > 0:
                 worksheet.set_row(row, 15*(num_lines + 1))
-            indexno += 1
             row += 1
-            seen.append(item)
-    for item in tr_cache:
-        if item in seen or language not in tr_cache[item] or tr_lang not in tr_cache[item][language]:
-            continue
-        worksheet.write_string(row, 0, tr_cache[item][language][tr_lang]['interview'], text)
-        worksheet.write_string(row, 1, tr_cache[item][language][tr_lang]['question_id'], text)
-        worksheet.write_number(row, 2, 1000 + tr_cache[item][language][tr_lang]['index_num'], numb)
-        worksheet.write_string(row, 3, tr_cache[item][language][tr_lang]['hash'], text)
-        worksheet.write_string(row, 4, tr_cache[item][language][tr_lang]['orig_lang'], text)
-        worksheet.write_string(row, 5, tr_cache[item][language][tr_lang]['tr_lang'], text)
-        mako = mako_parts(tr_cache[item][language][tr_lang]['orig_text'])
-        if len(mako) == 1:
-            if mako[0][1] == 0:
-                worksheet.write_string(row, 6, tr_cache[item][language][tr_lang]['orig_text'], wholefixed)
-            elif mako[0][1] == 1:
-                worksheet.write_string(row, 6, tr_cache[item][language][tr_lang]['orig_text'], wholefixedone)
-            elif mako[0][1] == 2:
-                worksheet.write_string(row, 6, tr_cache[item][language][tr_lang]['orig_text'], wholefixedtwo)
+        workbook.close()
+        response = send_file(temp_file.name, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, attachment_filename=xlsx_filename)
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
+        return(response)
+    elif form.filetype.data.startswith('XLIFF'):
+        seen = set()
+        translations = dict()
+        xliff_files = list()
+        if form.filetype.data == 'XLIFF 1.2':
+            for question in interview.all_questions:
+                if not hasattr(question, 'translations'):
+                    continue
+                language = question.language
+                if language == '*':
+                    language = interview_source.language
+                if language == '*':
+                    language = DEFAULT_LANGUAGE
+                if language == tr_lang:
+                    continue
+                question_id = question.name
+                lang_combo = (language, tr_lang)
+                if lang_combo not in translations:
+                    translations[lang_combo] = list()
+                for item in question.translations:
+                    if item in seen:
+                        continue
+                    if item in tr_cache and language in tr_cache[item] and tr_lang in tr_cache[item][language]:
+                        tr_text = str(tr_cache[item][language][tr_lang]['tr_text'])
+                    else:
+                        tr_text = ''
+                    orig_mako = mako_parts(item)
+                    tr_mako = mako_parts(tr_text)
+                    translations[lang_combo].append([orig_mako, tr_mako])
+                    seen.add(item)
+            for lang_combo, translation_list in translations.items():
+                temp_file = tempfile.NamedTemporaryFile(suffix='.xlf', delete=False)
+                if len(translations) > 1:
+                    xlf_filename = docassemble.base.functions.space_to_underscore(os.path.splitext(os.path.basename(re.sub(r'.*:', '', yaml_filename)))[0]) + "_" + lang_combo[0] + "_" + lang_combo[1] + ".xlf"
+                else:
+                    xlf_filename = docassemble.base.functions.space_to_underscore(os.path.splitext(os.path.basename(re.sub(r'.*:', '', yaml_filename)))[0]) + "_" + lang_combo[1] + ".xlf"
+                xliff = ET.Element('xliff')
+                xliff.set('xmlns', 'urn:oasis:names:tc:xliff:document:1.2')
+                xliff.set('version', '1.2')
+                indexno = 1
+                the_file = ET.SubElement(xliff, 'file')
+                the_file.set('id', 'f1')
+                the_file.set('original', yaml_filename)
+                the_file.set('xml:space', 'preserve')
+                the_file.set('source-language', lang_combo[0])
+                the_file.set('target-language', lang_combo[1])
+                body = ET.SubElement(the_file, 'body')
+                for item in translation_list:
+                    transunit = ET.SubElement(body, 'trans-unit')
+                    transunit.set('id', str(indexno))
+                    transunit.set('xml:space', 'preserve')
+                    source = ET.SubElement(transunit, 'source')
+                    source.set('xml:space', 'preserve')
+                    target = ET.SubElement(transunit, 'target')
+                    target.set('xml:space', 'preserve')
+                    last_elem = None
+                    for (elem, i) in ((source, 0), (target, 1)):
+                        if len(item[i]) == 0:
+                            elem.text = ''
+                        elif len(item[i]) == 1 and item[i][0][1] == 0:
+                            elem.text = item[i][0][0]
+                        else:
+                            for part in item[i]:
+                                if part[1] == 0:
+                                    if last_elem is None:
+                                        if elem.text is None:
+                                            elem.text = ''
+                                        elem.text += part[0]
+                                    else:
+                                        if last_elem.tail is None:
+                                            last_elem.tail = ''
+                                        last_elem.tail += part[0]
+                                else:
+                                    mrk = ET.SubElement(elem, 'mrk')
+                                    mrk.set('xml:space', 'preserve')
+                                    mrk.set('mtype', 'protected')
+                                    mrk.text = part[0]
+                                    last_elem = mrk
+                    indexno += 1
+                temp_file.write(ET.tostring(xliff))
+                temp_file.close()
+                xliff_files.append([temp_file, xlf_filename])
+        elif form.filetype.data == 'XLIFF 2.0':
+            for question in interview.all_questions:
+                if not hasattr(question, 'translations'):
+                    continue
+                language = question.language
+                if language == '*':
+                    language = interview_source.language
+                if language == '*':
+                    language = DEFAULT_LANGUAGE
+                if language == tr_lang:
+                    continue
+                question_id = question.name
+                lang_combo = (language, tr_lang)
+                if lang_combo not in translations:
+                    translations[lang_combo] = dict()
+                filename = question.from_source.get_name()
+                if filename not in translations[lang_combo]:
+                    translations[lang_combo][filename] = dict()
+                if question_id not in translations[lang_combo][filename]:
+                    translations[lang_combo][filename][question_id] = list()
+                for item in question.translations:
+                    if item in seen:
+                        continue
+                    if item in tr_cache and language in tr_cache[item] and tr_lang in tr_cache[item][language]:
+                        tr_text = str(tr_cache[item][language][tr_lang]['tr_text'])
+                    else:
+                        tr_text = ''
+                    orig_mako = mako_parts(item)
+                    tr_mako = mako_parts(tr_text)
+                    translations[lang_combo][filename][question_id].append([orig_mako, tr_mako])
+                    seen.add(item)
+            for lang_combo, translations_by_filename in translations.items():
+                temp_file = tempfile.NamedTemporaryFile(suffix='.xlf', delete=False)
+                if len(translations) > 1:
+                    xlf_filename = docassemble.base.functions.space_to_underscore(os.path.splitext(os.path.basename(re.sub(r'.*:', '', yaml_filename)))[0]) + "_" + lang_combo[0] + "_" + lang_combo[1] + ".xlf"
+                else:
+                    xlf_filename = docassemble.base.functions.space_to_underscore(os.path.splitext(os.path.basename(re.sub(r'.*:', '', yaml_filename)))[0]) + "_" + lang_combo[1] + ".xlf"
+                xliff = ET.Element('xliff')
+                xliff.set('xmlns', 'urn:oasis:names:tc:xliff:document:2.0')
+                xliff.set('version', '2.0')
+                xliff.set('srcLang', lang_combo[0])
+                xliff.set('trgLang', lang_combo[1])
+                file_index = 1
+                indexno = 1
+                for filename, translations_by_question in translations_by_filename.items():
+                    the_file = ET.SubElement(xliff, 'file')
+                    the_file.set('id', 'f' + str(file_index))
+                    the_file.set('original', filename)
+                    the_file.set('xml:space', 'preserve')
+                    for question_id, translation_list in translations_by_question.items():
+                        unit = ET.SubElement(the_file, 'unit')
+                        unit.set('id', question_id)
+                        for item in translation_list:
+                            segment = ET.SubElement(unit, 'segment')
+                            segment.set('id', str(indexno))
+                            segment.set('xml:space', 'preserve')
+                            source = ET.SubElement(segment, 'source')
+                            source.set('xml:space', 'preserve')
+                            target = ET.SubElement(segment, 'target')
+                            target.set('xml:space', 'preserve')
+                            last_elem = None
+                            for (elem, i) in ((source, 0), (target, 1)):
+                                if len(item[i]) == 0:
+                                    elem.text = ''
+                                elif len(item[i]) == 1 and item[i][0][1] == 0:
+                                    elem.text = item[i][0][0]
+                                else:
+                                    for part in item[i]:
+                                        if part[1] == 0:
+                                            if last_elem is None:
+                                                if elem.text is None:
+                                                    elem.text = ''
+                                                elem.text += part[0]
+                                            else:
+                                                if last_elem.tail is None:
+                                                    last_elem.tail = ''
+                                                last_elem.tail += part[0]
+                                        else:
+                                            mrk = ET.SubElement(elem, 'mrk')
+                                            mrk.set('xml:space', 'preserve')
+                                            mrk.set('translate', 'no')
+                                            mrk.text = part[0]
+                                            last_elem = mrk
+                            indexno += 1
+                    file_index += 1
+                temp_file.write(ET.tostring(xliff))
+                temp_file.close()
+                xliff_files.append([temp_file, xlf_filename])
         else:
-            parts = [row, 6]
-            for part in mako:
-                if part[1] == 0:
-                    parts.extend([fixed, part[0]])
-                elif part[1] == 1:
-                    parts.extend([fixedone, part[0]])
-                elif part[1] == 2:
-                    parts.extend([fixedtwo, part[0]])
-            parts.append(fixedcell)
-            worksheet.write_rich_string(*parts)
-        mako = mako_parts(tr_cache[item][language][tr_lang]['tr_text'])
-        if len(mako) == 1:
-            if mako[0][1] == 0:
-                worksheet.write_string(row, 7, tr_cache[item][language][tr_lang]['tr_text'], wholefixedunlocked)
-            elif mako[0][1] == 1:
-                worksheet.write_string(row, 7, tr_cache[item][language][tr_lang]['tr_text'], wholefixedunlockedone)
-            elif mako[0][1] == 2:
-                worksheet.write_string(row, 7, tr_cache[item][language][tr_lang]['tr_text'], wholefixedunlockedtwo)
+            flash(word("Bad file format"), 'error')
+            return redirect(url_for('utilities'))
+        if len(xliff_files) == 1:
+            response = send_file(xliff_files[0][0].name, mimetype='application/xml', as_attachment=True, attachment_filename=xliff_files[0][1])
         else:
-            parts = [row, 7]
-            for part in mako:
-                if part[1] == 0:
-                    parts.extend([fixedunlocked, part[0]])
-                elif part[1] == 1:
-                    parts.extend([fixedunlockedone, part[0]])
-                elif part[1] == 2:
-                    parts.extend([fixedunlockedtwo, part[0]])
-            parts.append(fixedunlockedcell)
-            worksheet.write_rich_string(*parts)
-        num_lines = tr_cache[item][language][tr_lang]['orig_text'].count('\n')
-        if num_lines > 0:
-            worksheet.set_row(row, 15*(num_lines + 1))
-        row += 1
-    workbook.close()
-    response = send_file(temp_file.name, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, attachment_filename=xlsx_filename)
-    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
-    return(response)
+            zip_file = tempfile.NamedTemporaryFile(suffix='.zip', delete=False)
+            zip_file_name = docassemble.base.functions.space_to_underscore(os.path.splitext(os.path.basename(re.sub(r'.*:', '', yaml_filename)))[0]) + "_" + tr_lang + ".zip"
+            with zipfile.ZipFile(zip_file.name, mode='w') as zf:
+                for item in xliff_files:
+                    info = zipfile.ZipInfo(item[1])
+                    with open(item[0].name, 'rb') as fp:
+                        zf.writestr(info, fp.read())
+                zf.close()
+            response = send_file(zip_file.name, mimetype='application/xml', as_attachment=True, attachment_filename=zip_file_name)
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
+        return(response)
+    else:
+        flash(word("Bad file format"), 'error')
+        return redirect(url_for('utilities'))
 
 @app.route('/api/user_list', methods=['GET'])
 @cross_origin(origins='*', methods=['GET', 'HEAD'], automatic_options=True)
@@ -23018,6 +23698,18 @@ def transform_json_variables(obj):
     if isinstance(obj, (bool, int, float)):
         return obj
     if isinstance(obj, dict):
+        if '_class' in obj and obj['_class'] == 'type' and 'name' in obj and isinstance(obj['name'], str) and valid_python_exp.match(obj['name']):
+            if '.' in obj['name']:
+                the_module = re.sub(r'\.[^\.]+$', '', obj['name'])
+            else:
+                the_module = None
+            try:
+                if the_module:
+                    importlib.import_module(the_module)
+                return eval(obj['name'])
+            except Exception as err:
+                logmessage("transform_json_variables: " + err.__class__.__name__ + ": " + str(err))
+                return None
         if '_class' in obj and isinstance(obj['_class'], str) and 'instanceName' in obj and valid_python_exp.match(obj['_class']) and isinstance(obj['instanceName'], str):
             the_module = re.sub(r'\.[^\.]+$', '', obj['_class'])
             try:
@@ -23092,7 +23784,7 @@ def api_session():
                 file_variables = json.loads(post_data.get('file_variables', '{}'))
             except:
                 return jsonify_with_status("Malformed list of file variables.", 400)
-        if 'del_variables' in post_data and isinstance(post_data['delete_variables'], list):
+        if 'delete_variables' in post_data and isinstance(post_data['delete_variables'], list):
             del_variables = post_data['delete_variables']
         else:
             try:
@@ -23409,9 +24101,13 @@ def api_session_new():
 def create_new_interview(yaml_filename, secret, url_args=None, req=None):
     interview = docassemble.base.interview_cache.get_interview(yaml_filename)
     if current_user.is_anonymous:
+        if not interview.allowed_to_initiate(is_anonymous=True):
+            raise Exception('Insufficient permissions to run this interview.')
         if not interview.allowed_to_access(is_anonymous=True):
             raise Exception('Insufficient permissions to run this interview.')
     else:
+        if (not current_user.has_role('admin')) and (not interview.allowed_to_initiate(has_roles=[role.name for role in current_user.roles])):
+            raise Exception('Insufficient permissions to run this interview.')
         if not interview.allowed_to_access(has_roles=[role.name for role in current_user.roles]):
             raise Exception('Insufficient permissions to run this interview.')
     if req is None:
@@ -23521,9 +24217,9 @@ def get_question_data(yaml_filename, session_id, secret, use_lock=True, user_dic
         the_section_display = None
         the_sections = list()
     if advance_progress_meter:
-        if interview_status.question.interview.use_progress_bar and interview_status.question.progress is None and save_status == 'new':
+        if interview.use_progress_bar and interview_status.question.progress is None and save_status == 'new':
             advance_progress(user_dict, interview)
-        if interview_status.question.interview.use_progress_bar and interview_status.question.progress is not None and (user_dict['_internal']['progress'] is None or interview_status.question.progress > user_dict['_internal']['progress']):
+        if interview.use_progress_bar and interview_status.question.progress is not None and (user_dict['_internal']['progress'] is None or interview_status.question.progress > user_dict['_internal']['progress']):
             user_dict['_internal']['progress'] = interview_status.question.progress
     if save:
         save_user_dict(session_id, user_dict, yaml_filename, secret=secret, encrypt=is_encrypted, changed=post_setting, steps=steps)
@@ -23566,7 +24262,7 @@ def get_question_data(yaml_filename, session_id, secret, use_lock=True, user_dic
         interview_language = interview_status.question.language
     else:
         interview_language = DEFAULT_LANGUAGE
-    title_info = interview_status.question.interview.get_title(user_dict, status=interview_status, converter=lambda content, part: title_converter(content, part, interview_status))
+    title_info = interview.get_title(user_dict, status=interview_status, converter=lambda content, part: title_converter(content, part, interview_status))
     interview_status.exit_url = title_info.get('exit url', None)
     interview_status.exit_link = title_info.get('exit link', 'exit')
     interview_status.exit_label = title_info.get('exit label', word('Exit'))
@@ -23596,7 +24292,12 @@ def get_question_data(yaml_filename, session_id, secret, use_lock=True, user_dic
     else:
         allow_going_back = False
     data = dict(browser_title=interview_status.tabtitle, exit_link=interview_status.exit_link, exit_url=interview_status.exit_url, exit_label=interview_status.exit_label, title=interview_status.title, display_title=interview_status.display_title, short_title=interview_status.short_title, lang=interview_language, steps=steps, allow_going_back=allow_going_back, message_log=docassemble.base.functions.get_message_log(), section=the_section, display_section=the_section_display, sections=the_sections)
+    if allow_going_back:
+        data['cornerBackButton'] = interview_status.cornerback
     data.update(interview_status.as_data(user_dict, encode=False))
+    if 'source' in data:
+        data['source']['varsLink'] = url_for('get_variables', i=yaml_filename)
+        data['source']['varsLabel'] = word('Show variables and values')
     #if interview_status.question.question_type == "review" and len(interview_status.question.fields_used):
     #    next_action_review = dict(action=list(interview_status.question.fields_used)[0], arguments=dict())
     #else:
@@ -23615,6 +24316,80 @@ def get_question_data(yaml_filename, session_id, secret, use_lock=True, user_dic
             del data[key]
         elif key.startswith('_'):
             del data[key]
+    data['menu'] = {'items': []}
+    menu_items = data['menu']['items']
+    if 'menu_items' in interview_status.extras:
+        if not isinstance(interview_status.extras['menu_items'], list):
+            menu_items.append({'anchor': word("Error: menu_items is not a Python list")})
+        elif len(interview_status.extras['menu_items']):
+            for menu_item in interview_status.extras['menu_items']:
+                if not (isinstance(menu_item, dict) and 'url' in menu_item and 'label' in menu_item):
+                    menu_items.append({'anchor': word("Error: menu item is not a Python dict with keys of url and label")})
+                else:
+                    match_action = re.search(r'^\?action=([^\&]+)', menu_item['url'])
+                    if match_action:
+                        menu_items.append({'href': menu_item['url'], 'action': match_action.group(1), 'anchor': menu_item['label']})
+                    else:
+                        menu_items.append({'href': menu_item['url'], 'anchor': menu_item['label']})
+    if ALLOW_REGISTRATION:
+        sign_in_text = word('Sign in or sign up to save answers')
+    else:
+        sign_in_text = word('Sign in to save answers')
+    if daconfig.get('resume interview after login', False):
+        login_url = url_for('user.login', next=url_for('index', i=yaml_filename))
+    else:
+        login_url = url_for('user.login')
+    if interview_status.question.interview.consolidated_metadata.get('show login', SHOW_LOGIN):
+        if current_user.is_anonymous:
+            if len(menu_items):
+                data['menu']['top'] = {'anchor': word("Menu")}
+                menu_items.append({'href': login_url, 'anchor': sign_in_text})
+            else:
+                data['menu']['top'] = {'href': login_url, 'anchor': sign_in_text}
+        else:
+            if (len(menu_items) == 0 and interview_status.question.interview.options.get('hide standard menu', False)):
+                data['menu']['top'] = {'anchor': (current_user.email if current_user.email else re.sub(r'.*\$', '', current_user.social_id))}
+            else:
+                data['menu']['top'] = {'anchor': current_user.email if current_user.email else re.sub(r'.*\$', '', current_user.social_id)}
+                if not interview_status.question.interview.options.get('hide standard menu', False):
+                    if current_user.has_role('admin', 'developer') and interview_status.question.interview.debug:
+                        menu_items.append({'href': '#source', 'title': word("How this question came to be asked"), 'anchor': word('Source')})
+                    if current_user.has_role('admin', 'advocate') and app.config['ENABLE_MONITOR']:
+                        menu_items.append({'href': url_for('monitor'), 'anchor': word('Monitor')})
+                    if current_user.has_role('admin', 'developer', 'trainer'):
+                        menu_items.append({'href': url_for('train'), 'anchor': word('Train')})
+                    if current_user.has_role('admin', 'developer'):
+                        if app.config['ALLOW_UPDATES']:
+                            menu_items.append({'href': url_for('update_package'), 'anchor': word('Package Management')})
+                        menu_items.append({'href': url_for('logs'), 'anchor': word('Logs')})
+                        if app.config['ENABLE_PLAYGROUND']:
+                            menu_items.append({'href': url_for('playground_page'), 'anchor': word('Playground')})
+                        menu_items.append({'href': url_for('utilities'), 'anchor': word('Utilities')})
+                        if current_user.has_role('admin'):
+                            menu_items.append({'href': url_for('user_list'), 'anchor': word('User List')})
+                            menu_items.append({'href': url_for('config_page'), 'anchor': word('Configuration')})
+                    if app.config['SHOW_DISPATCH']:
+                        menu_items.append({'href': url_for('interview_start'), 'anchor': word('Available Interviews')})
+                    for item in app.config['ADMIN_INTERVIEWS']:
+                        if item.can_use() and docassemble.base.functions.this_thread.current_info.get('yaml_filename', '') != item.interview:
+                            menu_items.append({'href': url_for('index'), 'anchor': item.get_title(docassemble.base.functions.get_language())})
+                    if app.config['SHOW_MY_INTERVIEWS'] or current_user.has_role('admin'):
+                        menu_items.append({'href': url_for('interview_list'), 'anchor': word('My Interviews')})
+                    if current_user.has_role('admin', 'developer'):
+                        menu_items.append({'href': url_for('user_profile_page'), 'anchor': word('Profile')})
+                    else:
+                        if app.config['SHOW_PROFILE'] or current_user.has_role('admin'):
+                            menu_items.append({'href': url_for('user_profile_page'), 'anchor': word('Profile')})
+                        else:
+                            menu_items.append({'href': url_for('user.change_password'), 'anchor': word('Change Password')})
+                    menu_items.append({'href': url_for('user.logout'), 'anchor': word('Sign Out')})
+    else:
+        if len(menu_items):
+            data['menu']['top'] = {'anchor': word("Menu")}
+            if not interview_status.question.interview.options.get('hide standard menu', False):
+                menu_items.append({'href': exit_href(interview_status), 'anchor': interview_status.exit_label})
+        else:
+            data['menu']['top'] = {'href': exit_href(interview_status), 'anchor': interview_status.exit_label}
     #logmessage("Ok returning")
     return data
 
@@ -23875,7 +24650,7 @@ def jsonify_task(result):
         if r.get(the_key) is None:
             break
     pipe = r.pipeline()
-    pipe.set(the_key, result.id)
+    pipe.set(the_key, json.dumps({'id': result.id, 'server_start_time': START_TIME}))
     pipe.expire(the_key, 3600)
     pipe.execute()
     return jsonify({'task_id': code})
@@ -23953,9 +24728,9 @@ def api_package():
             if existing_package is not None:
                 if existing_package.type == 'git' and existing_package.giturl is not None:
                     if existing_package.gitbranch:
-                        install_git_package(target, existing_package.giturl, branch=existing_package.gitbranch)
+                        install_git_package(target, existing_package.giturl, existing_package.gitbranch)
                     else:
-                        install_git_package(target, existing_package.giturl)
+                        install_git_package(target, existing_package.giturl, get_master_branch(existing_package.giturl))
                 elif existing_package.type == 'pip':
                     if existing_package.name == 'docassemble.webapp' and existing_package.limitation:
                         existing_package.limitation = None
@@ -23966,6 +24741,8 @@ def api_package():
         if 'github_url' in post_data:
             github_url = post_data['github_url']
             branch = post_data.get('branch', None)
+            if branch is None:
+                branch = get_master_branch(github_url)
             packagename = re.sub(r'/*$', '', github_url)
             packagename = re.sub(r'^git+', '', packagename)
             packagename = re.sub(r'#.*', '', packagename)
@@ -23973,10 +24750,7 @@ def api_package():
             packagename = re.sub(r'.*/', '', packagename)
             packagename = re.sub(r'^docassemble-', 'docassemble.', packagename)
             if user_can_edit_package(giturl=github_url) and user_can_edit_package(pkgname=packagename):
-                if branch:
-                    install_git_package(packagename, github_url, branch=branch)
-                else:
-                    install_git_package(packagename, github_url)
+                install_git_package(packagename, github_url, branch)
                 result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s())
                 return jsonify_task(result)
             else:
@@ -24026,11 +24800,12 @@ def api_package_update_status():
     if code is None:
         return jsonify_with_status("Missing task_id", 400)
     the_key = 'da:install_status:' + str(code)
-    task_id = r.get(the_key)
-    if task_id is None:
+    task_data = r.get(the_key)
+    if task_data is None:
         return jsonify({'status': 'unknown'})
-    result = docassemble.webapp.worker.workerapp.AsyncResult(id=task_id)
-    if result.ready():
+    task_info = json.loads(task_data.decode())
+    result = docassemble.webapp.worker.workerapp.AsyncResult(id=task_info['id'])
+    if result.ready() and START_TIME > task_info['server_start_time']:
         r.delete(the_key)
         the_result = result.get()
         if isinstance(the_result, ReturnValue):
@@ -24115,6 +24890,16 @@ def api_resume_url():
     pipe.expire(the_key, expire)
     pipe.execute()
     return jsonify(url_for('launch', c=code, _external=True))
+
+@app.route('/api/clear_cache', methods=['POST'])
+@csrf.exempt
+@cross_origin(origins='*', methods=['POST', 'HEAD'], automatic_options=True)
+def api_clear_cache():
+    if not api_verify(request, roles=['admin', 'developer']):
+        return jsonify_with_status("Access denied.", 403)
+    for key in r.keys('da:interviewsource:*'):
+        r.incr(key.decode())
+    return ('', 204)
 
 @app.route('/api/config', methods=['GET', 'POST'])
 @csrf.exempt
@@ -24798,6 +25583,134 @@ def manage_api():
         argu['has_any_keys'] = True if len(avail_keys) > 0 else False
     return render_template('pages/manage_api.html', **argu)
 
+@app.route('/i', methods=['GET'])
+def html_index():
+    return app.send_static_file('index.html')
+
+@app.route('/api/interview', methods=['GET', 'POST'])
+@csrf.exempt
+@cross_origin(origins='*', methods=['GET', 'POST', 'HEAD'], automatic_options=True)
+def api_interview():
+    if request.method == 'POST':
+        post_data = request.get_json(silent=True)
+        if post_data is None:
+            return jsonify_with_status('The request must be JSON', 400)
+        yaml_filename = post_data.get('i', None)
+        secret = post_data.get('secret', None)
+        session_id = post_data.get('session', None)
+        url_args = post_data.get('url_args', None)
+        user_code = post_data.get('user_code', None)
+        command = post_data.get('command', None)
+    else:
+        yaml_filename = request.args.get('i', None)
+        secret = request.args.get('secret', None)
+        session_id = request.args.get('session', None)
+        url_args = dict()
+        user_code = request.args.get('user_code', None)
+        for key, val in request.args.items():
+            if key not in ('session', 'secret', 'i', 'user_code'):
+                url_args[key] = val
+        if len(url_args) == 0:
+            url_args = None
+    output = dict()
+    if user_code:
+        key = 'da:apiinterview:usercode:' + user_code
+        user_info = r.get(key)
+        if user_info is None:
+            user_code = None
+        else:
+            r.expire(key, 60*60*24*30)
+            try:
+                user_info = json.loads(user_info)
+            except:
+                user_code = None
+        if user_code:
+            if user_info['user_id']:
+                user = UserModel.query.filter_by(id=user_id).first()
+                if user is None or user.social_id.startswith('disabled$') or not user.active:
+                    user_code = None
+                else:
+                    login_user(user, remember=False)
+                    update_last_login(user)
+            else:
+                session['tempuser'] = user_info['temp_user_id']
+    if not user_code:
+        user_code = random_string(32)
+        new_temp_user = TempUser()
+        db.session.add(new_temp_user)
+        db.session.commit()
+        session['tempuser'] = new_temp_user.id
+        user_info = {"user_id": None, "temp_user_id": new_temp_user.id}
+        key = 'da:apiinterview:usercode:' + user_code
+        pipe = r.pipeline()
+        pipe.set(key, json.dumps(user_info))
+        pipe.expire(key, 60*60*24*30)
+        pipe.execute()
+        output['user_code'] = user_code
+    docassemble.base.functions.this_thread.current_info = current_info(req=request, interface='api', secret=secret)
+    if not yaml_filename:
+        return jsonify_with_status("Parameter i is required.", 400)
+    if not secret:
+        secret = random_string(16)
+        output['secret'] = secret
+    secret = str(secret)
+    if not session_id:
+        try:
+            (encrypted, session_id) = create_new_interview(yaml_filename, secret, url_args=url_args, req=request)
+        except Exception as err:
+            return jsonify_with_status(err.__class__.__name__ + ': ' + str(err), 400)
+        output['session'] = session_id
+    if url_args is not None and isinstance(url_args, dict):
+        variables = dict()
+        for key, val in url_args.items():
+            variables["url_args[%s]" % (repr(key),)] = val
+        try:
+            set_session_variables(yaml_filename, session_id, variables, secret=secret)
+        except Exception as the_err:
+            return jsonify_with_status(str(the_err), 400)
+    try:
+        data = get_question_data(yaml_filename, session_id, secret)
+    except Exception as err:
+        return jsonify_with_status(str(err), 400)
+    if request.method == 'POST':
+        if command:
+            if command == 'back':
+                if data['allow_going_back']:
+                    try:
+                        data = go_back_in_session(yaml_filename, session_id, secret=secret, return_question=True)
+                    except Exception as the_err:
+                        return jsonify_with_status(str(the_err), 400)
+            else:
+                return jsonify_with_status("Invalid command", 400)
+        else:
+            variables = post_data.get('variables', None)
+            if not isinstance(variables, dict):
+                return jsonify_with_status("variables must be a dictionary", 400)
+            if variables is not None:
+                variables = transform_json_variables(variables)
+            valid_variables = dict()
+            if 'fields' in data:
+                for field in data['fields']:
+                    if 'variable_name' in field and field.get('active', False):
+                        valid_variables[field['variable_name']] = field
+                    if field.get('required', False):
+                        if field['variable_name'] not in variables:
+                            return jsonify_with_status("variable %s is missing" % (field['variable_name'],), 400)
+            for key, val in variables.items():
+                if key not in valid_variables:
+                    return jsonify_with_status("invalid variable name " + repr(key), 400)
+            try:
+                data = set_session_variables(yaml_filename, session_id, variables, secret=secret, return_question=True, event_list=data.get('event_list', None), question_name=data.get('questionName', None))
+            except Exception as the_err:
+                return jsonify_with_status(str(the_err), 400)
+    if data.get('questionType', None) is 'response':
+        output['question'] = {
+            'questionType': 'response'
+        }
+    else:
+        output['question'] = data
+    return jsonify(output)
+
 @app.route('/me', methods=['GET'])
 def whoami():
     if current_user.is_authenticated:
@@ -25094,6 +26007,7 @@ def illegal_variable_name(var):
     return detector.illegal
 
 emoji_match = re.compile(r':([A-Za-z][A-Za-z0-9\_\-]+):')
+html_match = re.compile(r'(</?[A-Za-z\!][^>]*>|https*://[A-Za-z0-9\-\_:\%\/\@\.\#\&\=\~\?]+|mailto*://[A-Za-z0-9\-\_:\%\/\@\.\#\&\=\~]+\?)')
 
 def mako_parts(expression):
     in_percent = False
@@ -25101,20 +26015,33 @@ def mako_parts(expression):
     in_square = False
     var_depth = 0
     in_colon = 0
+    in_html = 0
     in_pre_bracket = False
     in_post_bracket = False
     output = list()
     current = ''
     i = 0
     expression = emoji_match.sub(r'^^\1^^', expression)
+    expression = html_match.sub(r'!@\1!@', expression)
     n = len(expression)
     while i < n:
+        if in_html:
+            if i + 1 < n and expression[i:i+2] == '!@':
+                in_html = False
+                if current != '':
+                    output.append([current, 2])
+                current = ''
+                i += 2
+            else:
+                current += expression[i]
+                i += 1
+            continue
         if in_percent:
             if expression[i] in ["\n", "\r"]:
                 in_percent = False
-                if current != '':
-                    output.append([current, 1])
-                current = expression[i]
+                current += expression[i]
+                output.append([current, 1])
+                current = ''
                 i += 1
                 continue
         elif in_var:
@@ -25170,7 +26097,28 @@ def mako_parts(expression):
                 i += 1
                 continue
             elif i + 1 < n and expression[i:i+2] == '^^':
-                current += ':'
+                if in_colon:
+                    in_colon = False
+                    current += ':'
+                    output.append([current, 2])
+                    current = ''
+                else:
+                    in_colon = True
+                    if current.startswith('[${'):
+                        output.append([current, 2])
+                    else:
+                        output.append([current, 0])
+                    current = ':'
+                i += 2
+                continue
+            elif i + 1 < n and expression[i:i+2] == '!@':
+                in_html = True
+                if current != '':
+                    if current.startswith('[${'):
+                        output.append([current, 2])
+                    else:
+                        output.append([current, 0])
+                current = ''
                 i += 2
                 continue
         elif in_colon:
@@ -25196,6 +26144,13 @@ def mako_parts(expression):
                 if current != '':
                     output.append([current, 0])
                 current = ':'
+                i += 2
+                continue
+            elif expression[i:i+2] == '!@':
+                in_html = True
+                if current != '':
+                    output.append([current, 0])
+                current = ''
                 i += 2
                 continue
             elif expression[i:i+2] == '<%':
@@ -25288,7 +26243,7 @@ def error_notification(err, message=None, history=None, trace=None, referer=None
     recipient_email = daconfig.get('error notification email', None)
     if not recipient_email:
         return
-    if err.__class__.__name__ in ('CSRFError', 'ClientDisconnected'):
+    if err.__class__.__name__ in ['CSRFError', 'ClientDisconnected', 'MethodNotAllowed'] + ERROR_TYPES_NO_EMAIL:
         return
     email_recipients = list()
     if isinstance(recipient_email, list):
@@ -25557,6 +26512,7 @@ else:
                                              #async_ocr=docassemble.webapp.worker.async_ocr,
                                              chord=docassemble.webapp.worker.chord,
                                              ocr_page=docassemble.webapp.worker.ocr_page,
+                                             ocr_dummy=docassemble.webapp.worker.ocr_dummy,
                                              ocr_finalize=docassemble.webapp.worker.ocr_finalize,
                                              worker_convert=docassemble.webapp.worker.convert)
 

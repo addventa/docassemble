@@ -82,27 +82,10 @@ def check_for_updates(doing_startup=False):
     results = dict()
     sys.stderr.write("check_for_updates: 0.5 after " + str(time.time() - start_time) + " seconds\n")
 
-    num_deleted = Package.query.filter_by(name='psycopg2').delete()
-    if num_deleted > 0:
-        db.session.commit()
-    num_deleted = Package.query.filter_by(name='pdfminer').delete()
-    if num_deleted > 0:
-        db.session.commit()
-    num_deleted = Package.query.filter_by(name='pdfminer3k').delete()
-    if num_deleted > 0:
-        db.session.commit()
-    num_deleted = Package.query.filter_by(name='py-bcrypt').delete()
-    if num_deleted > 0:
-        db.session.commit()
-    num_deleted = Package.query.filter_by(name='pycrypto').delete()
-    if num_deleted > 0:
-        db.session.commit()
-    num_deleted = Package.query.filter_by(name='constraint').delete()
-    if num_deleted > 0:
-        db.session.commit()
-    num_deleted = Package.query.filter_by(name='distutils2').delete()
-    if num_deleted > 0:
-        db.session.commit()
+    for package_name in ('psycopg2', 'pdfminer', 'pdfminer3k', 'py-bcrypt', 'pycrypto', 'constraint', 'distutils2', 'azure-storage', 'Flask-User'):
+        num_deleted = Package.query.filter_by(name=package_name).delete()
+        if num_deleted > 0:
+            db.session.commit()
     sys.stderr.write("check_for_updates: 1 after " + str(time.time() - start_time) + " seconds\n")
     installed_packages = get_installed_distributions()
     for package in installed_packages:
@@ -275,7 +258,7 @@ def check_for_updates(doing_startup=False):
     packages_to_delete = list()
     sys.stderr.write("check_for_updates: 10 after " + str(time.time() - start_time) + " seconds\n")
     for package in to_install:
-        sys.stderr.write("check_for_updates: going to install a package: " + package.name + "after " + str(time.time() - start_time) + " seconds\n")
+        sys.stderr.write("check_for_updates: going to install a package: " + package.name + " after " + str(time.time() - start_time) + " seconds\n")
         # if doing_startup and package.name.startswith('docassemble') and package.name in here_already:
         #     #adding this because of unpredictability of installing new versions of docassemble
         #     #just because of a system restart.
@@ -467,27 +450,38 @@ def install_package(package):
     #else:
     #    disable_pip_cache = True
     disable_pip_cache = True
+    if package.type in ('zip', 'git'):
+        returnval, newlog = uninstall_package(package, sleep=False)
+        logfilecontents += newlog
     if package.type == 'zip' and package.upload is not None:
         saved_file = SavedFile(package.upload, extension='zip', fix=True)
         commands = ['pip', 'install']
         if disable_pip_cache:
             commands.append('--no-cache-dir')
         commands.extend(['--quiet', '--prefix=' + PACKAGE_DIRECTORY, '--src=' + temp_dir, '--log-file=' + pip_log.name, '--upgrade', saved_file.path + '.zip'])
-    elif package.type == 'git' and package.giturl is not None:
+    elif package.type == 'git' and package.giturl:
         if package.gitbranch is not None:
             branchpart = '@' + str(package.gitbranch)
         else:
             branchpart = ''
+        if str(package.giturl).endswith('.git'):
+            gitsuffix = ''
+        else:
+            gitsuffix = '.git'
+        if str(package.giturl).startswith('git+'):
+            gitprefix = ''
+        else:
+            gitprefix = 'git+'
         if package.gitsubdir is not None:
             commands = ['pip', 'install']
             if disable_pip_cache:
                 commands.append('--no-cache-dir')
-            commands.extend(['--quiet', '--prefix=' + PACKAGE_DIRECTORY, '--src=' + temp_dir, '--upgrade', '--log-file=' + pip_log.name, 'git+' + str(package.giturl) + '.git' + branchpart + '#egg=' + package.name + '&subdirectory=' + str(package.gitsubdir)])
+            commands.extend(['--quiet', '--prefix=' + PACKAGE_DIRECTORY, '--src=' + temp_dir, '--upgrade', '--log-file=' + pip_log.name, gitprefix + str(package.giturl) + gitsuffix + branchpart + '#egg=' + package.name + '&subdirectory=' + str(package.gitsubdir)])
         else:
             commands = ['pip', 'install']
             if disable_pip_cache:
                 commands.append('--no-cache-dir')
-            commands.extend(['--quiet', '--prefix=' + PACKAGE_DIRECTORY, '--src=' + temp_dir, '--upgrade', '--log-file=' + pip_log.name, 'git+' + str(package.giturl) + '.git' + branchpart + '#egg=' + package.name])
+            commands.extend(['--quiet', '--prefix=' + PACKAGE_DIRECTORY, '--src=' + temp_dir, '--upgrade', '--log-file=' + pip_log.name, gitprefix + str(package.giturl) + gitsuffix + branchpart + '#egg=' + package.name])
     elif package.type == 'pip':
         if package.limitation is None:
             limit = ""
@@ -527,7 +521,7 @@ def install_package(package):
     shutil.rmtree(temp_dir)
     return returnval, logfilecontents
 
-def uninstall_package(package):
+def uninstall_package(package, sleep=True):
     sys.stderr.write('uninstall_package: ' + package.name + "\n")
     logfilecontents = ''
     #sys.stderr.write("uninstall_package: uninstalling " + package.name + "\n")
@@ -555,7 +549,8 @@ def uninstall_package(package):
         pass
     sys.stderr.flush()
     sys.stdout.flush()
-    time.sleep(4)
+    if sleep:
+        time.sleep(4)
     sys.stderr.write('uninstall_package: done' + "\n")
     return returnval, logfilecontents
 

@@ -3,7 +3,7 @@
 export HOME=/root
 export DA_ROOT="${DA_ROOT:-/usr/share/docassemble}"
 export DAPYTHONVERSION="${DAPYTHONVERSION:-3}"
-export DA_DEFAULT_LOCAL="local3.6"
+export DA_DEFAULT_LOCAL="local3.8"
 
 export DA_ACTIVATE="${DA_PYTHON:-${DA_ROOT}/${DA_DEFAULT_LOCAL}}/bin/activate"
 
@@ -43,21 +43,6 @@ export DEBIAN_FRONTEND=noninteractive
 if [ "${DAALLOWUPDATES:-true}" == "true" ]; then
     apt-get clean &> /dev/null
     apt-get -q -y update &> /dev/null
-    pandoc --help &> /dev/null || apt-get -q -y install pandoc
-fi
-
-LIBREOFFICE_VERSION=`libreoffice --version`
-if [[ $LIBREOFFICE_VERSION =~ ^LibreOffice\ 6.3 ]]; then
-    apt-get -q -y install -t buster-backports libreoffice
-fi
-
-PANDOC_VERSION=`pandoc --version | head -n1`
-
-if [ "${PANDOC_VERSION}" != "pandoc 2.7.3" ] && [ "${DAALLOWUPDATES:-true}" == "true" ]; then
-   cd /tmp \
-   && wget -q https://github.com/jgm/pandoc/releases/download/2.7.3/pandoc-2.7.3-1-amd64.deb \
-   && dpkg -i pandoc-2.7.3-1-amd64.deb \
-   && rm pandoc-2.7.3-1-amd64.deb
 fi
 
 echo "2" >&2
@@ -444,6 +429,10 @@ echo "16" >&2
 source /dev/stdin < <(su -c "source \"${DA_ACTIVATE}\" && python -m docassemble.base.read_config \"${DA_CONFIG_FILE}\"" www-data)
 export LOGDIRECTORY="${LOGDIRECTORY:-${DA_ROOT}/log}"
 
+echo "16.1" >&2
+
+python -m docassemble.webapp.starthook "${DA_CONFIG_FILE}"
+
 echo "16.5" >&2
 
 if [ "${DAWEBSERVER:-nginx}" = "nginx" ]; then
@@ -765,7 +754,7 @@ if [[ $CONTAINERROLE =~ .*:(all|sql):.* ]] && [ "$PGRUNNING" = false ] && [ "$DB
     fi
     dbexists=`su -c "psql -tAc \"SELECT 1 FROM pg_database WHERE datname='${DBNAME:-docassemble}'\"" postgres`
     if [ -z "$dbexists" ]; then
-        echo "create database "${DBNAME:-docassemble}" owner "${DBUSER:-docassemble}";" | su -c psql postgres || exit 1
+        echo "create database "${DBNAME:-docassemble}" owner "${DBUSER:-docassemble}" encoding UTF8;" | su -c psql postgres || exit 1
     fi
 elif [ "$PGRUNNING" = false ] && [ "$DBTYPE" == "postgresql" ]; then
     export PGHOST="${DBHOST}"
@@ -824,8 +813,6 @@ if [ "$OTHERLOGSERVER" = false ] && [ -f "${LOGDIRECTORY}/docassemble.log" ]; th
     chown www-data.www-data "${LOGDIRECTORY}/docassemble.log"
 fi
 
-echo "35" >&2
-
 echo "36" >&2
 
 if [[ $CONTAINERROLE =~ .*:(all|redis):.* ]] && [ "$REDISRUNNING" = false ]; then
@@ -836,13 +823,13 @@ echo "37" >&2
 
 if [ "${DAUPDATEONSTART:-true}" = "true" ] && [ "${DAALLOWUPDATES:-true}" == "true" ]; then
     echo "Doing upgrading of packages" >&2
-    su -c "source \"${DA_ACTIVATE}\" && pip install --upgrade pip==20.1 && python -m docassemble.webapp.update \"${DA_CONFIG_FILE}\" initialize" www-data || exit 1
+    su -c "source \"${DA_ACTIVATE}\" && python -m docassemble.webapp.update \"${DA_CONFIG_FILE}\" initialize" www-data || exit 1
     touch "${DA_ROOT}/webapp/initialized"
 fi
 
 if [ "${DAUPDATEONSTART:-true}" = "initial" ] && [ ! -f "${DA_ROOT}/webapp/initialized" ] && [ "${DAALLOWUPDATES:-true}" == "true" ]; then
     echo "Doing initial upgrading of packages" >&2
-    su -c "source \"${DA_ACTIVATE}\" && pip install --upgrade pip==20.1 && python -m docassemble.webapp.update \"${DA_CONFIG_FILE}\" initialize" www-data || exit 1
+    su -c "source \"${DA_ACTIVATE}\" && python -m docassemble.webapp.update \"${DA_CONFIG_FILE}\" initialize" www-data || exit 1
     touch "${DA_ROOT}/webapp/initialized"
 fi
 

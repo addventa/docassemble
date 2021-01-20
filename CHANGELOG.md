@@ -1,5 +1,362 @@
 # Change Log
 
+## [1.2.23] - 2021-01-07
+### Changed
+- Expanded the information available in the data view of a question.
+- Unicode passed in URL arguments is no longer escaped.
+### Fixed
+- The `next` parameter now contains the session ID upon attempting to
+  access a session in an interview with `require login`.
+- `depends on` and `on change` now can be used with generic object
+  and/or index variables even when the fields being changed do not
+  literally match the variable name specified in `depends on` or `on
+  change`.
+- Problem with `show if` when there are two fields with the same name
+  visible on the screen at the same time.
+
+## [1.2.22] - 2021-01-04
+### Changed
+- Expanded the information available in the data view of a question.
+### Fixed
+- Issue with combobox update triggers.
+- Issue with `DADict` objects in `code` for multiple choice lists.
+
+## [1.2.21] - 2020-12-29
+### Changed
+- The `list collect` feature will now show the `minimum_number` of
+  entries if `minimum_number` is set.
+
+## [1.2.20] - 2020-12-28
+### Fixed
+- Error with `generic object` inheritance.
+
+## [1.2.19] - 2020-12-26
+### Fixed
+- Error in `.object_name()`.
+
+## [1.2.18] - 2020-12-22
+### Fixed
+- Adapted to new version of `pip`.
+
+## [1.2.17] - 2020-12-22
+### Changed
+- Different startup mechanism for `celery`.
+- Removed `--force-reinstall` from `pip` invocation.
+
+## [1.2.16] - 2020-12-15
+### Added
+- The `chain` function from `itertools`.
+### Fixed
+- Forced deletion of `Flask-User`.
+
+## [1.2.15] - 2020-12-14
+### Fixed
+- Pinned dependencies of fork dependencies.
+
+## [1.2.14] - 2020-12-09
+### Fixed
+- Problem with the way in which `pip` was invoked, given new version
+  of `pip`.
+
+## [1.2.13] - 2020-12-09
+### Fixed
+- Typo in `setup.py`.
+
+## [1.2.12] - 2020-12-09
+### Changed
+- Dependencies on `aloe` and `selenium`.
+### Fixed
+- Interview filenames with spaces in the Configuration were disregarded.
+
+## [1.2.11] - 2020-12-07
+### Added
+- XLIFF support.
+- The `user can request developer account` Configuration directive.
+### Fixed
+- User information that non-privileged users are not allowed to edit
+  in Profile but that was set with code was overwritten when user
+  edited their user profile.
+- Problem with `datereplace.js` in recipe.
+
+## [1.2.10] - 2020-12-05
+### Added
+- The `raw` datatype.
+### Changed
+- Additional items colorized in spreadsheet translations.
+- HTML stripped from fields with `datatype` of `text`.
+### Fixed
+- Issue with server-side validation where multiple `question` blocks
+  have the same `id`.
+
+## [1.2.9] - 2020-12-04
+### Fixed
+- Bug in `comma_and_list()`.
+
+## [1.2.8] - 2020-12-03
+### Changed
+- Different limiting mechanism for the nested use of
+  `include_docx_template()`.
+- Enabled the `md_in_html` extension of the `Markdown` package.
+
+## [1.2.7] - 2020-12-02
+### Added
+- The `new window` option to `action buttons`.
+### Fixed
+- Ajax error with xhr responses.
+
+## [1.2.6] - 2020-12-01
+### Fixed
+- Error in `update_terms()`.
+
+## [1.2.5] - 2020-11-30
+### Fixed
+- JavaScript error in Internet Explorer.
+
+## [1.2.4] - 2020-11-29
+### Changed
+- The `setup.py` file created by the Playground now sets the minimum
+  version of dependencies to the latest version on PyPI that is not
+  more recent than the version installed on the server.
+### Fixed
+- Browser warning about Google Analytics cookies.
+
+## [1.2.3] - 2020-11-29
+### Fixed
+- Upgraded to new version of Azure Blob Storage API.
+
+## [1.2.2] - 2020-11-29
+### Fixed
+- Reverted Azure Blob Storage API version.
+
+## [1.2.1] - 2020-11-28
+### Fixed
+- Error on Package Management page.
+
+## [1.2.0] - 2020-11-28
+### Changed
+- Upgraded Python to version 3.8 and upgraded dependencies.  These
+  changes require a system upgrade.  See
+  https://docassemble.org/docs/docker.html#upgrading for instructions
+  on how to perform a system upgrade.  Because Python changed between
+  version 3.6 and and 3.8, you should test your code carefully to make
+  sure it still works in Python 3.8.
+- Among other upgrades, Bootstrap has been upgraded to version 4.5.3.
+  If you are using Bootstrap themes, you may wish to upgrade your
+  Bootstrap theme.
+### Fixed
+- Issue with user privileges.
+
+## [1.1.112] - 2020-11-26
+### Changed
+- Upgrading through Package Management is turned off because the
+  upgrade to 1.2.0 requires a system upgrade.
+
+## [1.1.111] - 2020-11-26
+### Fixed
+- Some Jinja2 filters did not work correctly.
+
+## [1.1.110] - 2020-11-25
+### Changed
+- The API can now be used to set variables to class names.
+### Fixed
+- The `sort` Jinja2 filter did not work correctly.
+
+## [1.1.109] - 2020-11-24
+### Added
+- The `suppress error notificiations` Configuration directive.
+- Error message if file upload will exceed `maximum content length`.
+### Fixed
+- Google Drive synchronization did not work with shortcuts to folders.
+
+## [1.1.108] - 2020-11-22
+### Changed
+- The `markdown` and `inline_markdown` filters now respect the `type`
+  and `start` attributes of `<ol>`.
+
+## [1.1.107] - 2020-11-21
+### Changed
+- Upgraded LibreOffice (system upgrade required for this change).
+### Fixed
+- Bug in previous version.
+
+## [1.1.106] - 2020-11-21
+### Added
+- The `change_numbering` keyword parameter to `include_docx_template()`.
+
+## [1.1.105] - 2020-11-20
+### Changed
+- The `.make_ocr_pdf_in_background()` method can now handle mixed file
+  types.
+### Fixed
+- Markdown internal anchor links now work in the web interface.
+
+## [1.1.104] - 2020-11-20
+### Added
+- German translations of country names.
+### Changed
+- The `states_list()`, `state_name()`, and `subdivision_type()`
+  functions now pass output through the `word()` translation system.
+### Fixed
+- The `language` modifier for an attachment did not work with `docx
+  template file` attachments.
+
+## [1.1.103] - 2020-11-19
+### Added
+- The `temporary session` specifier under `metadata`.
+### Changed
+- The `countries_list()` and `country_name()` functions will now pass
+  country names through the `word()` translation system.
+
+## [1.1.102] - 2020-11-19
+### Fixed
+- The local PostgreSQL database was being created with the default
+  encoding, which did not allow UTF-8 strings to be saved in `jsonb`
+  format.
+- An `attachment` that uses a different language than the current
+  language did not restore the correct language after an exception.
+
+## [1.1.101] - 2020-11-14
+### Fixed
+- Issue with `interview_url()` and `interview_url_action()` with `i`
+  parameter when short URL is in use.
+
+## [1.1.100] - 2020-11-13
+### Fixed
+- Translation of phrases on registration page.
+
+## [1.1.99] - 2020-11-12
+### Changed
+- Different logic for whether hyperlinks open in the same tab or a
+  different tab.
+
+## [1.1.98] - 2020-11-12
+### Fixed
+- Bug in `bates_number()`.
+
+## [1.1.97] - 2020-11-10
+### Added
+- The `/api/clear_cache` endpoint.
+
+## [1.1.96] - 2020-11-08
+### Added
+- The `lang` URL parameter for non-interview screens.
+
+## [1.1.95] - 2020-11-06
+### Fixed
+- Unnecessary incrementing of PyPI version.
+- Recent installations (since June 25, 2020, possibly) contained a
+  Debian security update that disabled ImageMagick's ability to inject
+  signature images onto PDFs.  Running `docker stop` and `docker
+  start` is required to enable the PDF signature image feature.
+
+## [1.1.94] - 2020-11-03
+### Added
+- The `set_object_type()` method of `DAList` and `DADict`.
+- The `variable` attribute of the return value of `user_info()`.
+- The `reset_geolocation()` method of `Address` and the `reset`
+  keyword parameter of the `geolocate()` method.
+### Fixed
+- The `map` Jinja2 filter looked up dictionary items instead of
+  attributes.
+- Could not mix a Python-based `show if` with a JavaScript-based `hide
+  if` or vice-versa.
+
+## [1.1.93] - 2020-10-27
+### Fixed
+- Markdown in popover field help.
+
+## [1.1.92] - 2020-10-24
+### Added
+- The `update_terms()` function.
+### Changed
+- When using `terms`, you can specify that text other than the term
+  name should be displayed using `|`.
+- When specifying `terms` and `auto terms`, you can use `phrases` and
+  `definition` to indicate that multiple terms are associated with a
+  single definition.
+
+## [1.1.91] - 2020-10-24
+### Fixed
+- Bug in GitHub configuration.
+
+## [1.1.90] - 2020-10-20
+### Changed
+- Enabled a variety of functions to operate as Jinja2 filters.
+### Fixed
+- Corrected operation of `selectattr` Jinja2 filter.
+
+## [1.1.89] - 2020-10-19
+### Added
+- The `make_ocr_pdf()` and `make_ocr_pdf_in_background()`, and
+  `bates_number()` methods of `DAFile` and `DAFileList`.
+- The `reverse()`, `insert()`, and `count()` methods of `DAList`.
+
+## [1.1.88] - 2020-10-16
+### Added
+- The `required privileges for initiating` specifier under `metadata`.
+### Changed
+- The JSON format of questions now includes analytics information.
+### Fixed
+- The `delete_variables` feature of `/api/session` did not work when
+  passing the request in JSON format.
+
+## [1.1.87] - 2020-10-14
+### Fixed
+- False error messages on package update screen.
+
+## [1.1.86] - 2020-10-13
+### Changed
+- Monitor disabled when `checkin interval` is zero.
+### Fixed
+- Potential OAuth2 issue with Google Drive.
+
+## [1.1.85] - 2020-10-12
+### Added
+- The `table css class` screen part.
+- The `show_as_markdown()` method for `template`s.
+- The `_inline` option for `include_docx_template()`.
+- Ability to list multiple files under `docx template file`.
+- Ability to set the `pre` and `post` screen parts directly on a
+  `question`.
+- The `enable if`, `disable if`, `js enable if`, and `js disable if`
+  field modifiers.
+
+## [1.1.84] - 2020-10-07
+### Fixed
+- GitHub commit issue.
+
+## [1.1.83] - 2020-10-07
+### Fixed
+- `cross site domains` was not being used by CORS for web sockets.
+
+## [1.1.82] - 2020-10-06
+### Fixed
+- GitHub commit error.
+
+## [1.1.81] - 2020-10-05
+### Fixed
+- Tweak to focusing on first element.
+
+## [1.1.80] - 2020-10-04
+### Added
+- The `middle_initial()` method of `Name`.
+### Changed
+- First input element on the screen is focused only if visible in the
+  viewport.
+- `[FILE ...]` can now be used with images declared in `images` or
+  `image sets`.
+### Fixed
+- Issue with floating point/integer numbers and input validation.
+
+## [1.1.79] - 2020-09-28
+### Fixed
+- Problem with using `[TARGET]` inside of `right`.
+
+## [1.1.78] - 2020-09-25
+### Fixed
+- Issue with `get_info()`.
+- Issue with `show if` `code` and generic objects/iterators.
+
 ## [1.1.77] - 2020-09-22
 ### Fixed
 - Issue with fix in the previous version regarding group-level file permissions.
@@ -960,7 +1317,7 @@
 ### Added
 - The `help generator` and `image generator` field modifiers.
 ### Fixed
-- Error when `code` was used with `content file` and the code 
+- Error when `code` was used with `content file` and the code
   returned a list.
 - Backup of Redis database when password is used.
 

@@ -3,7 +3,7 @@
 export DA_ROOT="${DA_ROOT:-/usr/share/docassemble}"
 
 export DAPYTHONVERSION="${DAPYTHONVERSION:-3}"
-export DA_DEFAULT_LOCAL="local3.6"
+export DA_DEFAULT_LOCAL="local3.8"
 
 export DA_ACTIVATE="${DA_PYTHON:-${DA_ROOT}/${DA_DEFAULT_LOCAL}}/bin/activate"
 
@@ -17,15 +17,4 @@ export LANG=$1
 
 export HOME=/var/www
 
-celery worker -A docassemble.webapp.worker --loglevel=INFO &
-
-CELERYPID=%1
-
-function stopfunc {
-    kill -SIGTERM $CELERYPID
-    exit 0
-}
-
-trap stopfunc SIGINT SIGTERM
-
-wait $CELERYPID
+exec celery -A docassemble.webapp.worker worker --loglevel=INFO

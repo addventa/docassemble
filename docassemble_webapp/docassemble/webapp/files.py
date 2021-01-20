@@ -18,6 +18,7 @@ from docassemble.base.config import daconfig
 import docassemble.webapp.cloud
 import docassemble.base.functions
 from docassemble.base.generate_key import random_alphanumeric
+from distutils.version import LooseVersion
 
 cloud = docassemble.webapp.cloud.get_cloud()
 
@@ -505,12 +506,36 @@ def make_package_zip(pkgname, info, author_info, tz_name, current_project='defau
     shutil.rmtree(directory)
     return temp_zip
 
+def get_version_suffix(package_name):
+    from docassemble.webapp.update import get_pip_info
+    info = get_pip_info(package_name)
+    if 'Version' in info:
+        installed_version = LooseVersion(info['Version'].strip())
+        latest_release = None
+        printable_latest_release = None
+        try:
+            r = requests.get("https://pypi.org/pypi/%s/json" % package_name, timeout=5)
+            assert r.status_code == 200
+            pypi_info = r.json()
+            for the_version in pypi_info['releases'].keys():
+                past_version = LooseVersion(the_version)
+                if past_version <= installed_version and (latest_release is None or past_version > latest_release):
+                    latest_release = past_version
+                    printable_latest_release = the_version
+                    if past_version == installed_version:
+                        break
+        except:
+            pass
+        if printable_latest_release:
+            return '>=' + printable_latest_release
+    return ''
+
 def make_package_dir(pkgname, info, author_info, tz_name, directory=None, current_project='default'):
     the_timezone = pytz.timezone(tz_name)
     area = dict()
     for sec in ['playground', 'playgroundtemplate', 'playgroundstatic', 'playgroundsources', 'playgroundmodules']:
         area[sec] = SavedFile(author_info['id'], fix=True, section=sec)
-    dependencies = ", ".join(map(lambda x: repr(x), sorted(info['dependencies'])))
+    dependencies = ", ".join(map(lambda x: repr(x + get_version_suffix(x)), sorted(info['dependencies'])))
     initpy = """\
 try:
     __import__('pkg_resources').declare_namespace(__name__)

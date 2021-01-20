@@ -74,6 +74,15 @@ def config_error(error):
     errors.append(error)
     sys.stderr.write(error + "\n")
 
+def cleanup_filename(filename):
+    filename = filename.strip()
+    parts = filename.split(':')
+    if len(parts) != 2 or re.search(r'\s', parts[0]):
+        return None
+    if not parts[0].startswith('docassemble.playground') and not parts[1].startswith('data/questions/'):
+        return parts[0] + ':' + 'data/questions/' + parts[1]
+    return filename
+
 def load(**kwargs):
     global daconfig
     global s3_config
@@ -142,11 +151,22 @@ def load(**kwargs):
         for env_var, key in (('S3ENABLE', 'enable'), ('S3ACCESSKEY', 'access key id'), ('S3SECRETACCESSKEY', 'secret access key'), ('S3BUCKET', 'bucket'), ('S3REGION', 'region'), ('S3ENDPOINTURL', 'endpoint url')):
             if env_exists(env_var):
                 override_config(daconfig, null_messages, key, env_var, pre_key='s3')
-        for env_var, key in (('AZUREENABLE', 'enable'), ('AZUREACCOUNTKEY', 'account key'), ('AZUREACCOUNTNAME', 'account name'), ('AZURECONTAINER', 'container')):
+        for env_var, key in (('AZUREENABLE', 'enable'), ('AZUREACCOUNTKEY', 'account key'), ('AZUREACCOUNTNAME', 'account name'), ('AZURECONTAINER', 'container'), ('AZURECONNECTIONSTRING', 'connection string')):
             if env_exists(env_var):
                 override_config(daconfig, null_messages, key, env_var, pre_key='azure')
         if env_exists('KUBERNETES'):
             override_config(daconfig, null_messages, 'kubernetes', 'KUBERNETES')
+    if 'suppress error notificiations' in daconfig and isinstance(daconfig['suppress error notificiations'], list):
+        ok = True
+        for item in daconfig['suppress error notificiations']:
+            if not isinstance(item, str):
+                ok = False
+                break
+        if not ok:
+            daconfig['suppress error notificiations'] = []
+            sys.stderr.write("Configuration file suppress error notifications directive not valid")
+    else:
+        daconfig['suppress error notificiations'] = []
     if 'maximum content length' in daconfig:
         if isinstance(daconfig['maximum content length'], (int, type(None))):
             if daconfig['maximum content length'] is not None and daconfig['maximum content length'] <= 0:
@@ -154,6 +174,8 @@ def load(**kwargs):
         else:
             config_error("The maximum content length must be an integer number of bytes, or null.")
             del daconfig['maximum content length']
+    if 'maximum content length' not in daconfig:
+        daconfig['maximum content length'] = 16 * 1024 * 1024
     if 'social' not in daconfig or not isinstance(daconfig['social'], dict):
         daconfig['social'] = dict()
     if 'twitter' not in daconfig['social'] or not isinstance(daconfig['social']['twitter'], dict):
@@ -184,13 +206,20 @@ def load(**kwargs):
     if 'url' in daconfig['social']['og']:
         del daconfig['social']['og']['url']
     if 'administrative interviews' in daconfig:
-        new_admin_interviews = list()
-        for item in daconfig['administrative interviews']:
-            if isinstance(item, str):
-                new_admin_interviews.append(dict(interview=item))
-            else:
-                new_admin_interviews.append(item)
-        daconfig['administrative interviews'] = new_admin_interviews
+        if isinstance(daconfig['administrative interviews'], list):
+            new_admin_interviews = list()
+            for item in daconfig['administrative interviews']:
+                if isinstance(item, str):
+                    new_item = cleanup_filename(item)
+                    if new_item:
+                        new_admin_interviews.append(dict(interview=new_item))
+                elif isinstance(item, dict) and 'interview' in item and isinstance(item['interview'], str):
+                    item['interview'] = cleanup_filename(item['interview'])
+                    if item['interview'] is not None:
+                        new_admin_interviews.append(item)
+            daconfig['administrative interviews'] = new_admin_interviews
+        else:
+            del daconfig['administrative interviews']
     if 'session lifetime seconds' in daconfig:
         try:
             daconfig['session lifetime seconds'] = int(daconfig['session lifetime seconds'])
@@ -455,6 +484,10 @@ def load(**kwargs):
         elif daconfig['checkin interval'] > 0 and daconfig['checkin interval'] < 1000:
             config_error("checkin interval must be at least 1000, if not 0.")
             del daconfig['checkin interval']
+    if daconfig.get('checkin interval', 5) == 0:
+        daconfig['enable monitor'] = False
+    else:
+        daconfig['enable monitor'] = True
     if daconfig.get('default icons', None) == 'font awesome':
         daconfig['use font awesome'] = True
     if 'websockets port' in daconfig and daconfig['websockets port']:
@@ -470,6 +503,29 @@ def load(**kwargs):
     if not isinstance(daconfig['dispatch'], dict):
         config_error("dispatch must be structured as a dictionary")
         daconfig['dispatch'] = dict()
+    if len(daconfig['dispatch']):
+        new_dispatch = dict()
+        for shortcut, filename in daconfig['dispatch'].items():
+            if isinstance(shortcut, str) and isinstance(filename, str):
+                new_filename = cleanup_filename(filename)
+                if new_filename:
+                    new_dispatch[shortcut] = new_filename
+        daconfig['dispatch'] = new_dispatch
+    if 'interview delete days by filename' in daconfig and isinstance(daconfig['interview delete days by filename'], dict):
+        new_delete_days = dict()
+        for filename, days in daconfig['interview delete days by filename'].items():
+            new_filename = cleanup_filename(filename)
+            if new_filename:
+                new_delete_days[new_filename] = days
+        daconfig['interview delete days by filename'] = new_delete_days
+    for key in ('default interview', 'session list interview', 'dispatch interview', 'auto resume interview'):
+        if key in daconfig:
+            if isinstance(daconfig[key], str):
+                daconfig[key] = cleanup_filename(daconfig[key])
+                if daconfig[key] is None:
+                    del daconfig[key]
+            else:
+                del daconfig[key]
     if 'ldap login' not in daconfig:
         daconfig['ldap login'] = dict()
     if not isinstance(daconfig['ldap login'], dict):
@@ -499,6 +555,8 @@ def load(**kwargs):
         daconfig['root'] = '/'
     if 'web server' not in daconfig or not daconfig['web server']:
         daconfig['web server'] = 'nginx'
+    if 'table css class' not in daconfig or not isinstance(daconfig['table css class'], str):
+        daconfig['table css class'] = 'table table-striped'
     if env_true_false('ENVIRONMENT_TAKES_PRECEDENCE'):
         messages = list()
         for env_var, key in (('DBPREFIX', 'prefix'), ('DBNAME', 'name'), ('DBUSER', 'user'), ('DBPASSWORD', 'password'), ('DBHOST', 'host'), ('DBPORT', 'port'), ('DBTABLEPREFIX', 'table prefix'), ('DBBACKUP', 'backup')):
@@ -526,7 +584,7 @@ def load(**kwargs):
         for env_var, key in (('S3ENABLE', 'enable'), ('S3ACCESSKEY', 'access key id'), ('S3SECRETACCESSKEY', 'secret access key'), ('S3BUCKET', 'bucket'), ('S3REGION', 'region'), ('S3ENDPOINTURL', 'endpoint url')):
             if env_exists(env_var):
                 override_config(daconfig, messages, key, env_var, pre_key='s3')
-        for env_var, key in (('AZUREENABLE', 'enable'), ('AZUREACCOUNTKEY', 'account key'), ('AZUREACCOUNTNAME', 'account name'), ('AZURECONTAINER', 'container')):
+        for env_var, key in (('AZUREENABLE', 'enable'), ('AZUREACCOUNTKEY', 'account key'), ('AZUREACCOUNTNAME', 'account name'), ('AZURECONTAINER', 'container'), ('AZURECONNECTIONSTRING', 'connection string')):
             if env_exists(env_var):
                 override_config(daconfig, messages, key, env_var, pre_key='azure')
         if env_exists('EC2'):

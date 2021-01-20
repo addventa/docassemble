@@ -6,7 +6,7 @@ from docx.shared import Mm, Inches, Pt, Cm, Twips
 import docx.opc.constants
 from docxcompose.composer import Composer # For fixing up images, etc when including docx files within templates
 from docx.oxml.section import CT_SectPr # For figuring out if an element is a section or not
-from docassemble.base.functions import server, this_thread, package_template_filename, get_config
+from docassemble.base.functions import server, this_thread, package_template_filename, get_config, roman
 import docassemble.base.filter
 from xml.sax.saxutils import escape as html_escape
 from docassemble.base.logger import logmessage
@@ -18,14 +18,17 @@ import time
 import stat
 import mimetypes
 import tempfile
+import string
 from docassemble.base.error import DAError
 
 NoneType = type(None)
 
 DEFAULT_PAGE_WIDTH = '6.5in'
 
+list_types = ['1', 'A', 'a', 'I', 'i']
+
 def image_for_docx(fileref, question, tpl, width=None):
-    if fileref.__class__.__name__ in ('DAFile', 'DAFileList', 'DAFileCollection', 'DALocalFile'):
+    if fileref.__class__.__name__ in ('DAFile', 'DAFileList', 'DAFileCollection', 'DALocalFile', 'DAStaticFile'):
         file_info = dict(fullpath=fileref.path())
     else:
         file_info = server.file_finder(fileref, convert={'svg': 'png'}, question=question)
@@ -101,8 +104,10 @@ class InlineHyperlink(object):
     def __str__(self):
         return self._insert_link()
 
-def fix_subdoc(masterdoc, subdoc):
+def fix_subdoc(masterdoc, subdoc_info):
     """Fix the images, styles, references, shapes, etc of a subdoc"""
+    subdoc = subdoc_info['subdoc']
+    change_numbering = subdoc_info['change_numbering']
     composer = Composer(masterdoc) # Using docxcompose
     composer.reset_reference_mapping()
 
@@ -115,8 +120,12 @@ def fix_subdoc(masterdoc, subdoc):
             continue
         composer.add_referenced_parts(subdoc.part, masterdoc.part, element)
         composer.add_styles(subdoc, element)
-        composer.add_numberings(subdoc, element)
-        composer.restart_first_numbering(subdoc, element)
+        if change_numbering:
+            try:
+                composer.add_numberings(subdoc, element)
+                composer.restart_first_numbering(subdoc, element)
+            except:
+                pass
         composer.add_images(subdoc, element)
         composer.add_shapes(subdoc, element)
         composer.add_footnotes(subdoc, element)
@@ -131,22 +140,32 @@ def include_docx_template(template_file, **kwargs):
     """Include the contents of one docx file inside another docx file."""
     if this_thread.evaluation_context is None:
         return 'ERROR: not in a docx file'
-    if template_file.__class__.__name__ in ('DAFile', 'DAFileList', 'DAFileCollection', 'DALocalFile'):
+    if template_file.__class__.__name__ in ('DAFile', 'DAFileList', 'DAFileCollection', 'DALocalFile', 'DAStaticFile'):
         template_path = template_file.path()
     else:
         template_path = package_template_filename(template_file, package=this_thread.current_package)
     sd = this_thread.misc['docx_template'].new_subdoc()
     sd.subdocx = Document(template_path)
+    if '_inline' in kwargs:
+        single_paragraph = True
+        del kwargs['_inline']
+    else:
+        single_paragraph = False
+    if 'change_numbering' in kwargs:
+        change_numbering = True if kwargs['change_numbering'] else False
+        del kwargs['change_numbering']
+    else:
+        change_numbering = True
 
     # We need to keep a copy of the subdocs so we can fix up the master template in the end (in parse.py)
     # Given we're half way through processing the template, we can't fix the master template here
     # we have to do it in post
     if 'docx_subdocs' not in this_thread.misc:
         this_thread.misc['docx_subdocs'] = []
-    this_thread.misc['docx_subdocs'].append(deepcopy(sd.subdocx))
+    this_thread.misc['docx_subdocs'].append({'subdoc': deepcopy(sd.subdocx), 'change_numbering': change_numbering})
 
     # Fix the subdocs before they are included in the template
-    fix_subdoc(this_thread.misc['docx_template'], sd.subdocx)
+    fix_subdoc(this_thread.misc['docx_template'], {'subdoc': sd.subdocx, 'change_numbering': change_numbering})
 
     first_paragraph = sd.subdocx.paragraphs[0]
     for key, val in kwargs.items():
@@ -158,6 +177,8 @@ def include_docx_template(template_file, **kwargs):
     if 'docx_include_count' not in this_thread.misc:
         this_thread.misc['docx_include_count'] = 0
     this_thread.misc['docx_include_count'] += 1
+    if single_paragraph:
+        return re.sub(r'<w:p[^>]*>\s*(.*)</w:p>\s*', r'\1', str(first_paragraph._p.xml), flags=re.DOTALL)
     return sd
 
 def get_children(descendants, parsed):
@@ -194,12 +215,30 @@ def html_linear_parse(soup):
         descendants.extendleft(from_children)
     return parsed
 
+def Alpha(number):
+    multiplier = int((number - 1) / 26)
+    indexno = (number - 1) % 26
+    return string.ascii_uppercase[indexno] * (multiplier + 1)
+
+def alpha(number):
+    multiplier = int((number - 1) / 26)
+    indexno = (number - 1) % 26
+    return string.ascii_lowercase[indexno] * (multiplier + 1)
+
+def Roman_Numeral(number):
+    return roman((number - 1) % 4000, case='upper')
+
+def roman_numeral(number):
+    return roman((number - 1) % 4000, case='lower')
+
 class SoupParser(object):
     def __init__(self, tpl):
-        self.paragraphs = [dict(params=dict(style='p', indentation=0), runs=[RichText('')])]
+        self.paragraphs = [dict(params=dict(style='p', indentation=0, list_number=1), runs=[RichText('')])]
         self.current_paragraph = self.paragraphs[-1]
         self.run = self.current_paragraph['runs'][-1]
         self.bold = False
+        self.list_number = 1
+        self.list_type = list_types[-1]
         self.italic = False
         self.underline = False
         self.strike = False
@@ -217,26 +256,31 @@ class SoupParser(object):
             self.current_paragraph['params']['indentation'] = self.indentation
             return
         # logmessage("new_paragraph where style is " + self.style + " and indentation is " + str(self.indentation))
-        self.current_paragraph = dict(params=dict(style=self.style, indentation=self.indentation), runs=[RichText('')])
+        self.current_paragraph = dict(params=dict(style=self.style, indentation=self.indentation, list_number=self.list_number), runs=[RichText('')])
+        self.list_number += 1
         self.paragraphs.append(self.current_paragraph)
         self.run = self.current_paragraph['runs'][-1]
         self.still_new = True
     def __str__(self):
         output = ''
-        list_number = 1
         for para in self.paragraphs:
             # logmessage("Got a paragraph where style is " + para['params']['style'] + " and indentation is " + str(para['params']['indentation']))
             output += '<w:p><w:pPr><w:pStyle w:val="Normal"/>'
-            if para['params']['style'] in ('ul', 'ol', 'blockquote'):
+            if para['params']['style'] in ('ul', 'blockquote') or para['params']['style'].startswith('ol'):
                 output += '<w:ind w:left="' + str(36*para['params']['indentation']) + '" w:right="0" w:hanging="0"/>'
             output += '<w:rPr></w:rPr></w:pPr>'
             if para['params']['style'] == 'ul':
                 output += str(RichText("•\t"))
-            if para['params']['style'] == 'ol':
-                output += str(RichText(str(list_number) + ".\t"))
-                list_number += 1
-            else:
-                list_number = 1
+            if para['params']['style'] == 'ol1':
+                output += str(RichText(str(para['params']['list_number']) + ".\t"))
+            elif para['params']['style'] == 'olA':
+                output += str(RichText(Alpha(para['params']['list_number']) + ".\t"))
+            elif para['params']['style'] == 'ola':
+                output += str(RichText(alpha(para['params']['list_number']) + ".\t"))
+            elif para['params']['style'] == 'olI':
+                output += str(RichText(Roman_Numeral(para['params']['list_number']) + ".\t"))
+            elif para['params']['style'] == 'oli':
+                output += str(RichText(roman_numeral(para['params']['list_number']) + ".\t"))
             for run in para['runs']:
                 output += str(run)
             output += '</w:p>'
@@ -278,10 +322,22 @@ class SoupParser(object):
                 elif part.name == 'ol':
                     # logmessage("Entering a OL")
                     oldstyle = self.style
-                    self.style = 'ol'
+                    oldlistnumber = self.list_number
+                    oldlisttype = self.list_type
+                    if part.get('type', None) in list_types:
+                        self.list_type = part['type']
+                    else:
+                        self.list_type = list_types[(list_types.index(self.list_type) + 1) % 5]
+                    try:
+                        self.list_number = int(part.get('start', 1))
+                    except:
+                        self.list_number = 1
+                    self.style = 'ol' + self.list_type
                     self.indentation += 10
                     self.traverse(part)
                     self.indentation -= 10
+                    self.list_type = oldlisttype
+                    self.list_number = oldlistnumber
                     self.style = oldstyle
                     # logmessage("Leaving a OL")
                 elif part.name == 'strong':
@@ -351,6 +407,7 @@ class InlineSoupParser(object):
         self.tpl = tpl
         self.at_start = True
         self.list_number = 1
+        self.list_type = list_types[-1]
     def new_paragraph(self):
         if self.at_start:
             self.at_start = False
@@ -360,11 +417,23 @@ class InlineSoupParser(object):
             self.run.add("\t" * self.indentation)
         if self.style == 'ul':
             self.run.add("•\t")
-        if self.style == 'ol':
+        if self.style == 'ol1':
             self.run.add(str(self.list_number) + ".\t")
             self.list_number += 1
-        else:
-            self.list_number = 1
+        elif self.style == 'olA':
+            self.run.add(Alpha(self.list_number) + ".\t")
+            self.list_number += 1
+        elif self.style == 'ola':
+            self.run.add(alpha(self.list_number) + ".\t")
+            self.list_number += 1
+        elif self.style == 'olI':
+            self.run.add(Roman_Numeral(self.list_number) + ".\t")
+            self.list_number += 1
+        elif self.style == 'oli':
+            self.run.add(roman_numeral(self.list_number) + ".\t")
+            self.list_number += 1
+        # else:
+        #     self.list_number = 1
     def __str__(self):
         output = ''
         for run in self.runs:
@@ -400,10 +469,22 @@ class InlineSoupParser(object):
                     self.style = oldstyle
                 elif part.name == 'ol':
                     oldstyle = self.style
-                    self.style = 'ol'
+                    oldlistnumber = self.list_number
+                    oldlisttype = self.list_type
+                    if part.get('type', None) in list_types:
+                        self.list_type = part['type']
+                    else:
+                        self.list_type = list_types[(list_types.index(self.list_type) + 1) % 5]
+                    try:
+                        self.list_number = int(part.get('start', 1))
+                    except:
+                        self.list_number = 1
+                    self.style = 'ol' + self.list_type
                     self.indentation += 1
                     self.traverse(part)
                     self.indentation -= 1
+                    self.list_type = oldlisttype
+                    self.list_number = oldlistnumber
                     self.style = oldstyle
                 elif part.name == 'strong':
                     self.bold = True
