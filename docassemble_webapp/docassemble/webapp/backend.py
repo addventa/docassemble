@@ -408,9 +408,14 @@ if not os.path.exists(LOGFILE):
     with open(LOGFILE, 'a'):
         os.utime(LOGFILE, None)
 
-error_file_handler = logging.FileHandler(filename=LOGFILE)
-error_file_handler.setLevel(logging.DEBUG)
-app.logger.addHandler(error_file_handler)
+# error_file_handler = logging.FileHandler(filename=LOGFILE)
+# error_file_handler.setLevel(logging.DEBUG)
+# app.logger.addHandler(error_file_handler)
+stdout_handler = logging.StreamHandler(sys.stdout)
+stdout_handler.setLevel(logging.DEBUG)
+# formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# stdout_handler.setFormatter(formatter)
+app.logger.addHandler(stdout_handler)
 
 #sys.stderr.write("__name__ is " + str(__name__) + " and __package__ is " + str(__package__) + "\n")
 
