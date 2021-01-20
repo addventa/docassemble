@@ -1,5 +1,6 @@
 debug: {{DEBUG}}
 enable playground: {{ENABLEPLAYGROUND}}
+checkin interval: {{CHECKININTERVAL}}
 maximum content length: {{DAMAXCONTENTLENGTH}}
 allow demo: {{ALLOWDEMO}}
 roles_map: {{ROLESMAP}}

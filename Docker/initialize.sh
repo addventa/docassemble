@@ -409,6 +409,7 @@ if [ ! -f "$DA_CONFIG_FILE" ]; then
     echo "There is no config file.  Creating one from source." >&2
     sed -e 's/{{DEBUG}}/'"${DEBUG:-true}"'/' \
         -e 's/{{ENABLEPLAYGROUND}}/'"${ENABLEPLAYGROUND:-true}"'/' \
+        -e 's/{{CHECKININTERVAL}}/'"${CHECKININTERVAL:-6000}"'/' \
         -e 's@{{DAMAXCONTENTLENGTH}}@'"${DAMAXCONTENTLENGTH}"'@' \
         -e 's/{{ROLESMAP}}/'"${ROLESMAP:-null}"'/' \
         -e 's/{{ALLOWDEMO}}/'"${ALLOWDEMO:-true}"'/' \
