@@ -38,6 +38,9 @@ function cmd_retry() {
 echo "config.yml is at" $DA_CONFIG_FILE >&2
 
 echo "1" >&2
+echo "--------------------------" >&2
+echo "Docassemble V1.1.2" >&2
+echo "--------------------------" >&2
 
 export DEBIAN_FRONTEND=noninteractive
 if [ "${DAALLOWUPDATES:-true}" == "true" ]; then
@@ -195,8 +198,10 @@ if [ "${S3ENABLE:-false}" == "true" ]; then
     else
         export LOCAL_HOSTNAME=`hostname --fqdn`
     fi
+    echo "S3 check need of letsencrypt" >&2
     if [[ $CONTAINERROLE =~ .*:(all|web):.* ]] && [[ $(s4cmd ls "s3://${S3BUCKET}/letsencrypt.tar.gz") ]]; then
         rm -f /tmp/letsencrypt.tar.gz
+        echo "S3 get lets encrypt tar" >&2
         s4cmd get "s3://${S3BUCKET}/letsencrypt.tar.gz" /tmp/letsencrypt.tar.gz
         cd /
         tar -xf /tmp/letsencrypt.tar.gz
@@ -204,34 +209,48 @@ if [ "${S3ENABLE:-false}" == "true" ]; then
     else
         rm -f /etc/letsencrypt/da_using_lets_encrypt
     fi
+    echo "S3 check need to sync backup" >&2
     if [ "${DABACKUPDAYS}" != "0" ] && [[ $(s4cmd ls "s3://${S3BUCKET}/backup/${LOCAL_HOSTNAME}") ]]; then
+        echo "S3 sync backup" >&2
         s4cmd dsync "s3://${S3BUCKET}/backup/${LOCAL_HOSTNAME}" "${DA_ROOT}/backup"
     fi
+    echo "S3 check need to sync apache" >&2
     if [[ $CONTAINERROLE =~ .*:(all|web|log):.* ]] && [[ $(s4cmd ls "s3://${S3BUCKET}/apache") ]]; then
+        echo "S3 sync apache" >&2
         s4cmd dsync "s3://${S3BUCKET}/apache" /etc/apache2/sites-available
     fi
     if [[ $CONTAINERROLE =~ .*:(all):.* ]]; then
+        echo "S3 check need to sync apachelogs" >&2
         if [[ $(s4cmd ls "s3://${S3BUCKET}/apachelogs") ]]; then
+            echo "S3 sync apachelogs" >&2
             s4cmd dsync "s3://${S3BUCKET}/apachelogs" /var/log/apache2
             chown root.adm /var/log/apache2/*
             chmod 640 /var/log/apache2/*
         fi
+        echo "S3 check need to sync nginxlogs" >&2
         if [[ $(s4cmd ls "s3://${S3BUCKET}/nginxlogs") ]]; then
+            echo "S3 sync nginxlogs" >&2
             s4cmd dsync "s3://${S3BUCKET}/nginxlogs" /var/log/nginx
             chown www-data.adm /var/log/nginx/*
             chmod 640 /var/log/nginx/*
         fi
     fi
+    echo "S3 check need to sync log" >&2
     if [[ $CONTAINERROLE =~ .*:(all|log):.* ]] && [[ $(s4cmd ls "s3://${S3BUCKET}/log") ]]; then
+        echo "S3 sync log" >&2
         s4cmd dsync "s3://${S3BUCKET}/log" "${LOGDIRECTORY:-${DA_ROOT}/log}"
         chown -R www-data.www-data "${LOGDIRECTORY:-${DA_ROOT}/log}"
     fi
+    echo "S3 check need to sync config.yml" >&2
     if [[ $(s4cmd ls "s3://${S3BUCKET}/config.yml") ]]; then
         rm -f "$DA_CONFIG_FILE"
+        echo "S3 sync config.yml" >&2
         s4cmd get "s3://${S3BUCKET}/config.yml" "$DA_CONFIG_FILE"
         chown www-data.www-data "$DA_CONFIG_FILE"
     fi
+    echo "S3 check need to sync redis.rdb" >&2
     if [[ $CONTAINERROLE =~ .*:(all|redis):.* ]] && [[ $(s4cmd ls "s3://${S3BUCKET}/redis.rdb") ]] && [ "$REDISRUNNING" = false ]; then
+        echo "S3 sync redis.rdb" >&2
         s4cmd -f get "s3://${S3BUCKET}/redis.rdb" "/var/lib/redis/dump.rdb"
         chown redis.redis "/var/lib/redis/dump.rdb"
     fi
@@ -373,7 +392,13 @@ fi
 
 if [ ! -f "$DA_CONFIG_FILE" ]; then
     echo "There is no config file.  Creating one from source." >&2
-    sed -e 's@{{DBPREFIX}}@'"${DBPREFIX:-postgresql+psycopg2:\/\/}"'@' \
+    sed -e 's/{{DEBUG}}/'"${DEBUG:-true}"'/' \
+        -e 's/{{ENABLEPLAYGROUND}}/'"${ENABLEPLAYGROUND:-true}"'/' \
+        -e 's/{{CHECKININTERVAL}}/'"${CHECKININTERVAL:-6000}"'/' \
+        -e 's@{{DAMAXCONTENTLENGTH}}@'"${DAMAXCONTENTLENGTH}"'@' \
+        -e 's/{{ROLESMAP}}/'"${ROLESMAP:-null}"'/' \
+        -e 's/{{ALLOWDEMO}}/'"${ALLOWDEMO:-true}"'/' \
+        -e 's@{{DBPREFIX}}@'"${DBPREFIX:-postgresql+psycopg2:\/\/}"'@' \
         -e 's/{{DBNAME}}/'"${DBNAME:-docassemble}"'/' \
         -e 's/{{DBUSER}}/'"${DBUSER:-docassemble}"'/' \
         -e 's#{{DBPASSWORD}}#'"${DBPASSWORD:-abc123}"'#' \
@@ -688,7 +713,7 @@ echo "26.5" >&2
 
 if [ -n "$PYTHONPACKAGES" ]; then
     for PACKAGE in "${PYTHONPACKAGES[@]}"; do
-        su -c "source \"${DA_ACTIVATE}\" && pip install $PACKAGE" www-data
+        su -c "source \"${DA_ACTIVATE}\" && pip install --no-index --no-deps $PACKAGE" www-data
     done
 fi
 
@@ -795,7 +820,7 @@ echo "32" >&2
 
 OTHERLOGSERVER=false
 
-if [[ $CONTAINERROLE =~ .*:(web|celery):.* ]]; then
+if [[ $CONTAINERROLE =~ .*:(web):.* ]]; then
     if [ "${LOGSERVER:-undefined}" != "undefined" ]; then
         OTHERLOGSERVER=true
     fi
@@ -823,13 +848,13 @@ echo "37" >&2
 
 if [ "${DAUPDATEONSTART:-true}" = "true" ] && [ "${DAALLOWUPDATES:-true}" == "true" ]; then
     echo "Doing upgrading of packages" >&2
-    su -c "source \"${DA_ACTIVATE}\" && python -m docassemble.webapp.update \"${DA_CONFIG_FILE}\" initialize" www-data || exit 1
+    su -c "source \"${DA_ACTIVATE}\" && pip install --no-index --no-deps --upgrade pip==20.1 && python -m docassemble.webapp.update \"${DA_CONFIG_FILE}\" initialize" www-data || exit 1
     touch "${DA_ROOT}/webapp/initialized"
 fi
 
 if [ "${DAUPDATEONSTART:-true}" = "initial" ] && [ ! -f "${DA_ROOT}/webapp/initialized" ] && [ "${DAALLOWUPDATES:-true}" == "true" ]; then
     echo "Doing initial upgrading of packages" >&2
-    su -c "source \"${DA_ACTIVATE}\" && python -m docassemble.webapp.update \"${DA_CONFIG_FILE}\" initialize" www-data || exit 1
+    su -c "source \"${DA_ACTIVATE}\" && pip install --no-index --no-deps --upgrade pip==20.1 && python -m docassemble.webapp.update \"${DA_CONFIG_FILE}\" initialize" www-data || exit 1
     touch "${DA_ROOT}/webapp/initialized"
 fi
 
@@ -847,7 +872,7 @@ fi
 
 echo "39" >&2
 
-if [[ $CONTAINERROLE =~ .*:(all|celery):.* ]]; then
+if [[ $CONTAINERROLE =~ .*:(all):.* ]]; then
     echo "checking if celery is already running..." >&2
     if su -c "source \"${DA_ACTIVATE}\" && timeout 5s celery -A docassemble.webapp.worker status" www-data 2>&1 | grep -q `hostname`; then
         echo "celery is running" >&2
@@ -861,10 +886,6 @@ else
 fi
 
 echo "40" >&2
-
-if [[ $CONTAINERROLE =~ .*:(all|celery):.* ]] && [ "$CELERYRUNNING" = false ]; then
-    supervisorctl --serverurl http://localhost:9001 start celery
-fi
 
 echo "41" >&2
 
@@ -959,9 +980,6 @@ if [ "${DAWEBSERVER:-nginx}" = "nginx" ]; then
             fi
             supervisorctl --serverurl http://localhost:9001 reread
             supervisorctl --serverurl http://localhost:9001 update
-            if [[ $CONTAINERROLE =~ .*:(all|celery):.* ]] && [ "$CELERYRUNNING" = false ]; then
-                supervisorctl --serverurl http://localhost:9001 start celery
-            fi
         fi
         echo "41.8" >&2
         if [ "${USEHTTPS:-false}" == "true" ]; then
@@ -1091,9 +1109,6 @@ if [ "${DAWEBSERVER:-nginx}" = "apache" ]; then
             fi
             supervisorctl --serverurl http://localhost:9001 reread
             supervisorctl --serverurl http://localhost:9001 update
-            if [[ $CONTAINERROLE =~ .*:(all|celery):.* ]] && [ "$CELERYRUNNING" = false ]; then
-                supervisorctl --serverurl http://localhost:9001 start celery
-            fi
         fi
 
         if [ "${BEHINDHTTPSLOADBALANCER:-false}" == "true" ]; then
