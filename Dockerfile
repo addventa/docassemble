@@ -1,4 +1,4 @@
-FROM addventa/docassemble-os
+FROM jhpyle/docassemble-os
 COPY . /tmp/docassemble/
 RUN DEBIAN_FRONTEND=noninteractive TERM=xterm \
 bash -c \
