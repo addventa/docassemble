@@ -84,11 +84,11 @@ bash -c \
    /tmp/docassemble/docassemble_demo \
    /tmp/docassemble/docassemble_webapp \
 && pip3 uninstall --yes mysqlclient MySQL-python &> /dev/null \
-&& python3.6 -m nltk.downloader -d /usr/local/share/nltk_data all"
+&& python3.8 -m nltk.downloader -d /usr/local/share/nltk_data all"
 
 RUN DEBIAN_FRONTEND=noninteractive TERM=xterm \
 bash -c \
-"cp /usr/share/docassemble/local3.8/lib/python3.6/site-packages/s4cmd.py /usr/share/s4cmd/ \
+"cp /usr/share/docassemble/local3.8/lib/python3.8/site-packages/s4cmd.py /usr/share/s4cmd/ \
 && chown -R www-data.www-data \
    /usr/share/docassemble/local3.8 \
    /usr/share/docassemble/log \
