@@ -187,7 +187,7 @@ install_requires = [
     "rsa==4.6",
     "ruamel.yaml==0.16.12",
     "ruamel.yaml.clib==0.2.2",
-    "s3transfer==0.3.3",
+    "s3transfer==0.1.13",
     "s4cmd==2.1.1",
     "scikit-learn==0.23.2",
     "scipy==1.5.4",
