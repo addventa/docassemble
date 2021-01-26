@@ -497,13 +497,19 @@ def custom_login():
         roles_map = dict(daconfig.get('roles map', dict()))
         id = request.headers.get('Bnppuid')
         Bnppgroups = request.headers.get('Bnppgroups')
+        roles = list()
+        bnpp_roles_to_store = list()
         if Bnppgroups is None:
             bnpproles = ['']
             roles = ['user']
         else:
             try:
                 bnpproles = [[y for x, y in (element.split('=') for element in i.split(',')) if x == 'cn'][0] for i in Bnppgroups.split('^')]
-                roles = [roles_map.get(role, None) for role in bnpproles]
+                for role in bnpproles:
+                    role_map = roles_map.get(role, None)
+                    if role_map is not None:
+                        roles.append(role_map)
+                        bnpp_roles_to_store.append(role)
             except:
                 print("error with bnpp roles : ", Bnppgroups)
                 print("roles set to user")
@@ -524,7 +530,7 @@ def custom_login():
                 social_id=id,
                 email=email,
                 user_auth=user_auth,
-                bnpp_roles=", ".join(bnpproles),
+                bnpp_roles=", ".join(bnpp_roles_to_store),
                 confirmed_at=datetime.datetime.now()
             )
             for role in Role.query.order_by('id'):
@@ -542,7 +548,7 @@ def custom_login():
             for role in Role.query.order_by('id'):
                 if role.name in roles:
                     user.roles.append(role)
-            user.bnpp_roles = ", ".join(bnpproles)
+            user.bnpp_roles = ", ".join(bnpp_roles_to_store)
             db.session.commit()
         if safe_next == url_for(user_manager.after_login_endpoint):
             url_parts = list(urlparse(safe_next))
