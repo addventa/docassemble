@@ -5748,18 +5748,19 @@ def populate_social(social, metadata):
 
 @app.route("/interview", methods=['POST', 'GET'])
 def index(action_argument=None, refer=None):
+    import pprint
     print("session")
-    print(session)
+    pprint.pprint(session)
     print("cookies")
-    print(request.cookies)
+    pprint.pprint(request.cookies)
     print("request args")
-    print(request.args)
+    pprint.pprint(request.args)
     print("request form")
-    print(request.form)
+    pprint.pprint(request.form)
     print("action_argument")
-    print(action_argument)
+    pprint.pprint(action_argument)
     print("refer")
-    print(refer)
+    pprint.pprint(refer)
     if request.method == 'POST' and 'ajax' in request.form and int(request.form['ajax']):
         is_ajax = True
     else:
