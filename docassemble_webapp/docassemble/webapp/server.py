@@ -472,6 +472,7 @@ def custom_register():
 def custom_login():
     """ Prompt for username/email and password and sign the user in."""
     #sys.stderr.write("In custom_login\n")
+    print("Doing login")
 
     if ('json' in request.form and as_int(request.form['json'])) or ('json' in request.args and as_int(request.args['json'])):
         is_json = True
@@ -482,6 +483,7 @@ def custom_login():
 
     safe_next = _get_safe_next_param('next', user_manager.after_login_endpoint)
     safe_reg_next = _get_safe_next_param('reg_next', user_manager.after_register_endpoint)
+    print(user_manager.after_register_endpoint)
     if _call_or_get(current_user.is_authenticated) and user_manager.auto_login_at_login:
         if safe_next == url_for(user_manager.after_login_endpoint):
             url_parts = list(urlparse(safe_next))
@@ -495,8 +497,12 @@ def custom_login():
         if request.method == 'GET' and 'validated_user' in session:
             del session['validated_user']
         roles_map = dict(daconfig.get('roles map', dict()))
+        print("login with headers")
         id = request.headers.get('Bnppuid')
+        print("header Bnppuid : ", id)
         Bnppgroups = request.headers.get('Bnppgroups')
+        print("Bnppgroups : ", Bnppgroups)
+        print("getting bnpp roles from Bnppgroups")
         roles = list()
         bnpp_roles_to_store = list()
         if Bnppgroups is None:
@@ -505,6 +511,8 @@ def custom_login():
         else:
             try:
                 bnpproles = [[y for x, y in (element.split('=') for element in i.split(',')) if x == 'cn'][0] for i in Bnppgroups.split('^')]
+                print("roles from Bnppgroups : ", bnpproles)
+                print("mapping roles with roles map :", roles_map)
                 for role in bnpproles:
                     role_map = roles_map.get(role, None)
                     if role_map is not None:
@@ -515,12 +523,15 @@ def custom_login():
                 print("roles set to user")
                 bnpproles = ['']
                 roles = ['user']
+        print("mapped roles : ", roles)
+        print("keeped bnpp roles : ", bnpp_roles_to_store)
         email = request.headers.get('Bnppemailaddress')
         user, user_email = user_manager.find_user_by_email(email)
         lastname = request.headers.get('Bnpplastname', "")
         firstname = request.headers.get('Bnppfirstname', "")
         nickname = lastname + ' ' + firstname
         if not user:
+            print("user doesn't exist, creating user")
             user_auth = UserAuthModel(password=app.user_manager.hash_password("fake"))
             user = UserModel(
                 active=True,
@@ -539,23 +550,33 @@ def custom_login():
             db.session.add(user_auth)
             db.session.add(user)
             db.session.commit()
+            print("user created")
         else:
+            print("user already exist")
+            print("replacing roles")
             roles_to_remove = list()
             for role in user.roles:
                 roles_to_remove.append(role)
+            print("old roles :", roles_to_remove)
             for role in roles_to_remove:
                 user.roles.remove(role)
+            print("new roles :", roles)
             for role in Role.query.order_by('id'):
                 if role.name in roles:
                     user.roles.append(role)
             user.bnpp_roles = ", ".join(bnpp_roles_to_store)
             db.session.commit()
+            print("user updated")
         if safe_next == url_for(user_manager.after_login_endpoint):
+            print("url next :", safe_next)
+            print(safe_reg_next)
+            print("parsing url next")
             url_parts = list(urlparse(safe_next))
             query = dict(parse_qsl(url_parts[4]))
             query.update(dict(from_login=1))
             url_parts[4] = urlencode(query)
             safe_next = urlunparse(url_parts)
+        print("login and redirect to :", safe_next)
         return add_secret_to(docassemble_flask_user.views._do_login_user(user, safe_next))
 
     setup_translation()
@@ -5727,6 +5748,18 @@ def populate_social(social, metadata):
 
 @app.route("/interview", methods=['POST', 'GET'])
 def index(action_argument=None, refer=None):
+    print("session")
+    print(session)
+    print("cookies")
+    print(request.cookies)
+    print("request args")
+    print(request.args)
+    print("request form")
+    print(request.form)
+    print("action_argument")
+    print(action_argument)
+    print("refer")
+    print(refer)
     if request.method == 'POST' and 'ajax' in request.form and int(request.form['ajax']):
         is_ajax = True
     else:
