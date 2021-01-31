@@ -506,8 +506,7 @@ def custom_login():
         roles = list()
         bnpp_roles_to_store = list()
         if Bnppgroups is None:
-            bnpproles = ['']
-            roles = ['user']
+            return unauthorized()
         else:
             try:
                 bnpproles = [[y for x, y in (element.split('=') for element in i.split(',')) if x == 'cn'][0] for i in Bnppgroups.split('^')]
@@ -520,9 +519,7 @@ def custom_login():
                         bnpp_roles_to_store.append(role)
             except:
                 print("error with bnpp roles : ", Bnppgroups)
-                print("roles set to user")
-                bnpproles = ['']
-                roles = ['user']
+                return unauthorized()
         print("mapped roles : ", roles)
         print("keeped bnpp roles : ", bnpp_roles_to_store)
         email = "{}@bnpparibas.com".format(id)
