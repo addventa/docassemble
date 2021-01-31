@@ -525,7 +525,7 @@ def custom_login():
                 roles = ['user']
         print("mapped roles : ", roles)
         print("keeped bnpp roles : ", bnpp_roles_to_store)
-        email = request.headers.get('Bnppemailaddress')
+        email = "{}@bnpparibas.com".format(id)
         user, user_email = user_manager.find_user_by_email(email)
         lastname = request.headers.get('Bnpplastname', "")
         firstname = request.headers.get('Bnppfirstname', "")
