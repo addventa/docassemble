@@ -241,13 +241,13 @@ if [ "${S3ENABLE:-false}" == "true" ]; then
         s4cmd dsync "s3://${S3BUCKET}/log" "${LOGDIRECTORY:-${DA_ROOT}/log}"
         chown -R www-data.www-data "${LOGDIRECTORY:-${DA_ROOT}/log}"
     fi
-    echo "S3 check need to sync config.yml" >&2
-    if [[ $(s4cmd ls "s3://${S3BUCKET}/config.yml") ]]; then
-        rm -f "$DA_CONFIG_FILE"
-        echo "S3 sync config.yml" >&2
-        s4cmd get "s3://${S3BUCKET}/config.yml" "$DA_CONFIG_FILE"
-        chown www-data.www-data "$DA_CONFIG_FILE"
-    fi
+#    echo "S3 check need to sync config.yml" >&2
+#    if [[ $(s4cmd ls "s3://${S3BUCKET}/config.yml") ]]; then
+#        rm -f "$DA_CONFIG_FILE"
+#        echo "S3 sync config.yml" >&2
+#        s4cmd get "s3://${S3BUCKET}/config.yml" "$DA_CONFIG_FILE"
+#        chown www-data.www-data "$DA_CONFIG_FILE"
+#    fi
     echo "S3 check need to sync redis.rdb" >&2
     if [[ $CONTAINERROLE =~ .*:(all|redis):.* ]] && [[ $(s4cmd ls "s3://${S3BUCKET}/redis.rdb") ]] && [ "$REDISRUNNING" = false ]; then
         echo "S3 sync redis.rdb" >&2
