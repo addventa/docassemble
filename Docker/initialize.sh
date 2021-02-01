@@ -740,15 +740,21 @@ else
 fi
 
 if [[ $CONTAINERROLE =~ .*:(all|sql):.* ]] && [ "$PGRUNNING" = false ] && [ "$DBTYPE" == "postgresql" ]; then
+    echo "try to start postgres"
     supervisorctl --serverurl http://localhost:9001 start postgres || exit 1
+    echo "waiting for postgres to start"
     sleep 4
     su -c "while ! pg_isready -q; do sleep 1; done" postgres
+    echo "postgres started"
+    echo "check if role docassemble exist"
     roleexists=`su -c "psql -tAc \"SELECT 1 FROM pg_roles WHERE rolname='${DBUSER:-docassemble}'\"" postgres`
     if [ -z "$roleexists" ]; then
+        echo "create role docassemble"
         echo "create role "${DBUSER:-docassemble}" with login password '"${DBPASSWORD:-abc123}"';" | su -c psql postgres || exit 1
     fi
     if [ "${S3ENABLE:-false}" == "true" ] && [[ $(s4cmd ls s3://${S3BUCKET}/postgres) ]]; then
         PGBACKUPDIR=`mktemp -d`
+        echo "get backup from S3"
         s4cmd dsync "s3://${S3BUCKET}/postgres" "$PGBACKUPDIR"
     elif [ "${AZUREENABLE:-false}" == "true" ] && [[ $(python -m docassemble.webapp.list-cloud postgres) ]]; then
         echo "There are postgres files on Azure" >&2
@@ -762,6 +768,7 @@ if [[ $CONTAINERROLE =~ .*:(all|sql):.* ]] && [ "$PGRUNNING" = false ] && [ "$DB
             fi
         done
     else
+        echo "get backup locally"
         PGBACKUPDIR="${DA_ROOT}/backup/postgres"
     fi
     if [ -d "${PGBACKUPDIR}" ]; then
@@ -778,8 +785,10 @@ if [[ $CONTAINERROLE =~ .*:(all|sql):.* ]] && [ "$PGRUNNING" = false ] && [ "$DB
         fi
         cd /tmp
     fi
+    echo "check if docassemble db exist"
     dbexists=`su -c "psql -tAc \"SELECT 1 FROM pg_database WHERE datname='${DBNAME:-docassemble}'\"" postgres`
     if [ -z "$dbexists" ]; then
+        echo "create db docassemble"
         echo "create database "${DBNAME:-docassemble}" owner "${DBUSER:-docassemble}" encoding UTF8;" | su -c psql postgres || exit 1
     fi
 elif [ "$PGRUNNING" = false ] && [ "$DBTYPE" == "postgresql" ]; then
@@ -788,8 +797,10 @@ elif [ "$PGRUNNING" = false ] && [ "$DBTYPE" == "postgresql" ]; then
     export PGPASSWORD="${DBPASSWORD}"
     export PGDATABASE="postgres"
     while ! pg_isready -q; do sleep 1; done
+    echo "check if docassemble db exist"
     dbexists=`psql -tAc "SELECT 1 FROM pg_database WHERE datname='${DBNAME:-docassemble}'"`
     if [ -z "$dbexists" ]; then
+        echo "create db docassemble"
         echo "create database "${DBNAME:-docassemble}" owner "${DBUSER:-docassemble}";" | psql
     fi
     unset PGHOST
