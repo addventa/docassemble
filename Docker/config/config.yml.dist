@@ -3,6 +3,7 @@ enable playground: {{ENABLEPLAYGROUND}}
 checkin interval: {{CHECKININTERVAL}}
 maximum content length: {{DAMAXCONTENTLENGTH}}
 allow demo: {{ALLOWDEMO}}
+allow anonymous access: {{ALLOWANONYMOUSACCESS}}
 roles_map: {{ROLESMAP}}
 exitpage: https://docassemble.org
 db:

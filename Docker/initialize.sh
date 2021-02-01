@@ -396,6 +396,7 @@ if [ ! -f "$DA_CONFIG_FILE" ]; then
         -e 's/{{ENABLEPLAYGROUND}}/'"${ENABLEPLAYGROUND:-true}"'/' \
         -e 's/{{CHECKININTERVAL}}/'"${CHECKININTERVAL:-6000}"'/' \
         -e 's@{{DAMAXCONTENTLENGTH}}@'"${DAMAXCONTENTLENGTH}"'@' \
+        -e 's@{{ALLOWANONYMOUSACCESS}}@'"${ALLOWANONYMOUSACCESS:-false}"'@' \
         -e 's/{{ROLESMAP}}/'"${ROLESMAP:-null}"'/' \
         -e 's/{{ALLOWDEMO}}/'"${ALLOWDEMO:-true}"'/' \
         -e 's@{{DBPREFIX}}@'"${DBPREFIX:-postgresql+psycopg2:\/\/}"'@' \
