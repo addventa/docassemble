@@ -14205,6 +14205,7 @@ def get_package_name_from_zip(zippath):
 @roles_required(['admin', 'developer'])
 def update_package():
     setup_translation()
+    print("update package")
     if not app.config['ALLOW_UPDATES']:
         return ('File not found', 404)
     if 'taskwait' in session:
@@ -14267,6 +14268,7 @@ def update_package():
         #pipe.expire('da:updatepackage:use_pip_cache', 120)
         #pipe.execute()
         if 'zipfile' in request.files and request.files['zipfile'].filename:
+            print("update zip file")
             try:
                 the_file = request.files['zipfile']
                 filename = secure_filename(the_file.filename)
@@ -14274,13 +14276,18 @@ def update_package():
                 saved_file = SavedFile(file_number, extension='zip', fix=True)
                 file_set_attributes(file_number, private=False, persistent=True)
                 zippath = saved_file.path
+                print("save zip to ", zippath)
                 the_file.save(zippath)
                 saved_file.save()
                 saved_file.finalize()
                 pkgname = get_package_name_from_zip(zippath)
                 if user_can_edit_package(pkgname=pkgname):
+                    print("installing package")
                     install_zip_package(pkgname, file_number)
+                    print("package installed")
+                    print("update packages async")
                     result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s())
+                    print("updated")
                     session['taskwait'] = result.id
                     session['serverstarttime'] = START_TIME
                     return redirect(url_for('update_package_wait'))
