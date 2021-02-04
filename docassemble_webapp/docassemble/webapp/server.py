@@ -5620,10 +5620,17 @@ def get_variables():
 
 @app.route("/", methods=['GET'])
 def rootindex():
+    print("root index")
     if current_user.is_anonymous and not daconfig.get('allow anonymous access', True):
+        print("redirect to login")
         return redirect(url_for('user.login'))
     url = daconfig.get('root redirect url', None)
+    try:
+        print("root redirect url is : ", url)
+    except:
+        print("root redirect url doesn't exist")
     if url is not None:
+        print("redirect to root redirect url")
         return redirect(url)
     yaml_filename = request.args.get('i', None)
     if yaml_filename is None:
