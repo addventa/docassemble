@@ -22492,7 +22492,7 @@ def get_user_list(include_inactive=False, start_id=None):
             user_info['privileges'] = list()
             for role in user.roles:
                 user_info['privileges'].append(role.name)
-            for attrib in ('id', 'email', 'first_name', 'last_name', 'country', 'subdivisionfirst', 'subdivisionsecond', 'subdivisionthird', 'organization', 'timezone', 'language', 'bnpp_roles'):
+            for attrib in ('id', 'email', 'first_name', 'last_name', 'country', 'subdivisionfirst', 'subdivisionsecond', 'subdivisionthird', 'organization', 'timezone', 'language', 'bnpp_roles', 'social_id'):
                 user_info[attrib] = getattr(user, attrib)
             if include_inactive:
                 user_info['active'] = getattr(user, 'active')
@@ -25758,7 +25758,7 @@ def api_interview():
 @app.route('/me', methods=['GET'])
 def whoami():
     if current_user.is_authenticated:
-        return jsonify(logged_in=True, user_id=current_user.id, email=current_user.email, roles=[role.name for role in current_user.roles], firstname=current_user.first_name, lastname=current_user.last_name, bnpp_roles=current_user.bnpp_roles, country=current_user.country, subdivisionfirst=current_user.subdivisionfirst, subdivisionsecond=current_user.subdivisionsecond, subdivisionthird=current_user.subdivisionthird, organization=current_user.organization, timezone=current_user.timezone)
+        return jsonify(logged_in=True, user_id=current_user.id, email=current_user.email, roles=[role.name for role in current_user.roles], firstname=current_user.first_name, lastname=current_user.last_name, bnpp_roles=current_user.bnpp_roles, social_id=current_user.social_id, country=current_user.country, subdivisionfirst=current_user.subdivisionfirst, subdivisionsecond=current_user.subdivisionsecond, subdivisionthird=current_user.subdivisionthird, organization=current_user.organization, timezone=current_user.timezone)
     else:
         return jsonify(logged_in=False)
 
