@@ -963,26 +963,27 @@ def reset_server(result):
 
 @workerapp.task
 def update_packages():
-    sys.stderr.write("update_packages in worker: starting\n")
+    print("update_packages in worker: starting\n")
     if not hasattr(worker_controller, 'loaded'):
+        print('initialize worker controller')
         initialize_db()
-    sys.stderr.write("update_packages in worker: continuing\n")
+    print("update_packages in worker: continuing\n")
     try:
         with worker_controller.flaskapp.app_context():
-            sys.stderr.write("update_packages in worker: importing update\n")
+            print("update_packages in worker: importing update\n")
             import docassemble.webapp.update
-            sys.stderr.write("update_packages in worker: starting update\n")
+            print("update_packages in worker: starting update\n")
             ok, logmessages, results = docassemble.webapp.update.check_for_updates()
-            sys.stderr.write("update_packages in worker: update completed\n")
+            print("update_packages in worker: update completed\n")
             worker_controller.trigger_update(except_for=hostname)
-            sys.stderr.write("update_packages in worker: trigger completed\n")
+            print("update_packages in worker: trigger completed\n")
             return worker_controller.functions.ReturnValue(ok=ok, logmessages=logmessages, results=results, hostname=hostname)
     except:
         e = sys.exc_info()[0]
         error_mess = sys.exc_info()[1]
-        sys.stderr.write("update_packages in worker: error was " + str(e) + " with message " + str(error_mess) + "\n")
+        print("update_packages in worker: error was " + str(e) + " with message " + str(error_mess) + "\n")
         return worker_controller.functions.ReturnValue(ok=False, error_message=str(e))
-    sys.stderr.write("update_packages in worker: all done\n")
+    print("update_packages in worker: all done\n")
     return worker_controller.functions.ReturnValue(ok=False, error_message="Reached end")
 
 @workerapp.task
