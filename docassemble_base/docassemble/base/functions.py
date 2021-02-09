@@ -682,6 +682,7 @@ def user_info():
     if user_logged_in():
         user.first_name = this_thread.current_info['user']['firstname']
         user.bnpp_roles = this_thread.current_info['user']['bnpp_roles']
+        user.id = this_thread.current_info['user']['id']
         user.last_name = this_thread.current_info['user']['lastname']
         user.email = this_thread.current_info['user']['email']
         user.country = this_thread.current_info['user']['country']
@@ -4559,7 +4560,7 @@ def set_user_info(**kwargs):
         this_thread.current_info['user']['roles'] = [y for y in kwargs['privileges']]
     if (user_id is None and email is None) or (user_id is not None and user_id == this_thread.current_info['user']['theid']) or (email is not None and email == this_thread.current_info['user']['email']):
         for key, val in kwargs.items():
-            if key in ('country', 'subdivisionfirst', 'subdivisionsecond', 'subdivisionthird', 'organization', 'timezone', 'language', 'bnpp_roles'):
+            if key in ('country', 'subdivisionfirst', 'subdivisionsecond', 'subdivisionthird', 'organization', 'timezone', 'language', 'bnpp_roles', 'id'):
                 this_thread.current_info['user'][key] = val
             if key == 'first_name':
                 this_thread.current_info['user']['firstname'] = val
