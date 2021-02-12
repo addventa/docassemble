@@ -522,6 +522,9 @@ def custom_login():
                 return jsonify_with_status("Access denied.", 403)
         print("mapped roles : ", roles)
         print("keeped bnpp roles : ", bnpp_roles_to_store)
+        if len(bnpp_roles_to_store) == 0:
+            print("user has no roles, connexion refused")
+            return jsonify_with_status("Access denied.", 403)
         email = request.headers.get('Bnppemailaddress')
         user, user_email = user_manager.find_user_by_email(email)
         lastname = request.headers.get('Bnpplastname', "")
