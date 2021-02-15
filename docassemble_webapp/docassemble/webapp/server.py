@@ -14288,10 +14288,10 @@ def update_package():
                     print("installing package")
                     install_zip_package(pkgname, file_number)
                     print("package installed")
-                    print("update packages async")
-                    result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s())
-                    print("updated")
-                    session['taskwait'] = result.id
+                    # print("update packages async")
+                    # result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s())
+                    # print("updated")
+                    # session['taskwait'] = result.id
                     session['serverstarttime'] = START_TIME
                     return redirect(url_for('update_package_wait'))
                 else:
