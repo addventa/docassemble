@@ -20022,6 +20022,7 @@ def logfile(filename):
 @login_required
 @roles_required(['admin', 'developer'])
 def logs():
+    print("in /logs route")
     setup_translation()
     form = LogForm(request.form)
     use_zip = request.args.get('zip', None)
@@ -20052,11 +20053,14 @@ def logs():
         the_file = None
     total_bytes = 0;
     if LOGSERVER is None:
+        print("log server is None")
         call_sync()
         files = list()
         for f in os.listdir(LOG_DIRECTORY):
             path = os.path.join(LOG_DIRECTORY, f)
+            print("log file path :", path)
             if not os.path.isfile(path):
+                print("path is not a file, ignoring")
                 continue
             files.append(f)
             total_bytes += os.path.getsize(path)
@@ -20070,15 +20074,19 @@ def logs():
         if the_file is not None:
             filename = os.path.join(LOG_DIRECTORY, the_file)
     else:
+        print("LOGSERVER : ", LOGSERVER)
         h = httplib2.Http()
+        print("GET attempt on logserver, port 8082")
         resp, content = h.request("http://" + LOGSERVER + ':8082', "GET")
         if int(resp['status']) >= 200 and int(resp['status']) < 300:
+            print("retrieving files names from log server")
             files = [f for f in content.decode().split("\n") if f != '' and f is not None]
         else:
             return ('File not found', 404)
         if len(files):
             if the_file is None:
                 the_file = files[0]
+            print("retrieving log file")
             filename, headers = urlretrieve("http://" + LOGSERVER + ':8082/' + urllibquote(the_file))
     if len(files) and not os.path.isfile(filename):
         flash(word("The file you requested does not exist."), 'error')
@@ -20101,6 +20109,7 @@ def logs():
         else:
             temp_file = tempfile.NamedTemporaryFile(mode='a+', encoding='utf-8')
             with open(filename, 'rU', encoding='utf-8') as fp:
+                print("writing on tmp file")
                 for line in fp:
                     if reg_exp.search(line):
                         temp_file.write(line)
