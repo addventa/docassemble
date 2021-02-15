@@ -963,6 +963,7 @@ def reset_server(result):
 
 @workerapp.task
 def update_packages():
+    worker_controller.functions.ReturnValue(ok=True, error_message="Update skipped")
     print("update_packages in worker: starting\n")
     if not hasattr(worker_controller, 'loaded'):
         print('initialize worker controller')
