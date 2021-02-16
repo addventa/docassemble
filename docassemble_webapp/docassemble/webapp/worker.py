@@ -970,7 +970,6 @@ def update_packages():
     print("update_packages in worker: continuing\n")
     try:
         with worker_controller.flaskapp.app_context():
-            return worker_controller.functions.ReturnValue(ok=True, error_message="Update skipped", hostname=hostname)
             print("update_packages in worker: importing update\n")
             import docassemble.webapp.update
             print("update_packages in worker: starting update\n")
