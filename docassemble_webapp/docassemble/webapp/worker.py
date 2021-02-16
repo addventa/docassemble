@@ -963,7 +963,6 @@ def reset_server(result):
 
 @workerapp.task
 def update_packages():
-    worker_controller.functions.ReturnValue(ok=True, error_message="Update skipped")
     print("update_packages in worker: starting\n")
     if not hasattr(worker_controller, 'loaded'):
         print('initialize worker controller')
@@ -971,6 +970,7 @@ def update_packages():
     print("update_packages in worker: continuing\n")
     try:
         with worker_controller.flaskapp.app_context():
+            return worker_controller.functions.ReturnValue(ok=True, error_message="Update skipped")
             print("update_packages in worker: importing update\n")
             import docassemble.webapp.update
             print("update_packages in worker: starting update\n")
