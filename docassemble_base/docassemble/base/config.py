@@ -344,14 +344,14 @@ def load(**kwargs):
                     daconfig['db']['host'] = 'localhost'
                 else:
                     daconfig['db']['host'] = the_host
-        if 'log server' not in daconfig or daconfig['log server'] is None:
-            key = cloud.get_key('hostname-log')
-            if key.does_exist:
-                the_host = key.get_contents_as_string()
-                if the_host == hostname:
-                    daconfig['log server'] = 'localhost'
-                else:
-                    daconfig['log server'] = the_host
+        # if 'log server' not in daconfig or daconfig['log server'] is None:
+        #     key = cloud.get_key('hostname-log')
+        #     if key.does_exist:
+        #         the_host = key.get_contents_as_string()
+        #         if the_host == hostname:
+        #             daconfig['log server'] = 'localhost'
+        #         else:
+        #             daconfig['log server'] = the_host
         if 'redis' not in daconfig or daconfig['redis'] is None:
             key = cloud.get_key('hostname-redis')
             if key.does_exist:
