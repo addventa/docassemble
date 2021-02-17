@@ -526,7 +526,7 @@ def uninstall_package(package, sleep=True):
     logfilecontents = ''
     #sys.stderr.write("uninstall_package: uninstalling " + package.name + "\n")
     pip_log = tempfile.NamedTemporaryFile()
-    commands = ['pip', 'uninstall', '--yes', '--log-file=' + pip_log.name, package.name]
+    commands = ['pip', 'uninstall', '--yes', '--no-index', '--no-deps', '--log-file=' + pip_log.name, package.name]
     sys.stderr.write("Running " + " ".join(commands) + "\n")
     logfilecontents += " ".join(commands) + "\n"
     #returnval = pip.main(commands)
