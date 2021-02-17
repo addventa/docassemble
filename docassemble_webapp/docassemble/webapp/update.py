@@ -458,7 +458,7 @@ def install_package(package):
         commands = ['pip', 'install']
         if disable_pip_cache:
             commands.append('--no-cache-dir')
-        commands.extend(['--quiet', '--prefix=' + PACKAGE_DIRECTORY, '--src=' + temp_dir, '--log-file=' + pip_log.name, "--no-index", "--no-deps", saved_file.path + '.zip'])
+        commands.extend(['--quiet', '--prefix=' + PACKAGE_DIRECTORY, '--src=' + temp_dir, '--log-file=' + pip_log.name, "--upgrade", saved_file.path + '.zip'])
     elif package.type == 'git' and package.giturl:
         if package.gitbranch is not None:
             branchpart = '@' + str(package.gitbranch)
@@ -476,12 +476,12 @@ def install_package(package):
             commands = ['pip', 'install']
             if disable_pip_cache:
                 commands.append('--no-cache-dir')
-            commands.extend(['--quiet', '--prefix=' + PACKAGE_DIRECTORY, '--src=' + temp_dir, "--no-index", "--no-deps", '--log-file=' + pip_log.name, gitprefix + str(package.giturl) + gitsuffix + branchpart + '#egg=' + package.name + '&subdirectory=' + str(package.gitsubdir)])
+            commands.extend(['--quiet', '--prefix=' + PACKAGE_DIRECTORY, '--src=' + temp_dir, "--upgrade", '--log-file=' + pip_log.name, gitprefix + str(package.giturl) + gitsuffix + branchpart + '#egg=' + package.name + '&subdirectory=' + str(package.gitsubdir)])
         else:
             commands = ['pip', 'install']
             if disable_pip_cache:
                 commands.append('--no-cache-dir')
-            commands.extend(['--quiet', '--prefix=' + PACKAGE_DIRECTORY, '--src=' + temp_dir, "--no-index", "--no-deps", '--log-file=' + pip_log.name, gitprefix + str(package.giturl) + gitsuffix + branchpart + '#egg=' + package.name])
+            commands.extend(['--quiet', '--prefix=' + PACKAGE_DIRECTORY, '--src=' + temp_dir, "--upgrade", '--log-file=' + pip_log.name, gitprefix + str(package.giturl) + gitsuffix + branchpart + '#egg=' + package.name])
     elif package.type == 'pip':
         if package.limitation is None:
             limit = ""
@@ -490,7 +490,7 @@ def install_package(package):
         commands = ['pip', 'install']
         if disable_pip_cache:
             commands.append('--no-cache-dir')
-        commands.extend(['--quiet', '--prefix=' + PACKAGE_DIRECTORY, '--src=' + temp_dir, "--no-index", "--no-deps", '--log-file=' + pip_log.name, package.name + limit])
+        commands.extend(['--quiet', '--prefix=' + PACKAGE_DIRECTORY, '--src=' + temp_dir, "--upgrade", '--log-file=' + pip_log.name, package.name + limit])
     else:
         sys.stderr.write("Wrong package type\n")
         return 1, 'Unable to recognize package type: ' + package.name
@@ -526,7 +526,7 @@ def uninstall_package(package, sleep=True):
     logfilecontents = ''
     #sys.stderr.write("uninstall_package: uninstalling " + package.name + "\n")
     pip_log = tempfile.NamedTemporaryFile()
-    commands = ['pip', 'uninstall', '--yes', '--no-index', '--no-deps', '--log-file=' + pip_log.name, package.name]
+    commands = ['pip', 'uninstall', '--yes', '--log-file=' + pip_log.name, package.name]
     sys.stderr.write("Running " + " ".join(commands) + "\n")
     logfilecontents += " ".join(commands) + "\n"
     #returnval = pip.main(commands)
