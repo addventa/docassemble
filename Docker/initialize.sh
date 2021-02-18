@@ -38,6 +38,9 @@ function cmd_retry() {
 echo "config.yml is at" $DA_CONFIG_FILE >&2
 
 echo "1" >&2
+echo "--------------------------" >&2
+echo "Docassemble V1.2.23-17" >&2
+echo "--------------------------" >&2
 
 export DEBIAN_FRONTEND=noninteractive
 if [ "${DAALLOWUPDATES:-true}" == "true" ]; then
@@ -195,8 +198,10 @@ if [ "${S3ENABLE:-false}" == "true" ]; then
     else
         export LOCAL_HOSTNAME=`hostname --fqdn`
     fi
+    echo "S3 check need of letsencrypt" >&2
     if [[ $CONTAINERROLE =~ .*:(all|web):.* ]] && [[ $(s4cmd ls "s3://${S3BUCKET}/letsencrypt.tar.gz") ]]; then
         rm -f /tmp/letsencrypt.tar.gz
+        echo "S3 get lets encrypt tar" >&2
         s4cmd get "s3://${S3BUCKET}/letsencrypt.tar.gz" /tmp/letsencrypt.tar.gz
         cd /
         tar -xf /tmp/letsencrypt.tar.gz
@@ -204,34 +209,48 @@ if [ "${S3ENABLE:-false}" == "true" ]; then
     else
         rm -f /etc/letsencrypt/da_using_lets_encrypt
     fi
+    echo "S3 check need to sync backup" >&2
     if [ "${DABACKUPDAYS}" != "0" ] && [[ $(s4cmd ls "s3://${S3BUCKET}/backup/${LOCAL_HOSTNAME}") ]]; then
+        echo "S3 sync backup" >&2
         s4cmd dsync "s3://${S3BUCKET}/backup/${LOCAL_HOSTNAME}" "${DA_ROOT}/backup"
     fi
+    echo "S3 check need to sync apache" >&2
     if [[ $CONTAINERROLE =~ .*:(all|web|log):.* ]] && [[ $(s4cmd ls "s3://${S3BUCKET}/apache") ]]; then
+        echo "S3 sync apache" >&2
         s4cmd dsync "s3://${S3BUCKET}/apache" /etc/apache2/sites-available
     fi
     if [[ $CONTAINERROLE =~ .*:(all):.* ]]; then
+        echo "S3 check need to sync apachelogs" >&2
         if [[ $(s4cmd ls "s3://${S3BUCKET}/apachelogs") ]]; then
+            echo "S3 sync apachelogs" >&2
             s4cmd dsync "s3://${S3BUCKET}/apachelogs" /var/log/apache2
             chown root.adm /var/log/apache2/*
             chmod 640 /var/log/apache2/*
         fi
+        echo "S3 check need to sync nginxlogs" >&2
         if [[ $(s4cmd ls "s3://${S3BUCKET}/nginxlogs") ]]; then
+            echo "S3 sync nginxlogs" >&2
             s4cmd dsync "s3://${S3BUCKET}/nginxlogs" /var/log/nginx
             chown www-data.adm /var/log/nginx/*
             chmod 640 /var/log/nginx/*
         fi
     fi
+    echo "S3 check need to sync log" >&2
     if [[ $CONTAINERROLE =~ .*:(all|log):.* ]] && [[ $(s4cmd ls "s3://${S3BUCKET}/log") ]]; then
+        echo "S3 sync log" >&2
         s4cmd dsync "s3://${S3BUCKET}/log" "${LOGDIRECTORY:-${DA_ROOT}/log}"
         chown -R www-data.www-data "${LOGDIRECTORY:-${DA_ROOT}/log}"
     fi
-    if [[ $(s4cmd ls "s3://${S3BUCKET}/config.yml") ]]; then
-        rm -f "$DA_CONFIG_FILE"
-        s4cmd get "s3://${S3BUCKET}/config.yml" "$DA_CONFIG_FILE"
-        chown www-data.www-data "$DA_CONFIG_FILE"
-    fi
+#    echo "S3 check need to sync config.yml" >&2
+#    if [[ $(s4cmd ls "s3://${S3BUCKET}/config.yml") ]]; then
+#        rm -f "$DA_CONFIG_FILE"
+#        echo "S3 sync config.yml" >&2
+#        s4cmd get "s3://${S3BUCKET}/config.yml" "$DA_CONFIG_FILE"
+#        chown www-data.www-data "$DA_CONFIG_FILE"
+#    fi
+    echo "S3 check need to sync redis.rdb" >&2
     if [[ $CONTAINERROLE =~ .*:(all|redis):.* ]] && [[ $(s4cmd ls "s3://${S3BUCKET}/redis.rdb") ]] && [ "$REDISRUNNING" = false ]; then
+        echo "S3 sync redis.rdb" >&2
         s4cmd -f get "s3://${S3BUCKET}/redis.rdb" "/var/lib/redis/dump.rdb"
         chown redis.redis "/var/lib/redis/dump.rdb"
     fi
@@ -373,7 +392,15 @@ fi
 
 if [ ! -f "$DA_CONFIG_FILE" ]; then
     echo "There is no config file.  Creating one from source." >&2
-    sed -e 's@{{DBPREFIX}}@'"${DBPREFIX:-postgresql+psycopg2:\/\/}"'@' \
+    sed -e 's/{{DEBUG}}/'"${DEBUG:-true}"'/' \
+        -e 's/{{ENABLEPLAYGROUND}}/'"${ENABLEPLAYGROUND:-true}"'/' \
+        -e 's/{{CHECKININTERVAL}}/'"${CHECKININTERVAL:-6000}"'/' \
+        -e 's@{{DAMAXCONTENTLENGTH}}@'"${DAMAXCONTENTLENGTH}"'@' \
+        -e 's@{{ALLOWANONYMOUSACCESS}}@'"${ALLOWANONYMOUSACCESS:-false}"'@' \
+        -e 's@{{ROOTREDIRECTURL}}@'"${ROOTREDIRECTURL:-null}"'@' \
+        -e 's/{{ROLESMAP}}/'"${ROLESMAP:-null}"'/' \
+        -e 's/{{ALLOWDEMO}}/'"${ALLOWDEMO:-true}"'/' \
+        -e 's@{{DBPREFIX}}@'"${DBPREFIX:-postgresql+psycopg2:\/\/}"'@' \
         -e 's/{{DBNAME}}/'"${DBNAME:-docassemble}"'/' \
         -e 's/{{DBUSER}}/'"${DBUSER:-docassemble}"'/' \
         -e 's#{{DBPASSWORD}}#'"${DBPASSWORD:-abc123}"'#' \
@@ -688,7 +715,7 @@ echo "26.5" >&2
 
 if [ -n "$PYTHONPACKAGES" ]; then
     for PACKAGE in "${PYTHONPACKAGES[@]}"; do
-        su -c "source \"${DA_ACTIVATE}\" && pip install $PACKAGE" www-data
+        su -c "source \"${DA_ACTIVATE}\" && pip install --no-index --no-deps $PACKAGE" www-data
     done
 fi
 
@@ -714,15 +741,21 @@ else
 fi
 
 if [[ $CONTAINERROLE =~ .*:(all|sql):.* ]] && [ "$PGRUNNING" = false ] && [ "$DBTYPE" == "postgresql" ]; then
+    echo "try to start postgres"
     supervisorctl --serverurl http://localhost:9001 start postgres || exit 1
+    echo "waiting for postgres to start"
     sleep 4
     su -c "while ! pg_isready -q; do sleep 1; done" postgres
+    echo "postgres started"
+    echo "check if role docassemble exist"
     roleexists=`su -c "psql -tAc \"SELECT 1 FROM pg_roles WHERE rolname='${DBUSER:-docassemble}'\"" postgres`
     if [ -z "$roleexists" ]; then
+        echo "create role docassemble"
         echo "create role "${DBUSER:-docassemble}" with login password '"${DBPASSWORD:-abc123}"';" | su -c psql postgres || exit 1
     fi
     if [ "${S3ENABLE:-false}" == "true" ] && [[ $(s4cmd ls s3://${S3BUCKET}/postgres) ]]; then
         PGBACKUPDIR=`mktemp -d`
+        echo "get backup from S3"
         s4cmd dsync "s3://${S3BUCKET}/postgres" "$PGBACKUPDIR"
     elif [ "${AZUREENABLE:-false}" == "true" ] && [[ $(python -m docassemble.webapp.list-cloud postgres) ]]; then
         echo "There are postgres files on Azure" >&2
@@ -736,6 +769,7 @@ if [[ $CONTAINERROLE =~ .*:(all|sql):.* ]] && [ "$PGRUNNING" = false ] && [ "$DB
             fi
         done
     else
+        echo "get backup locally"
         PGBACKUPDIR="${DA_ROOT}/backup/postgres"
     fi
     if [ -d "${PGBACKUPDIR}" ]; then
@@ -752,8 +786,10 @@ if [[ $CONTAINERROLE =~ .*:(all|sql):.* ]] && [ "$PGRUNNING" = false ] && [ "$DB
         fi
         cd /tmp
     fi
+    echo "check if docassemble db exist"
     dbexists=`su -c "psql -tAc \"SELECT 1 FROM pg_database WHERE datname='${DBNAME:-docassemble}'\"" postgres`
     if [ -z "$dbexists" ]; then
+        echo "create db docassemble"
         echo "create database "${DBNAME:-docassemble}" owner "${DBUSER:-docassemble}" encoding UTF8;" | su -c psql postgres || exit 1
     fi
 elif [ "$PGRUNNING" = false ] && [ "$DBTYPE" == "postgresql" ]; then
@@ -762,8 +798,10 @@ elif [ "$PGRUNNING" = false ] && [ "$DBTYPE" == "postgresql" ]; then
     export PGPASSWORD="${DBPASSWORD}"
     export PGDATABASE="postgres"
     while ! pg_isready -q; do sleep 1; done
+    echo "check if docassemble db exist"
     dbexists=`psql -tAc "SELECT 1 FROM pg_database WHERE datname='${DBNAME:-docassemble}'"`
     if [ -z "$dbexists" ]; then
+        echo "create db docassemble"
         echo "create database "${DBNAME:-docassemble}" owner "${DBUSER:-docassemble}";" | psql
     fi
     unset PGHOST
@@ -858,13 +896,13 @@ echo "37" >&2
 
 if [ "${DAUPDATEONSTART:-true}" = "true" ] && [ "${DAALLOWUPDATES:-true}" == "true" ]; then
     echo "Doing upgrading of packages" >&2
-    su -c "source \"${DA_ACTIVATE}\" && python -m docassemble.webapp.update \"${DA_CONFIG_FILE}\" initialize" www-data || exit 1
+    su -c "source \"${DA_ACTIVATE}\" &&  python -m docassemble.webapp.update \"${DA_CONFIG_FILE}\" initialize" www-data || exit 1
     touch "${DA_ROOT}/webapp/initialized"
 fi
 
 if [ "${DAUPDATEONSTART:-true}" = "initial" ] && [ ! -f "${DA_ROOT}/webapp/initialized" ] && [ "${DAALLOWUPDATES:-true}" == "true" ]; then
     echo "Doing initial upgrading of packages" >&2
-    su -c "source \"${DA_ACTIVATE}\" && python -m docassemble.webapp.update \"${DA_CONFIG_FILE}\" initialize" www-data || exit 1
+    su -c "source \"${DA_ACTIVATE}\" &&  python -m docassemble.webapp.update \"${DA_CONFIG_FILE}\" initialize" www-data || exit 1
     touch "${DA_ROOT}/webapp/initialized"
 fi
 

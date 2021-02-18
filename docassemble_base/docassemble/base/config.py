@@ -262,14 +262,6 @@ def load(**kwargs):
     if 'keymap' in daconfig and daconfig['keymap'] not in ['vim', 'emacs', 'sublime']:
         config_error("You used a keymap that is not supported.  Available values are vim, emacs, and sublime.")
         del daconfig['keymap']
-    if 'voicerss' in daconfig:
-        if isinstance(daconfig['voicerss'], dict):
-            if 'languages' in daconfig['voicerss']:
-                daconfig['voicerss']['dialects'] = daconfig['voicerss']['languages']
-                del daconfig['voicerss']['languages']
-        else:
-            config_error('voicerss must be a dict')
-            del daconfig['voicerss']
     if 'cross site domain' in daconfig and 'cross site domains' not in daconfig:
         daconfig['cross site domains'] = [daconfig['cross site domain'].strip()]
         del daconfig['cross site domain']
@@ -356,14 +348,14 @@ def load(**kwargs):
                     daconfig['db']['host'] = 'localhost'
                 else:
                     daconfig['db']['host'] = the_host
-        if 'log server' not in daconfig or daconfig['log server'] is None:
-            key = cloud.get_key('hostname-log')
-            if key.does_exist:
-                the_host = key.get_contents_as_string()
-                if the_host == hostname:
-                    daconfig['log server'] = 'localhost'
-                else:
-                    daconfig['log server'] = the_host
+        # if 'log server' not in daconfig or daconfig['log server'] is None:
+        #     key = cloud.get_key('hostname-log')
+        #     if key.does_exist:
+        #         the_host = key.get_contents_as_string()
+        #         if the_host == hostname:
+        #             daconfig['log server'] = 'localhost'
+        #         else:
+        #             daconfig['log server'] = the_host
         if 'redis' not in daconfig or daconfig['redis'] is None:
             key = cloud.get_key('hostname-redis')
             if key.does_exist:

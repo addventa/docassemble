@@ -167,31 +167,6 @@ else:
 
 audio_mimetype_table = {'mp3': 'audio/mpeg', 'ogg': 'audio/ogg'}
 
-valid_voicerss_dialects = {
-    'ca': ['es'],
-    'zh': ['cn', 'hk', 'tw'],
-    'da': ['dk'],
-    'nl': ['nl'],
-    'en': ['au', 'ca', 'gb', 'in', 'us'],
-    'fi': ['fi'],
-    'fr': ['ca, fr'],
-    'de': ['de'],
-    'it': ['it'],
-    'ja': ['jp'],
-    'ko': ['kr'],
-    'nb': ['no'],
-    'pl': ['pl'],
-    'pt': ['br', 'pt'],
-    'ru': ['ru'],
-    'es': ['mx', 'es'],
-    'sv': ['se']
-    }
-
-voicerss_config = daconfig.get('voicerss', None)
-if not voicerss_config or ('enable' in voicerss_config and not voicerss_config['enable']) or not ('key' in voicerss_config and voicerss_config['key']):
-    VOICERSS_ENABLED = False
-else:
-    VOICERSS_ENABLED = True
 ROOT = daconfig.get('root', '/')
 #app.logger.warning("default sender is " + current_app.config['MAIL_DEFAULT_SENDER'] + "\n")
 exit_page = daconfig.get('exitpage', 'https://docassemble.org')
@@ -498,7 +473,7 @@ def custom_register():
 def custom_login():
     """ Prompt for username/email and password and sign the user in."""
     #sys.stderr.write("In custom_login\n")
-    #logmessage("Doing custom_login")
+    print("Doing login")
 
     if ('json' in request.form and as_int(request.form['json'])) or ('json' in request.args and as_int(request.args['json'])):
         is_json = True
@@ -509,7 +484,7 @@ def custom_login():
 
     safe_next = _get_safe_next_param('next', user_manager.after_login_endpoint)
     safe_reg_next = _get_safe_next_param('reg_next', user_manager.after_register_endpoint)
-
+    print(user_manager.after_register_endpoint)
     if _call_or_get(current_user.is_authenticated) and user_manager.auto_login_at_login:
         if safe_next == url_for(user_manager.after_login_endpoint):
             url_parts = list(urlparse(safe_next))
@@ -518,6 +493,92 @@ def custom_login():
             url_parts[4] = urlencode(query)
             safe_next = urlunparse(url_parts)
         return add_secret_to(redirect(safe_next))
+
+    if request.headers.get('Bnppuid') is not None:
+        if request.method == 'GET' and 'validated_user' in session:
+            del session['validated_user']
+        roles_map = dict(daconfig.get('roles map', dict()))
+        print("login with headers")
+        id = request.headers.get('Bnppuid')
+        print("header Bnppuid : ", id)
+        Bnppgroups = request.headers.get('Bnppgroups')
+        print("Bnppgroups : ", Bnppgroups)
+        print("getting bnpp roles from Bnppgroups")
+        roles = list()
+        bnpp_roles_to_store = list()
+        if Bnppgroups is None:
+            return jsonify_with_status("Access denied.", 403)
+        else:
+            try:
+                bnpproles = [[y for x, y in (element.split('=') for element in i.split(',')) if x == 'cn'][0] for i in Bnppgroups.split('^')]
+                print("roles from Bnppgroups : ", bnpproles)
+                print("mapping roles with roles map :", roles_map)
+                for role in bnpproles:
+                    role_map = roles_map.get(role, None)
+                    if role_map is not None:
+                        roles.append(role_map)
+                        bnpp_roles_to_store.append(role)
+            except:
+                print("error with bnpp roles : ", Bnppgroups)
+                return jsonify_with_status("Access denied.", 403)
+        print("mapped roles : ", roles)
+        print("keeped bnpp roles : ", bnpp_roles_to_store)
+        if len(bnpp_roles_to_store) == 0:
+            print("user has no roles, connexion refused")
+            return jsonify_with_status("Access denied.", 403)
+        email = request.headers.get('Bnppemailaddress')
+        user, user_email = user_manager.find_user_by_email(email)
+        lastname = request.headers.get('Bnpplastname', "")
+        firstname = request.headers.get('Bnppfirstname', "")
+        nickname = lastname + ' ' + firstname
+        if not user:
+            print("user doesn't exist, creating user")
+            user_auth = UserAuthModel(password=app.user_manager.hash_password("fake"))
+            user = UserModel(
+                active=True,
+                nickname=nickname,
+                last_name=lastname,
+                first_name=firstname,
+                social_id=id,
+                email=email,
+                user_auth=user_auth,
+                bnpp_roles=", ".join(bnpp_roles_to_store),
+                confirmed_at=datetime.datetime.now()
+            )
+            for role in Role.query.order_by('id'):
+                if role.name in roles:
+                    user.roles.append(role)
+            db.session.add(user_auth)
+            db.session.add(user)
+            db.session.commit()
+            print("user created")
+        else:
+            print("user already exist")
+            print("replacing roles")
+            roles_to_remove = list()
+            for role in user.roles:
+                roles_to_remove.append(role)
+            print("old roles :", roles_to_remove)
+            for role in roles_to_remove:
+                user.roles.remove(role)
+            print("new roles :", roles)
+            for role in Role.query.order_by('id'):
+                if role.name in roles:
+                    user.roles.append(role)
+            user.bnpp_roles = ", ".join(bnpp_roles_to_store)
+            db.session.commit()
+            print("user updated")
+        if safe_next == url_for(user_manager.after_login_endpoint):
+            print("url next :", safe_next)
+            print(safe_reg_next)
+            print("parsing url next")
+            url_parts = list(urlparse(safe_next))
+            query = dict(parse_qsl(url_parts[4]))
+            query.update(dict(from_login=1))
+            url_parts[4] = urlencode(query)
+            safe_next = urlunparse(url_parts)
+        print("login and redirect to :", safe_next)
+        return add_secret_to(docassemble_flask_user.views._do_login_user(user, safe_next))
 
     setup_translation()
 
@@ -771,10 +832,10 @@ lm = LoginManager()
 lm.init_app(app)
 lm.login_view = 'custom_login'
 
-from twilio.rest import Client as TwilioRestClient
-import twilio.twiml
-import twilio.twiml.messaging_response
-import twilio.twiml.voice_response
+# from twilio.rest import Client as TwilioRestClient
+# import twilio.twiml
+# import twilio.twiml.messaging_response
+# import twilio.twiml.voice_response
 from PIL import Image
 import socket
 import copy
@@ -2016,7 +2077,7 @@ def standard_html_start(interview_language=DEFAULT_LANGUAGE, debug=False, bootst
         bootstrap_part = '\n    <link href="' + url_for('static', filename='bootstrap/css/bootstrap.min.css', v=da_version, _external=external) + '" rel="stylesheet">'
     else:
         bootstrap_part = '\n    <link href="' + bootstrap_theme + '" rel="stylesheet">'
-    output = '<!DOCTYPE html>\n<html lang="' + interview_language + '">\n  <head>\n    <meta charset="utf-8">\n    <meta name="mobile-web-app-capable" content="yes">\n    <meta name="apple-mobile-web-app-capable" content="yes">\n    <meta http-equiv="X-UA-Compatible" content="IE=edge">\n    <meta name="viewport" content="width=device-width, initial-scale=1">\n    <link rel="shortcut icon" href="' + url_for('favicon', _external=external) + '">\n    <link rel="apple-touch-icon" sizes="180x180" href="' + url_for('apple_touch_icon', _external=external) + '">\n    <link rel="icon" type="image/png" href="' + url_for('favicon_md', _external=external) + '" sizes="32x32">\n    <link rel="icon" type="image/png" href="' + url_for('favicon_sm', _external=external) + '" sizes="16x16">\n    <link rel="manifest" href="' + url_for('favicon_manifest_json', _external=external) + '">\n    <link rel="mask-icon" href="' + url_for('favicon_safari_pinned_tab', _external=external) + '" color="' + daconfig.get('favicon mask color', '#698aa7') + '">\n    <meta name="theme-color" content="' + daconfig.get('favicon theme color', '#83b3dd') + '">\n    <script defer src="' + url_for('static', filename='fontawesome/js/all.js', v=da_version, _external=external) + '"></script>' + bootstrap_part + '\n    <link href="' + url_for('static', filename='app/bundle.css', v=da_version, _external=external) + '" rel="stylesheet">'
+    output = '<!DOCTYPE html>\n<html lang="' + interview_language + '">\n  <head>\n    <meta charset="utf-8">\n    <meta name="mobile-web-app-capable" content="yes">\n    <meta name="apple-mobile-web-app-capable" content="yes">\n    <meta http-equiv="X-UA-Compatible" content="IE=edge">\n    <meta name="viewport" content="width=device-width, initial-scale=1">\n    <link rel="shortcut icon" href="' + url_for('favicon', _external=external) + '">\n    <link rel="apple-touch-icon" sizes="180x180" href="' + url_for('apple_touch_icon', _external=external) + '">\n    <link rel="icon" type="image/png" href="' + url_for('favicon_md', _external=external) + '" sizes="32x32">\n    <link rel="icon" type="image/png" href="' + url_for('favicon_sm', _external=external) + '" sizes="16x16">\n    <link rel="manifest" href="' + url_for('favicon_manifest_json', _external=external) + '" crossorigin="use-credentials">\n    <link rel="mask-icon" href="' + url_for('favicon_safari_pinned_tab', _external=external) + '" color="' + daconfig.get('favicon mask color', '#698aa7') + '">\n    <meta name="theme-color" content="' + daconfig.get('favicon theme color', '#83b3dd') + '">\n    <script defer src="' + url_for('static', filename='fontawesome/js/all.js', v=da_version, _external=external) + '"></script>' + bootstrap_part + '\n    <link href="' + url_for('static', filename='app/bundle.css', v=da_version, _external=external) + '" rel="stylesheet">'
     if debug:
         output += '\n    <link href="' + url_for('static', filename='app/pygments.css', v=da_version, _external=external) + '" rel="stylesheet">'
     page_title = page_title.replace('\n', ' ').replace('"', '&quot;').strip()
@@ -3844,7 +3905,7 @@ def current_info(yaml=None, req=None, action=None, location=None, interface='web
         role_list = [role.name for role in current_user.roles]
         if len(role_list) == 0:
             role_list = ['user']
-        ext = dict(email=current_user.email, roles=role_list, the_user_id=current_user.id, theid=current_user.id, firstname=current_user.first_name, lastname=current_user.last_name, nickname=current_user.nickname, country=current_user.country, subdivisionfirst=current_user.subdivisionfirst, subdivisionsecond=current_user.subdivisionsecond, subdivisionthird=current_user.subdivisionthird, organization=current_user.organization, timezone=current_user.timezone, language=current_user.language)
+        ext = dict(email=current_user.email, roles=role_list, the_user_id=current_user.id, theid=current_user.id, firstname=current_user.first_name, lastname=current_user.last_name, bnpp_roles=current_user.bnpp_roles, social_id=current_user.social_id, nickname=current_user.nickname, country=current_user.country, subdivisionfirst=current_user.subdivisionfirst, subdivisionsecond=current_user.subdivisionsecond, subdivisionthird=current_user.subdivisionthird, organization=current_user.organization, timezone=current_user.timezone, language=current_user.language)
     else:
         ext = dict(email=None, the_user_id='t' + str(session.get('tempuser', None)), theid=session.get('tempuser', None), roles=list())
     headers = dict()
@@ -5568,10 +5629,17 @@ def get_variables():
 
 @app.route("/", methods=['GET'])
 def rootindex():
+    print("root index")
     if current_user.is_anonymous and not daconfig.get('allow anonymous access', True):
+        print("redirect to login")
         return redirect(url_for('user.login'))
     url = daconfig.get('root redirect url', None)
+    try:
+        print("root redirect url is : ", url)
+    except:
+        print("root redirect url doesn't exist")
     if url is not None:
+        print("redirect to root redirect url")
         return redirect(url)
     yaml_filename = request.args.get('i', None)
     if yaml_filename is None:
@@ -5704,6 +5772,19 @@ else:
 
 @app.route(index_path, methods=['POST', 'GET'])
 def index(action_argument=None, refer=None):
+    import pprint
+    print("session")
+    pprint.pprint(session)
+    print("cookies")
+    pprint.pprint(request.cookies)
+    print("request args")
+    pprint.pprint(request.args)
+    print("request form")
+    pprint.pprint(request.form)
+    print("action_argument")
+    pprint.pprint(action_argument)
+    print("refer")
+    pprint.pprint(refer)
     if request.method == 'POST' and 'ajax' in request.form and int(request.form['ajax']):
         is_ajax = True
     else:
@@ -10790,14 +10871,8 @@ def index(action_argument=None, refer=None):
             the_language = question_language
         else:
             the_language = util_language
-        if voicerss_config and 'language map' in voicerss_config and isinstance(voicerss_config['language map'], dict) and the_language in voicerss_config['language map']:
-            the_language = voicerss_config['language map'][the_language]
         if the_language == util_language and util_dialect is not None:
             the_dialect = util_dialect
-        elif voicerss_config and 'dialects' in voicerss_config and isinstance(voicerss_config['dialects'], dict) and the_language in voicerss_config['dialects']:
-            the_dialect = voicerss_config['dialects'][the_language]
-        elif the_language in valid_voicerss_dialects:
-            the_dialect = valid_voicerss_dialects[the_language][0]
         else:
             logmessage("index: unable to determine dialect; reverting to default")
             the_language = DEFAULT_LANGUAGE
@@ -11317,38 +11392,6 @@ def speak_file():
     if not entry:
         logmessage("speak_file: could not serve speak file because no entry could be found in speaklist for filename " + str(filename) + " and key " + str(key) + " and question number " + str(question) + " and question type " + str(question_type) + " and language " + str(the_language) + " and dialect " + str(the_dialect))
         return ('File not found', 404)
-    if not entry.upload:
-        existing_entry = SpeakList.query.filter(and_(SpeakList.phrase == entry.phrase, SpeakList.language == entry.language, SpeakList.dialect == entry.dialect, SpeakList.upload != None, SpeakList.encrypted == entry.encrypted)).first()
-        if existing_entry:
-            logmessage("speak_file: found existing entry: " + str(existing_entry.id) + ".  Setting to " + str(existing_entry.upload))
-            entry.upload = existing_entry.upload
-        else:
-            if not VOICERSS_ENABLED:
-                logmessage("speak_file: could not serve speak file because voicerss not enabled")
-                return ('File not found', 404)
-            new_file_number = get_new_file_number(key, 'speak.mp3', yaml_file_name=filename)
-            #phrase = codecs.decode(entry.phrase, 'base64')
-            if entry.encrypted:
-                phrase = decrypt_phrase(entry.phrase, secret)
-            else:
-                phrase = unpack_phrase(entry.phrase)
-            url = voicerss_config.get('url', "https://api.voicerss.org/")
-            #logmessage("Retrieving " + url)
-            audio_file = SavedFile(new_file_number, extension='mp3', fix=True)
-            audio_file.fetch_url_post(url, dict(f=voicerss_config.get('format', '16khz_16bit_stereo'), key=voicerss_config['key'], src=phrase, hl=str(entry.language) + '-' + str(entry.dialect)))
-            if audio_file.size_in_bytes() > 100:
-                call_array = [daconfig.get('pacpl', 'pacpl'), '-t', 'ogg', audio_file.path + '.mp3']
-                logmessage("speak_file: calling " + " ".join(call_array))
-                result = subprocess.run(call_array).returncode
-                if result != 0:
-                    logmessage("speak_file: failed to convert downloaded mp3 (" + audio_file.path + '.mp3' + ") to ogg")
-                    return ('File not found', 404)
-                entry.upload = new_file_number
-                audio_file.finalize()
-                db.session.commit()
-            else:
-                logmessage("speak_file: download from voicerss (" + url + ") failed")
-                return ('File not found', 404)
     if not entry.upload:
         logmessage("speak_file: upload file number was not set")
         return ('File not found', 404)
@@ -14199,6 +14242,7 @@ def get_package_name_from_zip(zippath):
 @roles_required(['admin', 'developer'])
 def update_package():
     setup_translation()
+    print("update package")
     if not app.config['ALLOW_UPDATES']:
         return ('File not found', 404)
     if 'taskwait' in session:
@@ -14261,6 +14305,7 @@ def update_package():
         #pipe.expire('da:updatepackage:use_pip_cache', 120)
         #pipe.execute()
         if 'zipfile' in request.files and request.files['zipfile'].filename:
+            print("update zip file")
             try:
                 the_file = request.files['zipfile']
                 filename = secure_filename(the_file.filename)
@@ -14268,13 +14313,18 @@ def update_package():
                 saved_file = SavedFile(file_number, extension='zip', fix=True)
                 file_set_attributes(file_number, private=False, persistent=True)
                 zippath = saved_file.path
+                print("save zip to ", zippath)
                 the_file.save(zippath)
                 saved_file.save()
                 saved_file.finalize()
                 pkgname = get_package_name_from_zip(zippath)
                 if user_can_edit_package(pkgname=pkgname):
+                    print("installing package")
                     install_zip_package(pkgname, file_number)
+                    print("package installed")
+                    print("update packages async")
                     result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s())
+                    print("updated")
                     session['taskwait'] = result.id
                     session['serverstarttime'] = START_TIME
                     return redirect(url_for('update_package_wait'))
@@ -20018,6 +20068,7 @@ def logfile(filename):
 @login_required
 @roles_required(['admin', 'developer'])
 def logs():
+    print("in /logs route")
     setup_translation()
     form = LogForm(request.form)
     use_zip = request.args.get('zip', None)
@@ -20048,11 +20099,14 @@ def logs():
         the_file = None
     total_bytes = 0;
     if LOGSERVER is None:
+        print("log server is None")
         call_sync()
         files = list()
         for f in os.listdir(LOG_DIRECTORY):
             path = os.path.join(LOG_DIRECTORY, f)
+            print("log file path :", path)
             if not os.path.isfile(path):
+                print("path is not a file, ignoring")
                 continue
             files.append(f)
             total_bytes += os.path.getsize(path)
@@ -20066,15 +20120,19 @@ def logs():
         if the_file is not None:
             filename = os.path.join(LOG_DIRECTORY, the_file)
     else:
+        print("LOGSERVER : ", LOGSERVER)
         h = httplib2.Http()
+        print("GET attempt on logserver, port 8082")
         resp, content = h.request("http://" + LOGSERVER + ':8082', "GET")
         if int(resp['status']) >= 200 and int(resp['status']) < 300:
+            print("retrieving files names from log server")
             files = [f for f in content.decode().split("\n") if f != '' and f is not None]
         else:
             return ('File not found', 404)
         if len(files):
             if the_file is None:
                 the_file = files[0]
+            print("retrieving log file")
             filename, headers = urlretrieve("http://" + LOGSERVER + ':8082/' + urllibquote(the_file))
     if len(files) and not os.path.isfile(filename):
         flash(word("The file you requested does not exist."), 'error')
@@ -20097,6 +20155,7 @@ def logs():
         else:
             temp_file = tempfile.NamedTemporaryFile(mode='a+', encoding='utf-8')
             with open(filename, 'rU', encoding='utf-8') as fp:
+                print("writing on tmp file")
                 for line in fp:
                     if reg_exp.search(line):
                         temp_file.write(line)
@@ -21477,7 +21536,6 @@ def fax_callback():
 @csrf.exempt
 def voice():
     docassemble.base.functions.set_language(DEFAULT_LANGUAGE)
-    resp = twilio.twiml.voice_response.VoiceResponse()
     if twilio_config is None:
         logmessage("voice: ignoring call to voice because Twilio not enabled")
         return Response(str(resp), mimetype='text/xml')
@@ -21512,7 +21570,6 @@ def voice():
 @csrf.exempt
 def digits():
     docassemble.base.functions.set_language(DEFAULT_LANGUAGE)
-    resp = twilio.twiml.voice_response.VoiceResponse()
     if twilio_config is None:
         logmessage("digits: ignoring call to digits because Twilio not enabled")
         return Response(str(resp), mimetype='text/xml')
@@ -21632,7 +21689,6 @@ def sms():
 
 def do_sms(form, base_url, url_root, config='default', save=True):
     docassemble.base.functions.set_language(DEFAULT_LANGUAGE)
-    resp = twilio.twiml.messaging_response.MessagingResponse()
     special_messages = list()
     if twilio_config is None:
         logmessage("do_sms: ignoring message to sms because Twilio not enabled")
@@ -21735,7 +21791,7 @@ def do_sms(form, base_url, url_root, config='default', save=True):
         if user is None:
             ci = dict(user=dict(is_anonymous=True, is_authenticated=False, email=None, theid=sess_info['tempuser'], the_user_id='t' + str(sess_info['tempuser']), roles=['user'], firstname='SMS', lastname='User', nickname=None, country=None, subdivisionfirst=None, subdivisionsecond=None, subdivisionthird=None, organization=None, timezone=None, location=None, session_uid=sess_info['session_uid']), session=sess_info['uid'], secret=sess_info['secret'], yaml_filename=sess_info['yaml_filename'], interface='sms', url=base_url, url_root=url_root, encrypted=encrypted, headers=dict(), clientip=None, method=None, skip=user_dict['_internal']['skip'], sms_sender=form["From"])
         else:
-            ci = dict(user=dict(is_anonymous=False, is_authenticated=True, email=user.email, theid=user.id, the_user_id=user.id, roles=user.roles, firstname=user.first_name, lastname=user.last_name, nickname=user.nickname, country=user.country, subdivisionfirst=user.subdivisionfirst, subdivisionsecond=user.subdivisionsecond, subdivisionthird=user.subdivisionthird, organization=user.organization, timezone=user.timezone, location=None, session_uid=sess_info['session_uid']), session=sess_info['uid'], secret=sess_info['secret'], yaml_filename=sess_info['yaml_filename'], interface='sms', url=base_url, url_root=url_root, encrypted=encrypted, headers=dict(), clientip=None, method=None, skip=user_dict['_internal']['skip'])
+            ci = dict(user=dict(is_anonymous=False, is_authenticated=True, email=user.email, theid=user.id, the_user_id=user.id, roles=user.roles, firstname=user.first_name, lastname=user.last_name, bnpp_roles=user.bnpp_roles, social_id=user.social_id, nickname=user.nickname, country=user.country, subdivisionfirst=user.subdivisionfirst, subdivisionsecond=user.subdivisionsecond, subdivisionthird=user.subdivisionthird, organization=user.organization, timezone=user.timezone, location=None, session_uid=sess_info['session_uid']), session=sess_info['uid'], secret=sess_info['secret'], yaml_filename=sess_info['yaml_filename'], interface='sms', url=base_url, url_root=url_root, encrypted=encrypted, headers=dict(), clientip=None, method=None, skip=user_dict['_internal']['skip'])
         if action is not None:
             logmessage("do_sms: setting action to " + str(action))
             ci.update(action)
@@ -22494,7 +22550,7 @@ def get_user_list(include_inactive=False, start_id=None):
             user_info['privileges'] = list()
             for role in user.roles:
                 user_info['privileges'].append(role.name)
-            for attrib in ('id', 'email', 'first_name', 'last_name', 'country', 'subdivisionfirst', 'subdivisionsecond', 'subdivisionthird', 'organization', 'timezone', 'language'):
+            for attrib in ('id', 'email', 'first_name', 'last_name', 'country', 'subdivisionfirst', 'subdivisionsecond', 'subdivisionthird', 'organization', 'timezone', 'language', 'bnpp_roles', 'social_id'):
                 user_info[attrib] = getattr(user, attrib)
             if include_inactive:
                 user_info['active'] = getattr(user, 'active')
@@ -26040,7 +26096,7 @@ def api_interview():
 @app.route('/me', methods=['GET'])
 def whoami():
     if current_user.is_authenticated:
-        return jsonify(logged_in=True, user_id=current_user.id, email=current_user.email, roles=[role.name for role in current_user.roles], firstname=current_user.first_name, lastname=current_user.last_name, country=current_user.country, subdivisionfirst=current_user.subdivisionfirst, subdivisionsecond=current_user.subdivisionsecond, subdivisionthird=current_user.subdivisionthird, organization=current_user.organization, timezone=current_user.timezone)
+        return jsonify(logged_in=True, user_id=current_user.id, email=current_user.email, roles=[role.name for role in current_user.roles], firstname=current_user.first_name, lastname=current_user.last_name, bnpp_roles=current_user.bnpp_roles, social_id=current_user.social_id, country=current_user.country, subdivisionfirst=current_user.subdivisionfirst, subdivisionsecond=current_user.subdivisionsecond, subdivisionthird=current_user.subdivisionthird, organization=current_user.organization, timezone=current_user.timezone)
     else:
         return jsonify(logged_in=False)
 
@@ -26800,6 +26856,8 @@ LOGFORMAT = daconfig.get('log format', 'docassemble: ip=%(clientip)s i=%(yamlfil
 if True:
     docassemble_log_handler = logging.FileHandler(filename=os.path.join(LOG_DIRECTORY, 'docassemble.log'))
     sys_logger.addHandler(docassemble_log_handler)
+    stdout_handler = logging.StreamHandler(sys.stderr)
+    sys_logger.addHandler(stdout_handler)
 else:
     try:
         import logging.handlers

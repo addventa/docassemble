@@ -27,6 +27,8 @@ bash -c \
 && cp /tmp/docassemble/Docker/docassemble-supervisor.conf /etc/supervisor/conf.d/docassemble.conf \
 && cp /tmp/docassemble/Docker/ssl/* /usr/share/docassemble/certs/ \
 && cp /tmp/docassemble/Docker/rabbitmq.config /etc/rabbitmq/ \
+&& mkdir /usr/share/docassemble/packages \
+&& cp /tmp/docassemble/Docker/packages/* /usr/share/docassemble/packages/ \
 && cp /tmp/docassemble/Docker/config/exim4-router /etc/exim4/conf.d/router/101_docassemble \
 && cp /tmp/docassemble/Docker/config/exim4-filter /etc/exim4/docassemble-filter \
 && cp /tmp/docassemble/Docker/config/exim4-main /etc/exim4/conf.d/main/01_docassemble \
@@ -45,11 +47,14 @@ bash -c \
 && chmod ogu+r /usr/share/docassemble/config/config.yml.dist \
 && chmod 755 /etc/ssl/docassemble \
 && cd /tmp \
+&& wget https://bootstrap.pypa.io/get-pip.py \
+&& python3.8 get-pip.py \
+&& rm -f get-pip.py \
+&& pip install --upgrade virtualenv \
 && echo \"en_US.UTF-8 UTF-8\" >> /etc/locale.gen \
 && locale-gen \
 && update-locale"
 
-USER www-data
 RUN LC_CTYPE=C.UTF-8 LANG=C.UTF-8 \
 bash -c \
 "cd /tmp \
@@ -64,10 +69,10 @@ bash -c \
    bcrypt==3.2.0 \
    flask==1.1.2 \
    flask-login==0.5.0 \
+   ./../usr/share/docassemble/packages/s4cmd-2.1.1-py3-none-any.whl \
    flask-mail==0.9.1 \
    flask-sqlalchemy==2.4.4 \
    flask-wtf==0.14.3 \
-   s4cmd==2.1.0 \
    uwsgi==2.0.19.1 \
    passlib==1.7.4 \
    pycryptodome==3.9.9 \
@@ -82,7 +87,17 @@ bash -c \
    /tmp/docassemble/docassemble \
    /tmp/docassemble/docassemble_base \
    /tmp/docassemble/docassemble_demo \
-   /tmp/docassemble/docassemble_webapp"
+   /tmp/docassemble/docassemble_webapp \
+&& pip3 uninstall --yes mysqlclient MySQL-python &> /dev/null \
+&& python3.8 -m nltk.downloader -d /usr/local/share/nltk_data all"
+
+RUN DEBIAN_FRONTEND=noninteractive TERM=xterm \
+bash -c \
+"cp /usr/share/docassemble/local3.8/lib/python3.8/site-packages/s4cmd.py /usr/share/s4cmd/ \
+&& chown -R www-data.www-data \
+   /usr/share/docassemble/local3.8 \
+   /usr/share/docassemble/log \
+   /usr/share/docassemble/files"
 
 USER root
 RUN \
