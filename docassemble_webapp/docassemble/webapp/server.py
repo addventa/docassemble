@@ -26528,8 +26528,8 @@ LOGFORMAT = daconfig.get('log format', 'docassemble: ip=%(clientip)s i=%(yamlfil
 
 #if LOGSERVER is None:
 if True:
-    # docassemble_log_handler = logging.FileHandler(filename=os.path.join(LOG_DIRECTORY, 'docassemble.log'))
-    # sys_logger.addHandler(docassemble_log_handler)
+    docassemble_log_handler = logging.FileHandler(filename=os.path.join(LOG_DIRECTORY, 'docassemble.log'))
+    sys_logger.addHandler(docassemble_log_handler)
     stdout_handler = logging.StreamHandler(sys.stderr)
     sys_logger.addHandler(stdout_handler)
 else:
