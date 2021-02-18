@@ -456,9 +456,9 @@ def install_package(package):
     if package.type == 'zip' and package.upload is not None:
         saved_file = SavedFile(package.upload, extension='zip', fix=True)
         commands = ['pip', 'install']
-        if disable_pip_cache:
-            commands.append('--no-cache-dir')
-        commands.extend(['--quiet', '--prefix=' + PACKAGE_DIRECTORY, '--src=' + temp_dir, '--log-file=' + pip_log.name, "--upgrade", saved_file.path + '.zip'])
+        # if disable_pip_cache:
+        #     commands.append('--no-cache-dir')
+        commands.extend(['--quiet', '--prefix=' + PACKAGE_DIRECTORY, '--src=' + temp_dir, '--log-file=' + pip_log.name, "--no-deps", saved_file.path + '.zip'])
     elif package.type == 'git' and package.giturl:
         if package.gitbranch is not None:
             branchpart = '@' + str(package.gitbranch)
@@ -474,23 +474,23 @@ def install_package(package):
             gitprefix = 'git+'
         if package.gitsubdir is not None:
             commands = ['pip', 'install']
-            if disable_pip_cache:
-                commands.append('--no-cache-dir')
-            commands.extend(['--quiet', '--prefix=' + PACKAGE_DIRECTORY, '--src=' + temp_dir, "--upgrade", '--log-file=' + pip_log.name, gitprefix + str(package.giturl) + gitsuffix + branchpart + '#egg=' + package.name + '&subdirectory=' + str(package.gitsubdir)])
+            # if disable_pip_cache:
+            #     commands.append('--no-cache-dir')
+            commands.extend(['--quiet', '--prefix=' + PACKAGE_DIRECTORY, '--src=' + temp_dir, "--no-deps", '--log-file=' + pip_log.name, gitprefix + str(package.giturl) + gitsuffix + branchpart + '#egg=' + package.name + '&subdirectory=' + str(package.gitsubdir)])
         else:
             commands = ['pip', 'install']
-            if disable_pip_cache:
-                commands.append('--no-cache-dir')
-            commands.extend(['--quiet', '--prefix=' + PACKAGE_DIRECTORY, '--src=' + temp_dir, "--upgrade", '--log-file=' + pip_log.name, gitprefix + str(package.giturl) + gitsuffix + branchpart + '#egg=' + package.name])
+            # if disable_pip_cache:
+            #     commands.append('--no-cache-dir')
+            commands.extend(['--quiet', '--prefix=' + PACKAGE_DIRECTORY, '--src=' + temp_dir, "--no-deps", '--log-file=' + pip_log.name, gitprefix + str(package.giturl) + gitsuffix + branchpart + '#egg=' + package.name])
     elif package.type == 'pip':
         if package.limitation is None:
             limit = ""
         else:
             limit = str(package.limitation)
         commands = ['pip', 'install']
-        if disable_pip_cache:
-            commands.append('--no-cache-dir')
-        commands.extend(['--quiet', '--prefix=' + PACKAGE_DIRECTORY, '--src=' + temp_dir, "--upgrade", '--log-file=' + pip_log.name, package.name + limit])
+        # if disable_pip_cache:
+        #     commands.append('--no-cache-dir')
+        commands.extend(['--quiet', '--prefix=' + PACKAGE_DIRECTORY, '--src=' + temp_dir, "--no-deps", '--log-file=' + pip_log.name, package.name + limit])
     else:
         sys.stderr.write("Wrong package type\n")
         return 1, 'Unable to recognize package type: ' + package.name
