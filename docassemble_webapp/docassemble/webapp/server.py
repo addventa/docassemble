@@ -568,14 +568,21 @@ def custom_login():
             db.session.commit()
             print("user updated")
         if safe_next == url_for(user_manager.after_login_endpoint):
-            print("url next :", safe_next)
-            print(safe_reg_next)
-            print("parsing url next")
-            url_parts = list(urlparse(safe_next))
-            query = dict(parse_qsl(url_parts[4]))
-            query.update(dict(from_login=1))
-            url_parts[4] = urlencode(query)
-            safe_next = urlunparse(url_parts)
+            url = daconfig.get('root redirect url', None)
+            if url is not None:
+                safe_next = url
+            else:
+                if default_yaml_filename is not None:
+                    safe_next = default_yaml_filename
+                else:
+                    print("url next :", safe_next)
+                    print(safe_reg_next)
+                    print("parsing url next")
+                    url_parts = list(urlparse(safe_next))
+                    query = dict(parse_qsl(url_parts[4]))
+                    query.update(dict(from_login=1))
+                    url_parts[4] = urlencode(query)
+                    safe_next = urlunparse(url_parts)
         print("login and redirect to :", safe_next)
         return add_secret_to(docassemble_flask_user.views._do_login_user(user, safe_next))
 
