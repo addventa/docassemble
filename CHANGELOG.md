@@ -1,5 +1,89 @@
 # Change Log
 
+## [1.2.45] - 2021-03-19
+### Fixed
+- Error with `allow reordering`.
+
+## [1.2.44] - 2021-03-16
+### Changed
+- The `possessify()` function and the object methods that use it will
+  return a Unicode apostrophe when called from the context of a DOCX
+  template.
+
+## [1.2.43] - 2021-03-15
+### Added
+- The `/api/playground_install` endpoint.
+- The `bold` and `italic` functions as Jinja2 filters.
+### Changed
+- As soon as the container starts, a dummy web server begins listening
+  on port 80 (or `PORT`).  This web server turns off before NGINX
+  starts.
+- Verbose `pip` logs no longer saved to `worker.log`.
+
+## [1.2.42] - 2021-03-13
+### Changed
+- The optional second positional parameter of `noun_plural()` and
+  `noun_singular()` can now be a list, dictionary, set, or tuple, in
+  which case the length is used.
+- Elements with `aria-hidden="true"` or CSS class `sr-exclude` will
+  be ignored by the VoiceRSS screen reader.
+- `force_ask()`, `force_gather()`, `undefine()`, `forget_result_of()`,
+  and `reconsider()` now accept generators as positional parameters.
+- When given `Person` objects, `send_email()` will include names in
+  To, Cc, and Bcc if the names are defined.
+### Fixed
+- A `fields` question with no variable-setting fields or a `continue
+  button field` did not get marked as answered.
+
+## [1.2.41] - 2021-03-09
+### Fixed
+- Bug in 1.2.40.
+
+## [1.2.40] - 2021-03-08
+### Added
+- Support for the `PORT` Docker environment variable, which defaults
+  to port 80.
+
+## [1.2.39] - 2021-03-06
+### Fixed
+- Issues with Word add-in.
+
+## [1.2.38] - 2021-03-04
+### Fixed
+- Default value on combobox fields.
+
+## [1.2.37] - 2021-03-03
+### Fixed
+- Default value on combobox fields.
+
+## [1.2.36] - 2021-03-02
+### Fixed
+- Package install errors not being sent to screen.
+
+## [1.2.35] - 2021-02-27
+### Added
+- The `.item_name()` and `.delitem()` methods of `DAList`.
+- The `.item_name()`, `.delitem()`, `.invalidate_item()`, and
+  `.getitem_fresh()` methods of `DADict`.
+- The `restart` option for `/api/package`.
+
+## [1.2.34] - 2021-02-25
+### Added
+- The `.getattr_fresh()` method.
+### Fixed
+- Bug in `.from_url()`.
+
+## [1.2.33] - 2021-02-20
+### Changed
+- When `datatype` is `password`, autocomplete will be turned off.
+### Fixed
+- `code` with `content file` in `raw` mode.
+- `.get_pdf_fields()` raised exception when no fields present.
+
+## [1.2.32] - 2021-02-17
+### Fixed
+- Issue with logging messages during post-update restart.
+
 ## [1.2.31] - 2021-02-16
 ### Added
 - The `post` option for `need`.

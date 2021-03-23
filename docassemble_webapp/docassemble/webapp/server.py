@@ -569,14 +569,21 @@ def custom_login():
             db.session.commit()
             print("user updated")
         if safe_next == url_for(user_manager.after_login_endpoint):
-            print("url next :", safe_next)
-            print(safe_reg_next)
-            print("parsing url next")
-            url_parts = list(urlparse(safe_next))
-            query = dict(parse_qsl(url_parts[4]))
-            query.update(dict(from_login=1))
-            url_parts[4] = urlencode(query)
-            safe_next = urlunparse(url_parts)
+            url = daconfig.get('root redirect url', None)
+            if url is not None:
+                safe_next = url
+            else:
+                if default_yaml_filename is not None:
+                    safe_next = default_yaml_filename
+                else:
+                    print("url next :", safe_next)
+                    print(safe_reg_next)
+                    print("parsing url next")
+                    url_parts = list(urlparse(safe_next))
+                    query = dict(parse_qsl(url_parts[4]))
+                    query.update(dict(from_login=1))
+                    url_parts[4] = urlencode(query)
+                    safe_next = urlunparse(url_parts)
         print("login and redirect to :", safe_next)
         return add_secret_to(docassemble_flask_user.views._do_login_user(user, safe_next))
 
@@ -892,7 +899,7 @@ from flask_login import login_user, logout_user, current_user
 from docassemble_flask_user import login_required, roles_required
 from docassemble_flask_user import signals, user_logged_in, user_changed_password, user_registered, user_reset_password
 #from flask_wtf.csrf import generate_csrf
-from docassemble.webapp.develop import CreatePackageForm, CreatePlaygroundPackageForm, UpdatePackageForm, ConfigForm, PlaygroundForm, PlaygroundUploadForm, LogForm, Utilities, PlaygroundFilesForm, PlaygroundFilesEditForm, PlaygroundPackagesForm, GoogleDriveForm, OneDriveForm, GitHubForm, PullPlaygroundPackage, TrainingForm, TrainingUploadForm, APIKey, AddinUploadForm, RenameProject, DeleteProject, NewProject
+from docassemble.webapp.develop import CreatePackageForm, CreatePlaygroundPackageForm, UpdatePackageForm, ConfigForm, PlaygroundForm, PlaygroundUploadForm, LogForm, Utilities, PlaygroundFilesForm, PlaygroundFilesEditForm, PlaygroundPackagesForm, GoogleDriveForm, OneDriveForm, GitHubForm, PullPlaygroundPackage, TrainingForm, TrainingUploadForm, APIKey, AddinUploadForm, FunctionFileForm, RenameProject, DeleteProject, NewProject
 import docassemble_flask_user.signals
 import docassemble_flask_user.emails
 import docassemble_flask_user.views
@@ -3823,21 +3830,21 @@ def wait_for_task(task_id, timeout=None):
 #     return
 
 def trigger_update(except_for=None):
-    logmessage("trigger_update: except_for is " + str(except_for) + " and hostname is " + hostname)
+    sys.stderr.write("trigger_update: except_for is " + str(except_for) + " and hostname is " + hostname + "\n")
     if USING_SUPERVISOR:
         for host in Supervisors.query.all():
             if host.url and not (except_for and host.hostname == except_for):
                 if host.hostname == hostname:
                     the_url = 'http://localhost:9001'
-                    logmessage("trigger_update: using http://localhost:9001")
+                    sys.stderr.write("trigger_update: using http://localhost:9001\n")
                 else:
                     the_url = host.url
                 args = [SUPERVISORCTL, '-s', the_url, 'start', 'update']
                 result = subprocess.run(args).returncode
                 if result == 0:
-                    logmessage("trigger_update: sent update to " + str(host.hostname) + " using " + the_url)
+                    sys.stderr.write("trigger_update: sent update to " + str(host.hostname) + " using " + the_url + "\n")
                 else:
-                    logmessage("trigger_update: call to supervisorctl on " + str(host.hostname) + " was not successful")
+                    sys.stderr.write("trigger_update: call to supervisorctl on " + str(host.hostname) + " was not successful\n")
     return
 
 def restart_on(host):
@@ -5556,6 +5563,8 @@ def setup_variables():
 def apply_security_headers(response):
     if app.config['SESSION_COOKIE_SECURE']:
         response.headers['Strict-Transport-Security'] = 'max-age=31536000'
+    if 'embed' in g:
+        return response
     if daconfig.get('allow embedding', False) is not True:
         response.headers["Content-Security-Policy"] = "frame-ancestors 'self';"
     elif daconfig.get('cross site domains', []):
@@ -6164,7 +6173,7 @@ def index(action_argument=None, refer=None):
         else:
             ml_info = dict()
     something_changed = False
-    if '_tracker' in post_data and user_dict['_internal']['tracker'] != int(post_data['_tracker']):
+    if '_tracker' in post_data and re.search(r'^-?[0-9]+$', post_data['_tracker']) and user_dict['_internal']['tracker'] != int(post_data['_tracker']):
         if user_dict['_internal']['tracker'] > int(post_data['_tracker']):
             logmessage("index: the assemble function has been run since the question was posed.")
         else:
@@ -6263,6 +6272,8 @@ def index(action_argument=None, refer=None):
             empty_fields = list()
         authorized_fields = set()
     changed = False
+    if '_null_question' in post_data:
+        changed = True
     if '_email_attachments' in post_data and '_attachment_email_address' in post_data:
         success = False
         attachment_email_address = post_data['_attachment_email_address'].strip()
@@ -6417,7 +6428,7 @@ def index(action_argument=None, refer=None):
         the_question = None
     key_to_orig_key = dict()
     for orig_key in copy.deepcopy(post_data):
-        if orig_key in ('_checkboxes', '_empties', '_ml_info', '_back_one', '_files', '_files_inline', '_question_name', '_the_image', '_save_as', '_success', '_datatypes', '_event', '_visible', '_tracker', '_track_location', '_varnames', '_next_action', '_next_action_to_set', 'ajax', 'json', 'informed', 'csrf_token', '_action', '_order_changes', '_collect', '_collect_delete', '_list_collect_list') or orig_key.startswith('_ignore'):
+        if orig_key in ('_checkboxes', '_empties', '_ml_info', '_back_one', '_files', '_files_inline', '_question_name', '_the_image', '_save_as', '_success', '_datatypes', '_event', '_visible', '_tracker', '_track_location', '_varnames', '_next_action', '_next_action_to_set', 'ajax', 'json', 'informed', 'csrf_token', '_action', '_order_changes', '_collect', '_collect_delete', '_list_collect_list', '_null_question') or orig_key.startswith('_ignore'):
             continue
         try:
             key = myb64unquote(orig_key)
@@ -6454,7 +6465,7 @@ def index(action_argument=None, refer=None):
     imported_core = False
     special_question = None
     for orig_key in post_data:
-        if orig_key in ('_checkboxes', '_empties', '_ml_info', '_back_one', '_files', '_files_inline', '_question_name', '_the_image', '_save_as', '_success', '_datatypes', '_event', '_visible', '_tracker', '_track_location', '_varnames', '_next_action', '_next_action_to_set', 'ajax', 'json', 'informed', 'csrf_token', '_action', '_order_changes', '', '_collect', '_collect_delete', '_list_collect_list') or orig_key.startswith('_ignore'):
+        if orig_key in ('_checkboxes', '_empties', '_ml_info', '_back_one', '_files', '_files_inline', '_question_name', '_the_image', '_save_as', '_success', '_datatypes', '_event', '_visible', '_tracker', '_track_location', '_varnames', '_next_action', '_next_action_to_set', 'ajax', 'json', 'informed', 'csrf_token', '_action', '_order_changes', '', '_collect', '_collect_delete', '_list_collect_list', '_null_question') or orig_key.startswith('_ignore'):
             continue
         data = post_data[orig_key]
         try:
@@ -6931,8 +6942,8 @@ def index(action_argument=None, refer=None):
             orderChanges = json.loads(post_data['_order_changes'])
             for tableName, changes in orderChanges.items():
                 tableName = myb64unquote(tableName)
-                if STRICT_MODE and tableName not in authorized_fields:
-                    raise DAError("The variable " + repr(tableName) + " was not in the allowed fields, which were " + repr(authorized_fields))
+                #if STRICT_MODE and tableName not in authorized_fields:
+                #    raise DAError("The variable " + repr(tableName) + " was not in the allowed fields, which were " + repr(authorized_fields))
                 if illegal_variable_name(tableName):
                     error_messages.append(("error", "Error: Invalid character in table reorder: " + str(tableName)))
                     continue
@@ -7707,7 +7718,7 @@ def index(action_argument=None, refer=None):
       var daQuestionID = """ + json.dumps(question_id_dict) + """;
       var daCsrf = """ + json.dumps(generate_csrf()) + """;
       var daShowIfInProcess = false;
-      var daFieldsToSkip = ['_checkboxes', '_empties', '_ml_info', '_back_one', '_files', '_files_inline', '_question_name', '_the_image', '_save_as', '_success', '_datatypes', '_event', '_visible', '_tracker', '_track_location', '_varnames', '_next_action', '_next_action_to_set', 'ajax', 'json', 'informed', 'csrf_token', '_action', '_order_changes', '_collect', '_list_collect_list'];
+      var daFieldsToSkip = ['_checkboxes', '_empties', '_ml_info', '_back_one', '_files', '_files_inline', '_question_name', '_the_image', '_save_as', '_success', '_datatypes', '_event', '_visible', '_tracker', '_track_location', '_varnames', '_next_action', '_next_action_to_set', 'ajax', 'json', 'informed', 'csrf_token', '_action', '_order_changes', '_collect', '_list_collect_list', '_null_question'];
       var daVarLookup = Object();
       var daVarLookupRev = Object();
       var daVarLookupMulti = Object();
@@ -8842,6 +8853,12 @@ def index(action_argument=None, refer=None):
           var theHtml = xhr.responseText;
           theHtml = theHtml.replace(/<script[^>]*>[^<]*<\/script>/g, '');
           $(daTargetDiv).html(theHtml);
+          if (daJsEmbed){
+            $(daTargetDiv)[0].scrollTo(0, 1);
+          }
+          else{
+            window.scrollTo(0, 1);
+          }
         }
         else {
           console.log("daProcessAjaxError: response was not text");
@@ -9878,7 +9895,7 @@ def index(action_argument=None, refer=None):
             return false;
           });
         });
-        $("#daemailform").validate({'submitHandler': daValidationHandler, 'rules': {'_attachment_email_address': {'minlength': 1, 'required': true, 'email': true}}, 'messages': {'_attachment_email_address': {'required': """ + json.dumps(word("An e-mail address is required.")) + """, 'email': """ + json.dumps(word("You need to enter a complete e-mail address.")) + """}}, 'errorClass': 'da-has-error'});
+        $("#daemailform").validate({'submitHandler': daValidationHandler, 'rules': {'_attachment_email_address': {'minlength': 1, 'required': true, 'email': true}}, 'messages': {'_attachment_email_address': {'required': """ + json.dumps(word("An e-mail address is required.")) + """, 'email': """ + json.dumps(word("You need to enter a complete e-mail address.")) + """}}, 'errorClass': 'da-has-error text-danger'});
         $("a[data-embaction]").click(daEmbeddedAction);
         $("a[data-js]").click(daEmbeddedJs);
         $("a.da-review-action").click(daReviewAction);
@@ -10609,7 +10626,7 @@ def index(action_argument=None, refer=None):
             $(element).removeClass('is-invalid');
         },
         errorElement: 'span',
-        errorClass: 'da-has-error',
+        errorClass: 'da-has-error text-danger',
         errorPlacement: function(error, element) {
             $(error).addClass('text-danger');
             var elementName = $(element).attr("name");
@@ -10813,7 +10830,7 @@ def index(action_argument=None, refer=None):
         interview_language = interview_status.question.language
     else:
         interview_language = current_language
-    validation_rules = {'rules': {}, 'messages': {}, 'errorClass': 'da-has-error', 'debug': False}
+    validation_rules = {'rules': {}, 'messages': {}, 'errorClass': 'da-has-error text-danger', 'debug': False}
     interview_status.exit_url = title_info.get('exit url', None)
     interview_status.exit_link = title_info.get('exit link', 'exit')
     interview_status.exit_label = title_info.get('exit label', word('Exit'))
@@ -11262,7 +11279,11 @@ def get_history(interview, interview_status):
     seeking_len = len(interview_status.seeking)
     if seeking_len:
         starttime = interview_status.seeking[0]['time']
+        seen_done = False
         for stage in interview_status.seeking:
+            if seen_done:
+                output = ''
+                seen_done = False
             index += 1
             if index < seeking_len and 'reason' in interview_status.seeking[index] and interview_status.seeking[index]['reason'] in ('asking', 'running') and interview_status.seeking[index]['question'] is stage['question'] and 'question' in stage and 'reason' in stage and stage['reason'] == 'considering':
                 continue
@@ -11298,6 +11319,7 @@ def get_history(interview, interview_status):
                 output += "          <h5>Needed definition of <code>" + str(stage['variable']) + "</code>" + the_time + "</h5>\n"
             elif 'done' in stage:
                 output += "          <h5>Completed processing" + the_time + "</h5>\n"
+                seen_done = True
     return output
 
 def is_mobile_or_tablet():
@@ -11888,7 +11910,7 @@ def observer():
       var daDisable = null;
       var daCsrf = """ + json.dumps(generate_csrf()) + """;
       var daShowIfInProcess = false;
-      var daFieldsToSkip = ['_checkboxes', '_empties', '_ml_info', '_back_one', '_files', '_files_inline', '_question_name', '_the_image', '_save_as', '_success', '_datatypes', '_event', '_visible', '_tracker', '_track_location', '_varnames', '_next_action', '_next_action_to_set', 'ajax', 'json', 'informed', 'csrf_token', '_action', '_order_changes', '_collect'];
+      var daFieldsToSkip = ['_checkboxes', '_empties', '_ml_info', '_back_one', '_files', '_files_inline', '_question_name', '_the_image', '_save_as', '_success', '_datatypes', '_event', '_visible', '_tracker', '_track_location', '_varnames', '_next_action', '_next_action_to_set', 'ajax', 'json', 'informed', 'csrf_token', '_action', '_order_changes', '_collect', '_null_question'];
       var daVarLookup = Object();
       var daVarLookupRev = Object();
       var daVarLookupMulti = Object();
@@ -12201,6 +12223,12 @@ def observer():
           var theHtml = xhr.responseText;
           theHtml = theHtml.replace(/<script[^>]*>[^<]*<\/script>/g, '');
           $(daTargetDiv).html(theHtml);
+          if (daJsEmbed){
+            $(daTargetDiv)[0].scrollTo(0, 1);
+          }
+          else{
+            window.scrollTo(0, 1);
+          }
         }
         else {
           console.log("daProcessAjaxError: response was not text");
@@ -14175,7 +14203,7 @@ def update_package_ajax():
         if isinstance(the_result, ReturnValue):
             if the_result.ok:
                 #logmessage("update_package_ajax: success")
-                if START_TIME > session['serverstarttime']:
+                if (hasattr(the_result, 'restart') and not the_result.restart) or START_TIME > session['serverstarttime']:
                     return jsonify(success=True, status='finished', ok=the_result.ok, summary=summarize_results(the_result.results, the_result.logmessages))
                 else:
                     return jsonify(success=True, status='waiting')
@@ -14722,6 +14750,7 @@ def create_playground_package():
                     else:
                         raise DAError("create_playground_package: GitHub repository could not be found after creating it.")
                 if first_time:
+                    logmessage("Not checking for stored commit code because no target repository exists")
                     pulled_already = False
                 else:
                     current_commit_file = os.path.join(directory_for(area['playgroundpackages'], current_project), '.' + github_package_name)
@@ -14731,10 +14760,13 @@ def create_playground_package():
                         commit_code = commit_code.strip()
                         resp, content = http.request("https://api.github.com/repos/" + commit_repository['full_name'] + "/commits/" + commit_code , "GET")
                         if int(resp['status']) == 200:
+                            logmessage("Stored commit code is valid")
                             pulled_already = True
                         else:
+                            logmessage("Stored commit code is invalid")
                             pulled_already = False
                     else:
+                        logmessage("Commit file not found")
                         pulled_already = False
                 directory = tempfile.mkdtemp()
                 (private_key_file, public_key_file) = get_ssh_keys(github_email)
@@ -14839,6 +14871,7 @@ def create_playground_package():
                     the_branch = branch
                 else:
                     the_branch = commit_branch
+                output += "Going to use " + the_branch + " as the branch.\n"
                 if not is_empty:
                     output += "Doing git config user.email " + json.dumps(github_email) + "\n"
                     try:
@@ -16716,16 +16749,21 @@ def playground_download(current_project, userid, filename):
     return ('File not found', 404)
 
 @app.route('/officefunctionfile', methods=['GET', 'POST'])
+@cross_origin(origins='*', methods=['GET', 'POST', 'HEAD'], automatic_options=True)
 def playground_office_functionfile():
+    g.embed = True
     docassemble.base.functions.set_language(DEFAULT_LANGUAGE)
     if not app.config['ENABLE_PLAYGROUND']:
         return ('File not found', 404)
-    response = make_response(render_template('pages/officefunctionfile.html', current_project=get_current_project(), page_title=word("Docassemble Playground"), tab_title=word("Playground"), parent_origin=daconfig.get('office addin url', daconfig.get('url root', get_base_url()))), 200)
+    functionform = FunctionFileForm(request.form)
+    response = make_response(render_template('pages/officefunctionfile.html', current_project=get_current_project(), page_title=word("Docassemble Playground"), tab_title=word("Playground"), parent_origin=daconfig.get('office addin url', daconfig.get('url root', get_base_url())), form=functionform), 200)
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
 
 @app.route('/officetaskpane', methods=['GET', 'POST'])
+@cross_origin(origins='*', methods=['GET', 'POST', 'HEAD'], automatic_options=True)
 def playground_office_taskpane():
+    g.embed = True
     docassemble.base.functions.set_language(DEFAULT_LANGUAGE)
     if not app.config['ENABLE_PLAYGROUND']:
         return ('File not found', 404)
@@ -16735,9 +16773,11 @@ def playground_office_taskpane():
     return response
 
 @app.route('/officeaddin', methods=['GET', 'POST'])
+@cross_origin(origins='*', methods=['GET', 'POST', 'HEAD'], automatic_options=True)
 @login_required
 @roles_required(['developer', 'admin'])
 def playground_office_addin():
+    g.embed = True
     setup_translation()
     if not app.config['ENABLE_PLAYGROUND']:
         return ('File not found', 404)
@@ -17813,7 +17853,7 @@ def playground_packages():
                     zippath = tempfile.NamedTemporaryFile(mode="wb", suffix=".zip", delete=True)
                     up_file.save(zippath.name)
                     area_sec = dict(templates='playgroundtemplate', static='playgroundstatic', sources='playgroundsources', questions='playground')
-                    with zipfile.ZipFile(zippath.name, mode='r') as zf:
+                    with zipfile.ZipFile(zippath, mode='r') as zf:
                         readme_text = ''
                         setup_py = ''
                         extracted = dict()
@@ -17960,8 +18000,10 @@ def playground_packages():
                 expected_name = re.sub(r'docassemble-', '', expected_name)
                 try:
                     if branch is not None:
+                        logmessage("Doing git clone -b " + branch + " " + github_url)
                         output += subprocess.check_output(['git', 'clone', '-b', branch, github_url], cwd=directory, stderr=subprocess.STDOUT).decode()
                     else:
+                        logmessage("Doing git clone " + github_url)
                         output += subprocess.check_output(['git', 'clone', github_url], cwd=directory, stderr=subprocess.STDOUT).decode()
                 except subprocess.CalledProcessError as err:
                     output += err.output.decode()
@@ -17978,6 +18020,7 @@ def playground_packages():
                     raise DAError("playground_packages: error running git rev-parse.  " + output)
                 with open(commit_file, 'w', encoding='utf-8') as fp:
                     fp.write(current_commit.strip())
+                logmessage("Wrote " + current_commit.strip() + " to " + commit_file)
             else:
                 logmessage("Did not find a single directory inside repo")
             do_pypi_also = true_or_false(request.args.get('pypi_also', False))
@@ -17988,6 +18031,7 @@ def playground_packages():
                     the_args['pypi'] = '1'
                 if do_install_also:
                     the_args['install'] = '1'
+                area['playgroundpackages'].finalize()
                 return redirect(url_for('create_playground_package', **the_args))
         elif 'pypi' in request.args:
             pypi_package = re.sub(r'[^A-Za-z0-9\-\.\_\~\:\/\?\#\[\]\@\!\$\&\'\(\)\*\+\,\;\=\`]', '', request.args['pypi'])
@@ -20075,7 +20119,7 @@ def logs():
     if LOGSERVER is None and use_zip:
         timezone = get_default_timezone()
         zip_archive = tempfile.NamedTemporaryFile(mode="wb", prefix="datemp", suffix=".zip", delete=False)
-        zf = zipfile.ZipFile(zip_archive.name, mode='w')
+        zf = zipfile.ZipFile(zip_archive, mode='w')
         for f in os.listdir(LOG_DIRECTORY):
             zip_path = os.path.join(LOG_DIRECTORY, f)
             if f.startswith('.') or not os.path.isfile(zip_path):
@@ -23096,7 +23140,7 @@ def translation_file():
         else:
             zip_file = tempfile.NamedTemporaryFile(suffix='.zip', delete=False)
             zip_file_name = docassemble.base.functions.space_to_underscore(os.path.splitext(os.path.basename(re.sub(r'.*:', '', yaml_filename)))[0]) + "_" + tr_lang + ".zip"
-            with zipfile.ZipFile(zip_file.name, mode='w') as zf:
+            with zipfile.ZipFile(zip_file, mode='w') as zf:
                 for item in xliff_files:
                     info = zipfile.ZipInfo(item[1])
                     with open(item[0].name, 'rb') as fp:
@@ -24804,6 +24848,7 @@ def api_package():
         return jsonify(packages)
     if request.method == 'DELETE':
         target = request.args.get('package', None)
+        do_restart = true_or_false(request.args.get('restart', True))
         if target is None:
             return jsonify_with_status("Missing package name.", 400)
         package_list, package_auth = get_package_info()
@@ -24817,12 +24862,16 @@ def api_package():
         if not the_package.can_uninstall:
             return jsonify_with_status("You are not allowed to uninstall that package.", 400)
         uninstall_package(target)
-        result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s())
+        if do_restart:
+            result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s())
+        else:
+            result = docassemble.webapp.worker.update_packages.delay(restart=False)
         return jsonify_task(result)
     if request.method == 'POST':
         post_data = request.get_json(silent=True)
         if post_data is None:
             post_data = request.form.copy()
+        do_restart = true_or_false(post_data.get('restart', True))
         num_commands = 0
         if 'update' in post_data:
             num_commands += 1
@@ -24860,7 +24909,10 @@ def api_package():
                         existing_package.limitation = None
                     install_pip_package(existing_package.name, existing_package.limitation)
             db.session.commit()
-            result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s())
+            if do_restart:
+                result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s())
+            else:
+                result = docassemble.webapp.worker.update_packages.delay(restart=False)
             return jsonify_task(result)
         if 'github_url' in post_data:
             github_url = post_data['github_url']
@@ -24875,7 +24927,10 @@ def api_package():
             packagename = re.sub(r'^docassemble-', 'docassemble.', packagename)
             if user_can_edit_package(giturl=github_url) and user_can_edit_package(pkgname=packagename):
                 install_git_package(packagename, github_url, branch)
-                result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s())
+                if do_restart:
+                    result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s())
+                else:
+                    result = docassemble.webapp.worker.update_packages.delay(restart=False)
                 return jsonify_task(result)
             else:
                 jsonify_with_status("You do not have permission to install that package.", 403)
@@ -24890,6 +24945,10 @@ def api_package():
             packagename = re.sub(r'[^A-Za-z0-9\_\-\.]', '', packagename)
             if user_can_edit_package(pkgname=packagename):
                 install_pip_package(packagename, limitation)
+                if do_restart:
+                    result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s())
+                else:
+                    result = docassemble.webapp.worker.update_packages.delay(restart=False)
                 result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s())
                 return jsonify_task(result)
             else:
@@ -24908,7 +24967,10 @@ def api_package():
                 pkgname = get_package_name_from_zip(zippath)
                 if user_can_edit_package(pkgname=pkgname):
                     install_zip_package(pkgname, file_number)
-                    result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s())
+                    if do_restart:
+                        result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s())
+                    else:
+                        result = docassemble.webapp.worker.update_packages.delay(restart=False)
                     return jsonify_task(result)
                 return jsonify_with_status("You do not have permission to install that package.", 403)
             except:
@@ -24929,19 +24991,25 @@ def api_package_update_status():
         return jsonify({'status': 'unknown'})
     task_info = json.loads(task_data.decode())
     result = docassemble.webapp.worker.workerapp.AsyncResult(id=task_info['id'])
-    if result.ready() and START_TIME > task_info['server_start_time']:
-        r.delete(the_key)
+    if result.ready():
         the_result = result.get()
         if isinstance(the_result, ReturnValue):
             if the_result.ok:
+                if the_result.restart and START_TIME <= task_info['server_start_time']:
+                    return jsonify(status='working')
+                r.delete(the_key)
                 return jsonify(status='completed', ok=True, log=summarize_results(the_result.results, the_result.logmessages, html=False))
             elif hasattr(the_result, 'error_message'):
+                r.delete(the_key)
                 return jsonify(status='completed', ok=False, error_message=str(the_result.error_message))
             elif hasattr(the_result, 'results') and hasattr(the_result, 'logmessages'):
+                r.delete(the_key)
                 return jsonify(status='completed', ok=False, error_message=summarize_results(the_result.results, the_result.logmessages, html=False))
             else:
+                r.delete(the_key)
                 return jsonify(status='completed', ok=False, error_message=str("No error message.  Result is " + str(the_result)))
         else:
+            r.delete(the_key)
             return jsonify(status='completed', ok=False, error_message=str(the_result))
     else:
         return jsonify(status='working')
@@ -25060,6 +25128,147 @@ def api_config():
             fp.write(yaml_data)
         restart_all()
         return ('', 204)
+
+@app.route('/api/playground_install', methods=['GET', 'POST', 'DELETE'])
+@csrf.exempt
+@cross_origin(origins='*', methods=['POST', 'HEAD'], automatic_options=True)
+def api_playground_install():
+    if not api_verify(request, roles=['admin', 'developer']):
+        return jsonify_with_status("Access denied.", 403)
+    post_data = request.get_json(silent=True)
+    if post_data is None:
+        post_data = request.form.copy()
+    do_restart = true_or_false(post_data.get('restart', True))
+    current_project = post_data.get('project', 'default')
+    try:
+        if current_user.has_role('admin'):
+            user_id = int(post_data.get('user_id', current_user.id))
+        else:
+            if 'user_id' in post_data:
+                assert int(post_data['user_id']) == current_user.id
+            user_id = current_user.id
+    except:
+        return jsonify_with_status("Invalid user_id.", 400)
+    if current_project != 'default' and current_project not in get_list_of_projects(user_id):
+        return jsonify_with_status("Invalid project.", 400)
+    docassemble.base.functions.this_thread.current_info['user'] = dict(is_anonymous=False, theid=user_id)
+    found = False
+    expected_name = 'unknown'
+    need_to_restart = False
+    area = dict()
+    area_sec = dict(templates='playgroundtemplate', static='playgroundstatic', sources='playgroundsources', questions='playground')
+    for sec in ('playground', 'playgroundpackages', 'playgroundtemplate', 'playgroundstatic', 'playgroundsources', 'playgroundmodules'):
+        area[sec] = SavedFile(user_id, fix=True, section=sec)
+    try:
+        for filekey in request.files:
+            the_files = request.files.getlist(filekey)
+            if not the_files:
+                continue
+            for up_file in the_files:
+                found = True
+                zippath = tempfile.NamedTemporaryFile(mode="wb", prefix='datemp', suffix=".zip", delete=False)
+                up_file.save(zippath)
+                up_file.close()
+                zippath.close()
+                with zipfile.ZipFile(zippath.name, mode='r') as zf:
+                    readme_text = ''
+                    setup_py = ''
+                    extracted = dict()
+                    data_files = dict(templates=list(), static=list(), sources=list(), interviews=list(), modules=list(), questions=list())
+                    has_docassemble_dir = set()
+                    has_setup_file = set()
+                    for zinfo in zf.infolist():
+                        if zinfo.is_dir():
+                            if zinfo.filename.endswith('/docassemble/'):
+                                has_docassemble_dir.add(re.sub(r'/docassemble/$', '', zinfo.filename))
+                            if zinfo.filename == 'docassemble/':
+                                has_docassemble_dir.add('')
+                        elif zinfo.filename.endswith('/setup.py'):
+                            (directory, filename) = os.path.split(zinfo.filename)
+                            has_setup_file.add(directory)
+                        elif zinfo.filename == 'setup.py':
+                            has_setup_file.add('')
+                    root_dir = None
+                    for directory in has_docassemble_dir.union(has_setup_file):
+                        if root_dir is None or len(directory) < len(root_dir):
+                            root_dir = directory
+                    if root_dir is None:
+                        return jsonify_with_status("Not a docassemble package.", 400)
+                    for zinfo in zf.infolist():
+                        if zinfo.filename.endswith('/'):
+                            continue
+                        (directory, filename) = os.path.split(zinfo.filename)
+                        if filename.startswith('#') or filename.endswith('~'):
+                            continue
+                        dirparts = splitall(directory)
+                        if '.git' in dirparts:
+                            continue
+                        levels = re.findall(r'/', directory)
+                        time_tuple = zinfo.date_time
+                        the_time = time.mktime(datetime.datetime(*time_tuple).timetuple())
+                        for sec in ('templates', 'static', 'sources', 'questions'):
+                            if directory.endswith('data/' + sec) and filename != 'README.md':
+                                data_files[sec].append(filename)
+                                target_filename = os.path.join(directory_for(area[area_sec[sec]], current_project), filename)
+                                with zf.open(zinfo) as source_fp, open(target_filename, 'wb') as target_fp:
+                                    shutil.copyfileobj(source_fp, target_fp)
+                                os.utime(target_filename, (the_time, the_time))
+                        if filename == 'README.md' and directory == root_dir:
+                            with zf.open(zinfo) as f:
+                                the_file_obj = TextIOWrapper(f, encoding='utf8')
+                                readme_text = the_file_obj.read()
+                        if filename == 'setup.py' and directory == root_dir:
+                            with zf.open(zinfo) as f:
+                                the_file_obj = TextIOWrapper(f, encoding='utf8')
+                                setup_py = the_file_obj.read()
+                        elif len(levels) >= 2 and filename.endswith('.py') and filename != '__init__.py' and 'tests' not in dirparts:
+                            need_to_restart = True
+                            data_files['modules'].append(filename)
+                            target_filename = os.path.join(directory_for(area['playgroundmodules'], current_project), filename)
+                            with zf.open(zinfo) as source_fp, open(target_filename, 'wb') as target_fp:
+                                shutil.copyfileobj(source_fp, target_fp)
+                                os.utime(target_filename, (the_time, the_time))
+                    setup_py = re.sub(r'.*setup\(', '', setup_py, flags=re.DOTALL)
+                    for line in setup_py.splitlines():
+                        m = re.search(r"^ *([a-z_]+) *= *\(?'(.*)'", line)
+                        if m:
+                            extracted[m.group(1)] = m.group(2)
+                        m = re.search(r'^ *([a-z_]+) *= *\(?"(.*)"', line)
+                        if m:
+                            extracted[m.group(1)] = m.group(2)
+                        m = re.search(r'^ *([a-z_]+) *= *\[(.*)\]', line)
+                        if m:
+                            the_list = list()
+                            for item in re.split(r', *', m.group(2)):
+                                inner_item = re.sub(r"'$", '', item)
+                                inner_item = re.sub(r"^'", '', inner_item)
+                                inner_item = re.sub(r'"+$', '', inner_item)
+                                inner_item = re.sub(r'^"+', '', inner_item)
+                                the_list.append(inner_item)
+                            extracted[m.group(1)] = the_list
+                    info_dict = dict(readme=readme_text, interview_files=data_files['questions'], sources_files=data_files['sources'], static_files=data_files['static'], module_files=data_files['modules'], template_files=data_files['templates'], dependencies=[z for z in map(lambda y: re.sub(r'[\>\<\=].*', '', y), extracted.get('install_requires', list()))], description=extracted.get('description', ''), author_name=extracted.get('author', ''), author_email=extracted.get('author_email', ''), license=extracted.get('license', ''), url=extracted.get('url', ''), version=extracted.get('version', ''))
+
+                    info_dict['dependencies'] = [x for x in [z for z in map(lambda y: re.sub(r'[\>\<\=].*', '', y), info_dict['dependencies'])] if x not in ('docassemble', 'docassemble.base', 'docassemble.webapp')]
+                    package_name = re.sub(r'^docassemble\.', '', extracted.get('name', expected_name))
+                    with open(os.path.join(directory_for(area['playgroundpackages'], current_project), 'docassemble.' + package_name), 'w', encoding='utf-8') as fp:
+                        the_yaml = yaml.safe_dump(info_dict, default_flow_style=False, default_style='|')
+                        fp.write(str(the_yaml))
+                    for key in r.keys('da:interviewsource:docassemble.playground' + str(current_user.id) + project_name(current_project) + ':*'):
+                        r.incr(key.decode())
+                    for sec in area:
+                        area[sec].finalize()
+                    the_file = package_name
+                zippath.close()
+    except Exception as err:
+        logmessage("api_playground_install: " + err.__class__.__name__ + ": " + str(err))
+        return jsonify_with_status("Error installing packages.", 400)
+    if not found:
+        return jsonify_with_status("No package found.", 400)
+    for key in r.keys('da:interviewsource:docassemble.playground' + str(user_id) + project_name(current_project) + ':*'):
+        r.incr(key.decode())
+    if do_restart and need_to_restart:
+        restart_all()
+    return ('', 204)
 
 @app.route('/api/playground', methods=['GET', 'POST', 'DELETE'])
 @csrf.exempt

@@ -6,9 +6,9 @@ def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
 install_requires = [
-    'docassemble==1.2.31',
-    'docassemble.base==1.2.31',
-    'docassemble.demo==1.2.31',
+    'docassemble==1.2.45',
+    'docassemble.base==1.2.45',
+    'docassemble.demo==1.2.45',
     "3to2==1.1.1",
     "airtable-python-wrapper==0.15.1",
     "alembic==1.4.3",
@@ -22,6 +22,8 @@ install_requires = [
     "azure-common==1.1.26",
     "azure-core==1.9.0",
     "azure-nspkg==3.0.2",
+    "azure-identity==1.5.0",
+    "azure-keyvault-secrets==4.2.0",
     "azure-storage-blob==12.6.0",
     "Babel==2.9.0",
     "bcrypt==3.2.0",
@@ -232,7 +234,7 @@ install_requires = [
 ]
 
 setup(name='docassemble.webapp',
-      version='1.2.31',
+      version='1.2.45',
       python_requires='>=3.8',
       description=('The web application components of the docassemble system.'),
       long_description=read("README.md"),

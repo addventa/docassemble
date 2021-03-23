@@ -844,7 +844,7 @@ def error_object(err):
     error_message = str(err)
     error_trace = None
     worker_controller.error_notification(err, message=error_message, trace=error_trace)
-    return(worker_controller.functions.ReturnValue(ok=False, error_message=error_message, error_type=error_type, error_trace=error_trace))
+    return(worker_controller.functions.ReturnValue(ok=False, error_message=error_message, error_type=error_type, error_trace=error_trace, restart=False))
 
 @workerapp.task
 def ocr_finalize(*pargs, **kwargs):
@@ -962,29 +962,32 @@ def reset_server(result):
     return result
 
 @workerapp.task
-def update_packages():
+def update_packages(restart=True):
+    start_time = time.time()
     print("update_packages in worker: starting\n")
     if not hasattr(worker_controller, 'loaded'):
         print('initialize worker controller')
         initialize_db()
-    print("update_packages in worker: continuing\n")
+    print("update_packages in worker: continuing after " + str(time.time() - start_time) + " seconds\n")
     try:
         with worker_controller.flaskapp.app_context():
-            print("update_packages in worker: importing update\n")
+            worker_controller.set_request_active(False)
+            print("update_packages in worker: importing update after " + str(time.time() - start_time) + " seconds\n")
             import docassemble.webapp.update
-            print("update_packages in worker: starting update\n")
-            ok, logmessages, results = docassemble.webapp.update.check_for_updates()
-            print("update_packages in worker: update completed\n")
-            worker_controller.trigger_update(except_for=hostname)
-            print("update_packages in worker: trigger completed\n")
-            return worker_controller.functions.ReturnValue(ok=ok, logmessages=logmessages, results=results, hostname=hostname)
+            print("update_packages in worker: starting update after " + str(time.time() - start_time) + " seconds\n")
+            ok, logmessages, results = docassemble.webapp.update.check_for_updates(start_time=start_time, full=restart)
+            print("update_packages in worker: update completed after " + str(time.time() - start_time) + " seconds\n")
+            if restart:
+                worker_controller.trigger_update(except_for=hostname)
+                print("update_packages in worker: trigger completed after " + str(time.time() - start_time) + " seconds\n")
+            return worker_controller.functions.ReturnValue(ok=ok, logmessages=logmessages, results=results, hostname=hostname, restart=restart)
     except:
         e = sys.exc_info()[0]
         error_mess = sys.exc_info()[1]
         print("update_packages in worker: error was " + str(e) + " with message " + str(error_mess) + "\n")
-        return worker_controller.functions.ReturnValue(ok=False, error_message=str(e))
+        return worker_controller.functions.ReturnValue(ok=False, error_message=str(e), restart=False)
     print("update_packages in worker: all done\n")
-    return worker_controller.functions.ReturnValue(ok=False, error_message="Reached end")
+    return worker_controller.functions.ReturnValue(ok=False, error_message="Reached end", restart=False)
 
 @workerapp.task
 def email_attachments(user_code, email_address, attachment_info, language, subject=None, body=None, html=None):

@@ -34,6 +34,7 @@ import docassemble.base.pdftk
 import docassemble.base.file_docx
 from docassemble.base.error import DAError, MandatoryQuestion, DAErrorNoEndpoint, DAErrorMissingVariable, ForcedNameError, QuestionError, ResponseError, BackgroundResponseError, BackgroundResponseActionError, CommandError, CodeExecute, DAValidationError, ForcedReRun, LazyNameError, DAAttributeError, DAIndexError
 import docassemble.base.functions
+import docassemble.base.util
 from docassemble.base.functions import pickleable_objects, word, get_language, server, RawValue, get_config
 from docassemble.base.logger import logmessage
 from docassemble.base.pandoc import MyPandoc, word_to_markdown
@@ -992,6 +993,7 @@ class InterviewStatus:
                 if field.datatype in ('checkboxes', 'object_checkboxes') and ((hasattr(field, 'nota') and self.extras['nota'][field.number] is not False) or (hasattr(field, 'extras') and (('minlength' in field.extras and 'minlength' in self.extras) or ('maxlength' in field.extras and 'maxlength' in self.extras)))):
                     if hasattr(field, 'extras') and (('minlength' in field.extras and 'minlength' in self.extras) or ('maxlength' in field.extras and 'maxlength' in self.extras)):
                         checkbox_messages = dict()
+                        checkbox_rules = dict()
                         if 'minlength' in field.extras and 'minlength' in self.extras and 'maxlength' in field.extras and 'maxlength' in self.extras and self.extras['minlength'][field.number] == self.extras['maxlength'][field.number] and self.extras['minlength'][field.number] > 0:
                             if 'nota' not in self.extras:
                                 self.extras['nota'] = dict()
@@ -1017,26 +1019,26 @@ class InterviewStatus:
                 if field.datatype == 'date':
                     the_field['validation_messages']['date'] = field.validation_message('date', self, word("You need to enter a valid date."))
                     if hasattr(field, 'extras') and 'min' in field.extras and 'min' in self.extras and 'max' in field.extras and 'max' in self.extras and field.number in self.extras['min'] and field.number in self.extras['max']:
-                        the_field['validation_messages']['minmax'] = field.validation_message('date minmax', self, word("You need to enter a date between %s and %s."), parameters=(format_date(self.extras['min'][field.number], format='medium'), format_date(self.extras['max'][field.number], format='medium')))
+                        the_field['validation_messages']['minmax'] = field.validation_message('date minmax', self, word("You need to enter a date between %s and %s."), parameters=(docassemble.base.util.format_date(self.extras['min'][field.number], format='medium'), docassemble.base.util.format_date(self.extras['max'][field.number], format='medium')))
                     else:
                         was_defined = dict()
                         for key in ['min', 'max']:
                             if hasattr(field, 'extras') and key in field.extras and key in self.extras and field.number in self.extras[key]:
                                 was_defined[key] = True
                                 if key == 'min':
-                                    the_field['validation_messages']['min'] = field.validation_message('date min', self, word("You need to enter a date on or after %s."), parameters=tuple([format_date(self.extras[key][field.number], format='medium')]))
+                                    the_field['validation_messages']['min'] = field.validation_message('date min', self, word("You need to enter a date on or after %s."), parameters=tuple([docassemble.base.util.format_date(self.extras[key][field.number], format='medium')]))
                                 elif key == 'max':
-                                    the_field['validation_messages']['max'] = field.validation_message('date max', self, word("You need to enter a date on or before %s."), parameters=tuple([format_date(self.extras[key][field.number], format='medium')]))
+                                    the_field['validation_messages']['max'] = field.validation_message('date max', self, word("You need to enter a date on or before %s."), parameters=tuple([docassemble.base.util.format_date(self.extras[key][field.number], format='medium')]))
                         if len(was_defined) == 0 and 'default date min' in self.question.interview.options and 'default date max' in self.question.interview.options:
-                            the_field['min'] = format_date(self.question.interview.options['default date min'], format='yyyy-MM-dd')
-                            the_field['max'] = format_date(self.question.interview.options['default date max'], format='yyyy-MM-dd')
-                            the_field['validation_messages']['minmax'] = field.validation_message('date minmax', self, word("You need to enter a date between %s and %s."), parameters=(format_date(self.question.interview.options['default date min'], format='medium'), format_date(self.question.interview.options['default date max'], format='medium')))
+                            the_field['min'] = docassemble.base.util.format_date(self.question.interview.options['default date min'], format='yyyy-MM-dd')
+                            the_field['max'] = docassemble.base.util.format_date(self.question.interview.options['default date max'], format='yyyy-MM-dd')
+                            the_field['validation_messages']['minmax'] = field.validation_message('date minmax', self, word("You need to enter a date between %s and %s."), parameters=(docassemble.base.util.format_date(self.question.interview.options['default date min'], format='medium'), docassemble.base.util.format_date(self.question.interview.options['default date max'], format='medium')))
                         elif 'max' not in was_defined and 'default date max' in self.question.interview.options:
-                            the_field['max'] = format_date(self.question.interview.options['default date max'], format='yyyy-MM-dd')
-                            the_field['validation_messages']['max'] = field.validation_message('date max', self, word("You need to enter a date on or before %s."), parameters=tuple([format_date(self.question.interview.options['default date max'], format='medium')]))
+                            the_field['max'] = docassemble.base.util.format_date(self.question.interview.options['default date max'], format='yyyy-MM-dd')
+                            the_field['validation_messages']['max'] = field.validation_message('date max', self, word("You need to enter a date on or before %s."), parameters=tuple([docassemble.base.util.format_date(self.question.interview.options['default date max'], format='medium')]))
                         elif 'min' not in was_defined and 'default date min' in self.question.interview.options:
-                            the_field['min'] = format_date(self.question.interview.options['default date min'], format='yyyy-MM-dd')
-                            the_field['validation_messages']['min'] = field.validation_message('date min', self, word("You need to enter a date on or after %s."), parameters=tuple([format_date(self.question.interview.options['default date min'], format='medium')]))
+                            the_field['min'] = docassemble.base.util.format_date(self.question.interview.options['default date min'], format='yyyy-MM-dd')
+                            the_field['validation_messages']['min'] = field.validation_message('date min', self, word("You need to enter a date on or after %s."), parameters=tuple([docassemble.base.util.format_date(self.question.interview.options['default date min'], format='medium')]))
                 if field.datatype == 'time':
                     the_field['validation_messages']['time'] = field.validation_message('time', self, word("You need to enter a valid time."))
                 if field.datatype in ['datetime', 'datetime-local']:
@@ -4510,16 +4512,20 @@ class Question:
             if 'raw' in target and target['raw']:
                 if 'content file' in target:
                     content_file = target['content file']
-                    if not isinstance(content_file, list):
-                        content_file = [content_file]
-                    the_ext = None
-                    for item in content_file:
-                        (the_base, the_ext) = os.path.splitext(item)
-                    if the_ext:
-                        target['raw'] = the_ext
+                    if isinstance(content_file, dict):
                         target['valid formats'] = ['raw']
+                        target['raw'] = '.txt'
                     else:
-                        target['raw'] = False
+                        if not isinstance(content_file, list):
+                            content_file = [content_file]
+                        the_ext = None
+                        for item in content_file:
+                            (the_base, the_ext) = os.path.splitext(item)
+                        if the_ext:
+                            target['raw'] = the_ext
+                            target['valid formats'] = ['raw']
+                        else:
+                            target['raw'] = False
                 else:
                     target['raw'] = False
             else:
@@ -5184,7 +5190,7 @@ class Question:
                 if hasattr(field, 'action'):
                     if 'action' not in extras:
                         extras['action'] = dict()
-                    extras['action'][field.number] = substitute_vars(json.dumps(field.action), self.is_generic, the_x, iterators)
+                    extras['action'][field.number] = json.dumps(substitute_vars_action(field.action, self.is_generic, the_x, iterators))
                 if hasattr(field, 'extras'):
                     if 'show_if_js' in field.extras:
                         if 'show_if_js' not in extras:
@@ -6017,11 +6023,10 @@ class Question:
         try:
             for doc_format in result['formats_to_use']:
                 if doc_format == 'raw':
-                    the_temp = tempfile.NamedTemporaryFile(prefix="datemp", mode="wb", suffix=attachment['raw'], delete=False)
+                    the_temp = tempfile.NamedTemporaryFile(prefix="datemp", mode="wb", suffix=result['raw'], delete=False)
                     with open(the_temp.name, 'w', encoding='utf-8') as the_file:
                         the_file.write(result['markdown'][doc_format].lstrip("\n"))
-                    result['file'][doc_format], result['extension'][doc_format], result['mimetype'][doc_format] = docassemble.base.functions.server.save_numbered_file(result['filename'] + attachment['raw'], the_temp.name, yaml_file_name=self.interview.source.path)
-                    result['raw'] = attachment['raw']
+                    result['file'][doc_format], result['extension'][doc_format], result['mimetype'][doc_format] = docassemble.base.functions.server.save_numbered_file(result['filename'] + result['raw'], the_temp.name, yaml_file_name=self.interview.source.path)
                     result['content'][doc_format] = result['markdown'][doc_format].lstrip("\n")
                 elif doc_format in ('pdf', 'rtf', 'rtf to docx', 'tex', 'docx'):
                     if 'fields' in attachment['options']:
@@ -6213,6 +6218,7 @@ class Question:
             if the_filename == '':
                 the_filename = docassemble.base.functions.secure_filename(docassemble.base.functions.space_to_underscore(the_name))
             result = {'name': the_name, 'filename': the_filename, 'description': attachment['description'].text(the_user_dict), 'valid_formats': attachment['valid_formats']}
+            actual_extension = attachment['raw']
             if attachment['content'] is None and 'content file code' in attachment['options']:
                 raw_content = ''
                 the_filenames = eval(attachment['options']['content file code'], the_user_dict)
@@ -6239,6 +6245,7 @@ class Question:
                         the_filename = None
                     if the_filename is None or not os.path.isfile(the_filename):
                         raise DAError("prepare_attachment: error obtaining template file from code: " + repr(the_orig_filename))
+                    (the_base, actual_extension) = os.path.splitext(the_filename)
                     with open(the_filename, 'rU', encoding='utf-8') as the_file:
                         raw_content += the_file.read()
                 the_content = TextObject(raw_content, question=self)
@@ -6262,7 +6269,7 @@ class Question:
             result['mimetype'] = dict();
             result['file'] = dict();
             if attachment['raw']:
-                result['raw'] = attachment['raw']
+                result['raw'] = actual_extension
                 result['formats_to_use'] = ['raw']
             else:
                 result['raw'] = False
@@ -8545,6 +8552,29 @@ def substitute_vars(var, is_generic, the_x, iterators, last_only=False):
                 var = re.sub(r'\[' + list_of_indices[indexno] + r'\]', '[' + str(iterators[indexno]) + ']', var)
     return var
 
+def substitute_vars_action(action, is_generic, the_x, iterators):
+    if isinstance(action, str):
+        return substitute_vars(action, is_generic, the_x, iterators)
+    elif isinstance(action, dict):
+        new_dict = dict()
+        for key, val in action.items():
+            if key == 'action' and not key.startswith('_da_'):
+                new_dict[key] = substitute_vars_action(val, is_generic, the_x, iterators)
+            elif key == 'arguments' and isinstance(val, dict) and 'variables' in val and len(val) == 1:
+                new_dict[key] = substitute_vars_action(val, is_generic, the_x, iterators)
+            elif key == 'variables' and isinstance(val, list):
+                new_dict[key] = substitute_vars_action(val, is_generic, the_x, iterators)
+            else:
+                new_dict[key] = val
+        return new_dict
+    elif isinstance(action, list):
+        new_list = list()
+        for item in action:
+            new_list.append(substitute_vars_action(item, is_generic, the_x, iterators))
+        return new_list
+    else:
+        return action
+
 def reproduce_basics(interview, new_interview):
     new_interview.metadata = interview.metadata
     new_interview.external_files = interview.external_files
@@ -9035,6 +9065,8 @@ def custom_jinja_env():
     env.filters['alpha'] = docassemble.base.functions.alpha
     env.filters['roman'] = docassemble.base.functions.roman
     env.filters['word'] = docassemble.base.functions.word
+    env.filters['bold'] = docassemble.base.functions.bold
+    env.filters['italic'] = docassemble.base.functions.italic
     env.filters['title_case'] = docassemble.base.functions.title_case
     env.filters['single_paragraph'] = docassemble.base.functions.single_paragraph
     env.filters['phone_number_formatted'] = docassemble.base.functions.phone_number_formatted

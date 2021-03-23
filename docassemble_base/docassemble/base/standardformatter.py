@@ -825,6 +825,7 @@ def as_html(status, url_for, debug, root, validation_rules, field_error, the_pro
         status.saveas_to_use = dict()
         status.saveas_by_number = dict()
         seen_first = False
+        null_question = True
         for field in field_list:
             if 'html' in status.extras and field.number in status.extras['html']:
                 note_fields[field.number] = status.extras['html'][field.number].rstrip()
@@ -890,6 +891,8 @@ def as_html(status, url_for, debug, root, validation_rules, field_error, the_pro
                 continue
             if not status.extras['ok'][field.number]:
                 continue
+            if hasattr(field, 'saveas'):
+                null_question = False
             if status.extras['required'][field.number]:
                 req_tag = ' darequired'
             else:
@@ -1287,6 +1290,8 @@ def as_html(status, url_for, debug, root, validation_rules, field_error, the_pro
             output += '                <input type="hidden" name="_ml_info" value=' + myb64doublequote(json.dumps(ml_info)) + '/>\n'
         if len(files):
             output += '                <input type="hidden" name="_files" value=' + myb64doublequote(json.dumps(files)) + '/>\n'
+        if null_question:
+            output += '                <input type="hidden" name="_null_question" value="1" />\n'
         output += status.submit
         output += '                <fieldset class="da-field-buttons"><legend class="sr-only">' + word('Press one of the following buttons:') + '</legend>\n'
         if hasattr(status.question, 'fields_saveas'):
@@ -1390,12 +1395,17 @@ def as_html(status, url_for, debug, root, validation_rules, field_error, the_pro
                     if status.question.question_variety == 'combobox':
                         combobox = ' combobox'
                         daspaceafter = ' daspaceafter'
+                        if defaultvalue:
+                            datadefault = ' data-default=' + fix_double_quote(str(defaultvalue))
+                        else:
+                            datadefault = ''
                         field_container_class = ' da-field-container-combobox'
                     else:
                         combobox = ''
+                        datadefault = ''
                         daspaceafter = ''
                         field_container_class = ' da-field-container-dropdown'
-                    output += '                <div class="row' + field_container_class + '"><div class="col-md-12' + daspaceafter + '"><select class="form-control daspaceafter' + combobox + '" name="' + escape_id(status.question.fields[0].saveas) + '" id="' + escape_id(status.question.fields[0].saveas) + '">' + "".join(inner_fieldlist) + '</select></div></div>\n'
+                    output += '                <div class="row' + field_container_class + '"><div class="col-md-12' + daspaceafter + '"><select class="form-control daspaceafter' + combobox + '"' + datadefault + ' name="' + escape_id(status.question.fields[0].saveas) + '" id="' + escape_id(status.question.fields[0].saveas) + '">' + "".join(inner_fieldlist) + '</select></div></div>\n'
                 if status.question.question_variety == 'combobox':
                     validation_rules['ignore'] = list()
                     validation_rules['messages'][status.question.fields[0].saveas] = {'required': status.question.fields[0].validation_message('combobox required', status, word("You need to select one or type in a new value."))}
@@ -1439,7 +1449,11 @@ def as_html(status, url_for, debug, root, validation_rules, field_error, the_pro
                     else:
                         combobox = ' daspaceafter'
                         daspaceafter = ''
-                    output += '                <div class="row"><div class="col-md-12' + daspaceafter + '"><select class="form-control ' + combobox + '" name="X211bHRpcGxlX2Nob2ljZQ">' + "".join(inner_fieldlist) + '</select></div></div>\n'
+                    if defaultvalue:
+                        datadefault = ' data-default=' + fix_double_quote(str(defaultvalue))
+                    else:
+                        datadefault = ''
+                    output += '                <div class="row"><div class="col-md-12' + daspaceafter + '"><select class="form-control ' + combobox + '"' + datadefault + ' name="X211bHRpcGxlX2Nob2ljZQ">' + "".join(inner_fieldlist) + '</select></div></div>\n'
                 if status.question.question_variety == 'combobox':
                     validation_rules['ignore'] = list()
                     validation_rules['messages']['X211bHRpcGxlX2Nob2ljZQ'] = {'required': status.question.fields[0].validation_message('combobox required', status, word("You need to select one or type in a new value."))}
@@ -2076,6 +2090,10 @@ def input_for(status, field, wide=False, embedded=False):
         extra_checkbox = ''
         extra_radio = ''
         title_text = ''
+    if field.datatype == 'password':
+        autocomplete_off = ' autocomplete="new-password"'
+    else:
+        autocomplete_off = ''
     if hasattr(field, 'choicetype'):
         # logmessage("In a choicetype where field datatype is " + field.datatype)
         # if hasattr(field, 'inputtype'):
@@ -2243,6 +2261,10 @@ def input_for(status, field, wide=False, embedded=False):
                 daobject = ' daobject'
             else:
                 daobject = ''
+            if hasattr(field, 'inputtype') and field.inputtype == 'combobox' and defaultvalue:
+                datadefault = ' data-default=' + fix_double_quote(str(defaultvalue))
+            else:
+                datadefault = ''
             if embedded:
                 emb_text = 'class="dainput-embedded' + daobject + '" '
                 if inline_width is not None:
@@ -2258,7 +2280,7 @@ def input_for(status, field, wide=False, embedded=False):
                     emb_text = 'class="form-control' + daobject + '" '
             if embedded:
                 output += '<span class="da-inline-error-wrapper">'
-            output += '<select ' + emb_text + 'name="' + escape_id(saveas_string) + '" id="' + escape_id(saveas_string) + '" ' + disable_others_data + '>'
+            output += '<select ' + emb_text + 'name="' + escape_id(saveas_string) + '"' + datadefault + ' id="' + escape_id(saveas_string) + '" ' + disable_others_data + '>'
             first_option = ''
             if hasattr(field, 'inputtype') and field.inputtype == 'combobox' and not embedded:
                 if placeholdertext == '':
@@ -2590,9 +2612,9 @@ def input_for(status, field, wide=False, embedded=False):
                 extra_class = ' ' + custom_types[field.datatype]['input_class']
             output += '<input' + defaultstring + placeholdertext + ' alt="' + word("Input box") + '" class="form-control' + extra_class + '"' + extra_style + title_text + ' type="' + input_type + '"' + step_string + ' name="' + escape_id(saveas_string) + '" id="' + escape_id(saveas_string) + '"'
             if not embedded and field.datatype == 'currency':
-                output += ' aria-describedby="addon-' + do_escape_id(saveas_string) + '"' + disable_others_data + '/></div><label style="display: none;" for="' + escape_id(saveas_string) + '" class="da-has-error text-danger" id="' + escape_id(saveas_string) + '-error"></label>'
+                output += ' aria-describedby="addon-' + do_escape_id(saveas_string) + '"' + disable_others_data + autocomplete_off + ' /></div><label style="display: none;" for="' + escape_id(saveas_string) + '" class="da-has-error text-danger" id="' + escape_id(saveas_string) + '-error"></label>'
             else:
-                output += disable_others_data + '/>'
+                output += disable_others_data + autocomplete_off + ' />'
             if embedded:
                 if field.datatype == 'currency':
                     output += '</span></span>'

@@ -92,6 +92,8 @@ class DAEmpty:
         return DAEmpty()
     def __setitem__(self, index, val):
         return
+    def __delitem__(self, index):
+        return
     def __call__(self, *pargs, **kwargs):
         return DAEmpty()
     def __repr__(self):
@@ -279,6 +281,11 @@ class DAObject:
         for attr in pargs:
             if hasattr(self, attr):
                 invalidate(self.instanceName + '.' + attr)
+    def getattr_fresh(self, attr):
+        """Compute a fresh value of the given attr and return it."""
+        if hasattr(self, attr):
+            docassemble.base.functions.reconsider(self.instanceName + '.' + attr)
+        return getattr(self, attr)
     def is_peer_relation(self, target, relationship_type, tree):
         for item in tree.query_peer(tree._and(involves=[self, target], relationship_type=relationship_type)):
             return True
@@ -1114,6 +1121,14 @@ class DAList(DAObject):
         if hasattr(self, 'doing_gathered_and_complete'):
             del self.doing_gathered_and_complete
         return True
+    def item_name(self, item):
+        """Returns a variable name for an item, suitable for use in force_ask() and other functions."""
+        return self.instanceName + '[' + repr(item) + ']'
+    def delitem(self, *pargs):
+        """Deletes items."""
+        for item in reversed([item for item in pargs if item < len(self.elements)]):
+            self.elements.__delitem__(item)
+        self._reset_instance_names()
     def copy(self):
         """Returns a copy of the list."""
         return self.elements.copy()
@@ -1778,7 +1793,7 @@ class DAList(DAObject):
         index = the_args.pop(0)
         output = ''
         if kwargs.get('reorder', False):
-            output += '<a href="#" role="button" class="btn btn-sm ' + server.button_class_prefix + 'info btn-darevisit datableup" data-tablename="' + myb64quote(self.instanceName) + '" data-tableitem="' + str(index) + '" title=' + json.dumps(word("Reorder by moving up")) + '><i class="fas fa-arrow-up"></i><span class="sr-only">' + word("Move down") + '</span></a> <a href="#" role="button" class="btn btn-sm ' + server.button_class_prefix + 'info btn-darevisit databledown"><i class="fas fa-arrow-down" title=' + json.dumps(word("Reorder by moving down")) + '></i><span class="sr-only">' + word("Move down") + '</span></a> '
+            output += '<span class="text-nowrap"><a href="#" role="button" class="btn btn-sm ' + server.button_class_prefix + 'info btn-darevisit datableup" data-tablename="' + myb64quote(self.instanceName) + '" data-tableitem="' + str(index) + '" title=' + json.dumps(word("Reorder by moving up")) + '><i class="fas fa-arrow-up"></i><span class="sr-only">' + word("Move down") + '</span></a> <a href="#" role="button" class="btn btn-sm ' + server.button_class_prefix + 'info btn-darevisit databledown"><i class="fas fa-arrow-down" title=' + json.dumps(word("Reorder by moving down")) + '></i><span class="sr-only">' + word("Move down") + '</span></a></span> '
         if self.minimum_number is not None and len(self.elements) <= self.minimum_number:
             can_delete = False
         else:
@@ -1951,6 +1966,24 @@ class DADict(DAObject):
             if isinstance(value, DAObject):
                 value._reset_gathered_recursively()
         return super()._reset_gathered_recursively()
+    def item_name(self, item):
+        """Returns a variable name for an item, suitable for use in force_ask() and other functions."""
+        return self.instanceName + '[' + repr(item) + ']'
+    def delitem(self, *pargs):
+        """Deletes items."""
+        for item in pargs:
+            if item in self.elements:
+                del self[item]
+    def invalidate_item(self, *pargs):
+        """Invalidate items."""
+        for item in pargs:
+            if item in self.elements.keys():
+                invalidate(self.instanceName + '[' + repr(item) + ']')
+    def getitem_fresh(self, item):
+        """Compute a fresh value of the given item and return it."""
+        if item in self.elements:
+            docassemble.base.functions.reconsider(self.instanceName + '[' + repr(item) + ']')
+        return self[item]
     def all_false(self, *pargs, **kwargs):
         """Returns True if the values of all keys are false.  If one or more
         keys are provided as arguments, returns True if all of the
@@ -3504,12 +3537,14 @@ class DAFile(DAObject):
         """Returns a list of fields that exist in the PDF document"""
         results = list()
         import docassemble.base.pdftk
-        for item in docassemble.base.pdftk.read_fields(self.path()):
-            the_type = re.sub(r'[^/A-Za-z]', '', str(item[4]))
-            if the_type == 'None':
-                the_type = None
-            result = (item[0], '' if item[1] == 'something' else item[1], item[2], item[3], the_type, item[5])
-            results.append(result)
+        all_items = docassemble.base.pdftk.read_fields(self.path())
+        if all_items is not None:
+            for item in all_items:
+                the_type = re.sub(r'[^/A-Za-z]', '', str(item[4]))
+                if the_type == 'None':
+                    the_type = None
+                result = (item[0], '' if item[1] == 'something' else item[1], item[2], item[3], the_type, item[5])
+                results.append(result)
         return results
     def from_url(self, url):
         """Makes the contents of the file the contents of the given URL."""
@@ -3524,7 +3559,7 @@ class DAFile(DAObject):
         c.setopt(pycurl.USERAGENT, server.daconfig.get('user agent', 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Googlebot/2.1; +http://www.google.com/bot.html) Safari/537.36'))
         c.setopt(pycurl.COOKIEFILE, cookiefile.name)
         c.perform()
-        status_code = curl.getinfo(pycurl.HTTP_CODE)
+        status_code = c.getinfo(pycurl.HTTP_CODE)
         c.close()
         if status_code >= 400:
             raise Exception("from_url: Error %s" % (status_code,))

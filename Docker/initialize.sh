@@ -39,7 +39,7 @@ echo "config.yml is at" $DA_CONFIG_FILE >&2
 
 echo "1" >&2
 echo "--------------------------" >&2
-echo "Docassemble V1.2.31-1" >&2
+echo "Docassemble V1.2.45-1" >&2
 echo "--------------------------" >&2
 
 export DEBIAN_FRONTEND=noninteractive
@@ -632,6 +632,7 @@ if [ "${DAWEBSERVER:-nginx}" = "nginx" ]; then
 		    -e 's@{{DASSLPROTOCOLS}}@'"${DASSLPROTOCOLS}"'@' \
                     -e 's@{{DAWEBSOCKETSIP}}@'"${DAWEBSOCKETSIP:-127.0.0.1}"'@' \
                     -e 's@{{DAWEBSOCKETSPORT}}@'"${DAWEBSOCKETSPORT:-5000}"'@' \
+                    -e 's@{{DALISTENPORT}}@'"${PORT:-80}"'@' \
                     "${DA_ROOT}/config/nginx-ssl.dist" > "/etc/nginx/sites-available/docassemblessl"
                 rm -f /etc/letsencrypt/da_using_lets_encrypt
             fi
@@ -644,6 +645,7 @@ if [ "${DAWEBSERVER:-nginx}" = "nginx" ]; then
                     -e 's@{{DAMAXCONTENTLENGTH}}@'"${DAMAXCONTENTLENGTH}"'@' \
                     -e 's@{{DAWEBSOCKETSIP}}@'"${DAWEBSOCKETSIP:-127.0.0.1}"'@' \
                     -e 's@{{DAWEBSOCKETSPORT}}@'"${DAWEBSOCKETSPORT:-5000}"'@' \
+                    -e 's@{{DALISTENPORT}}@'"${PORT:-80}"'@' \
                     "${DA_ROOT}/config/nginx-http.dist" > "/etc/nginx/sites-available/docassemblehttp"
                 rm -f /etc/letsencrypt/da_using_lets_encrypt
             fi
@@ -670,6 +672,7 @@ if [ "${DAWEBSERVER:-nginx}" = "nginx" ]; then
                     -e 's@{{DAMAXCONTENTLENGTH}}@'"${DAMAXCONTENTLENGTH}"'@' \
                     -e 's@{{DAWEBSOCKETSIP}}@'"${DAWEBSOCKETSIP:-127.0.0.1}"'@' \
                     -e 's@{{DAWEBSOCKETSPORT}}@'"${DAWEBSOCKETSPORT:-5000}"'@' \
+                    -e 's@{{DALISTENPORT}}@'"${PORT:-80}"'@' \
                     "${DA_ROOT}/config/nginx-http.dist" > "/etc/nginx/sites-available/docassemblehttp"
             fi
         fi
@@ -894,6 +897,10 @@ fi
 
 echo "37" >&2
 
+su -c "source \"${DA_ACTIVATE}\" && pip config set global.disable-pip-version-check true" www-data
+
+echo "37.1" >&2
+
 if [ "${DAUPDATEONSTART:-true}" = "true" ] && [ "${DAALLOWUPDATES:-true}" == "true" ]; then
     echo "Doing upgrading of packages" >&2
     su -c "source \"${DA_ACTIVATE}\" &&  python -m docassemble.webapp.update \"${DA_CONFIG_FILE}\" initialize" www-data || exit 1
@@ -937,6 +944,12 @@ echo "40" >&2
 
 if [[ $CONTAINERROLE =~ .*:(all|celery):.* ]] && [ "$CELERYRUNNING" = false ]; then
     supervisorctl --serverurl http://localhost:9001 start celery
+fi
+
+NASCENTRUNNING=true;
+if [ "${USEHTTPS:-false}" == "true" ] && [ "${USELETSENCRYPT:-false}" == "true" ]; then
+    supervisorctl --serverurl http://localhost:9001 stop nascent &> /dev/null
+    NASCENTRUNNING=false;
 fi
 
 if [ "${DAWEBSERVER:-nginx}" = "nginx" ]; then
@@ -1041,6 +1054,9 @@ if [ "${DAWEBSERVER:-nginx}" = "nginx" ]; then
     fi
     if [[ $CONTAINERROLE =~ .*:(all|web|log):.* ]]; then
         if [ "$NGINXRUNNING" = false ]; then
+	    if [ "$NASCENTRUNNING" = true ]; then
+		supervisorctl --serverurl http://localhost:9001 stop nascent &> /dev/null
+	    fi
             supervisorctl --serverurl http://localhost:9001 start nginx
         fi
     fi
@@ -1103,7 +1119,7 @@ if [ "${DAWEBSERVER:-nginx}" = "apache" ]; then
     echo "43" >&2
 
     if [[ $CONTAINERROLE =~ .*:(all|web):.* ]] && [ "$APACHERUNNING" = false ]; then
-        echo "Listen 80" > /etc/apache2/ports.conf
+        echo "Listen ${PORT:-80}" > /etc/apache2/ports.conf
         if [ "${DAPYTHONMANUAL:-0}" == "0" ]; then
             WSGI_VERSION=`apt-cache policy libapache2-mod-wsgi-py3 | grep '^  Installed:' | awk '{print $2}'`
             if [ "${WSGI_VERSION}" != '4.6.5-1' ]; then
@@ -1148,7 +1164,7 @@ if [ "${DAWEBSERVER:-nginx}" = "apache" ]; then
             echo -e "LoadModule wsgi_module ${DA_PYTHON:-${DA_ROOT}/${DA_DEFAULT_LOCAL}}/lib/python3.5/site-packages/mod_wsgi/server/mod_wsgi-py35.cpython-35m-x86_64-linux-gnu.so" >> /etc/apache2/conf-available/docassemble.conf
         fi
         echo -e "WSGIPythonHome ${DA_PYTHON:-${DA_ROOT}/${DA_DEFAULT_LOCAL}}" >> /etc/apache2/conf-available/docassemble.conf
-        echo -e "Timeout ${DATIMEOUT:-60}\nDefine DAHOSTNAME ${DAHOSTNAME}\nDefine DAPOSTURLROOT ${POSTURLROOT}\nDefine DAWSGIROOT ${WSGIROOT}\nDefine DASERVERADMIN ${SERVERADMIN}\nDefine DAWEBSOCKETSIP ${DAWEBSOCKETSIP}\nDefine DAWEBSOCKETSPORT ${DAWEBSOCKETSPORT}\nDefine DACROSSSITEDOMAINVALUE *" >> /etc/apache2/conf-available/docassemble.conf
+        echo -e "Timeout ${DATIMEOUT:-60}\nDefine DAHOSTNAME ${DAHOSTNAME}\nDefine DAPOSTURLROOT ${POSTURLROOT}\nDefine DAWSGIROOT ${WSGIROOT}\nDefine DASERVERADMIN ${SERVERADMIN}\nDefine DAWEBSOCKETSIP ${DAWEBSOCKETSIP}\nDefine DAWEBSOCKETSPORT ${DAWEBSOCKETSPORT}\nDefine DACROSSSITEDOMAINVALUE *\nDefine DALISTENPORT ${PORT:-80}" >> /etc/apache2/conf-available/docassemble.conf
         if [ "${BEHINDHTTPSLOADBALANCER:-false}" == "true" ]; then
             echo "Listen 8081" >> /etc/apache2/ports.conf
             a2ensite docassemble-redirect
@@ -1194,6 +1210,9 @@ if [ "${DAWEBSERVER:-nginx}" = "apache" ]; then
     echo "46" >&2
 
     if [[ $CONTAINERROLE =~ .*:(all|web|log):.* ]] && [ "$APACHERUNNING" = false ]; then
+	if [ "$NASCENTRUNNING" = true ]; then
+	    supervisorctl --serverurl http://localhost:9001 stop nascent &> /dev/null
+	fi
         supervisorctl --serverurl http://localhost:9001 start apache2
     fi
 fi
