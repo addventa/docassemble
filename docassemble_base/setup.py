@@ -46,7 +46,7 @@ def find_package_data(where='.', package='', exclude=standard_exclude, exclude_d
     return out
 
 install_requires = [
-    'docassemble==1.2.23',
+    'docassemble==1.2.45',
     "3to2==1.1.1",
     "alembic==1.4.3",
     "astunparse==1.6.3",
@@ -55,7 +55,7 @@ install_requires = [
     "Babel==2.9.0",
     "bcrypt==3.2.0",
     "beautifulsoup4==4.9.3",
-    "bleach==3.2.1",
+    "bleach==3.3.0",
     "blinker==1.4",
     "cachetools==4.1.1",
     "certifi==2020.11.8",
@@ -64,13 +64,12 @@ install_requires = [
     "click==7.1.2",
     "colorama==0.4.4",
     "convertapi==1.4.0",
-    "cryptography==3.2.1",
+    "cryptography==3.3.2",
     "docopt==0.6.2",
     "docutils==0.16",
     "docxcompose==1.3.0",
     "docxtpl==0.11.2",
     "et-xmlfile==1.0.1",
-    "fdfgen==0.16.1",
     "future==0.18.2",
     "geographiclib==1.50",
     "geopy==2.0.0",
@@ -82,7 +81,7 @@ install_requires = [
     "google-i18n-address==2.4.0",
     "googleapis-common-protos==1.52.0",
     "guess-language-spirit==0.5.3",
-    "httplib2==0.18.1",
+    "httplib2==0.19.0",
     "hyphenate==1.1.0",
     "idna==2.10",
     "importlib-metadata==3.1.0",
@@ -177,6 +176,7 @@ install_requires = [
     "wcwidth==0.2.5",
     "webencodings==0.5.1",
     "Werkzeug==1.0.1",
+    "xfdfgen==0.4",
     "xlrd==1.2.0",
     "XlsxWriter==1.3.7",
     "xlwt==1.3.0",
@@ -190,7 +190,7 @@ install_requires = [
 ]
 
 setup(name='docassemble.base',
-      version='1.2.23',
+      version='1.2.45',
       python_requires='>=3.8',
       description=('The base components of the docassemble system.'),
       long_description=read("README.md"),

@@ -97,6 +97,14 @@ if __name__ == "__main__":
             print('export DBTABLEPREFIX="' + str(daconfig['db']['table prefix']) + '"')
         if 'backup' in daconfig['db'] and daconfig['db']['backup'] is not None:
             print('export DBBACKUP="' + ('true' if daconfig['db']['backup'] else 'false') + '"')
+        if 'ssl mode' in daconfig['db'] and daconfig['db']['ssl mode'] is not None:
+            print('export DBSSLMODE="' + str(daconfig['db']['ssl mode']) + '"')
+        if 'ssl cert' in daconfig['db'] and daconfig['db']['ssl cert'] is not None:
+            print('export DBSSLCERT="' + str(daconfig['db']['ssl cert']) + '"')
+        if 'ssl key' in daconfig['db'] and daconfig['db']['ssl key'] is not None:
+            print('export DBSSLKEY="' + str(daconfig['db']['ssl key']) + '"')
+        if 'ssl root cert' in daconfig['db'] and daconfig['db']['ssl root cert'] is not None:
+            print('export DBSSLROOTCERT="' + str(daconfig['db']['ssl root cert']) + '"')
     if 'update on start' in daconfig:
         if daconfig['update on start'] is False:
             print('export DAUPDATEONSTART=false')
@@ -108,6 +116,8 @@ if __name__ == "__main__":
         print('export DAEXPOSEWEBSOCKETS=true')
     if 'websockets ip' in daconfig and daconfig['websockets ip']:
         print('export DAWEBSOCKETSIP="' + str(daconfig['websockets ip']) + '"')
+    if 'http port' in daconfig and daconfig['http port']:
+        print('export PORT="' + str(daconfig['http port']) + '"')
     if 'stable version' in daconfig and daconfig['stable version']:
         print('export DASTABLEVERSION=true')
     if 'nginx ssl protocols' in daconfig and daconfig['nginx ssl protocols']:

@@ -29,6 +29,7 @@ from docassemble.base.config import daconfig, hostname, in_celery
 STATS = daconfig.get('collect statistics', False)
 DEBUG = daconfig.get('debug', False)
 ERROR_TYPES_NO_EMAIL = daconfig.get('suppress error notificiations', [])
+COOKIELESS_SESSIONS = daconfig.get('cookieless sessions', False)
 
 if DEBUG:
     PREVENT_DEMO = False
@@ -898,7 +899,7 @@ from flask_login import login_user, logout_user, current_user
 from docassemble_flask_user import login_required, roles_required
 from docassemble_flask_user import signals, user_logged_in, user_changed_password, user_registered, user_reset_password
 #from flask_wtf.csrf import generate_csrf
-from docassemble.webapp.develop import CreatePackageForm, CreatePlaygroundPackageForm, UpdatePackageForm, ConfigForm, PlaygroundForm, PlaygroundUploadForm, LogForm, Utilities, PlaygroundFilesForm, PlaygroundFilesEditForm, PlaygroundPackagesForm, GoogleDriveForm, OneDriveForm, GitHubForm, PullPlaygroundPackage, TrainingForm, TrainingUploadForm, APIKey, AddinUploadForm, RenameProject, DeleteProject, NewProject
+from docassemble.webapp.develop import CreatePackageForm, CreatePlaygroundPackageForm, UpdatePackageForm, ConfigForm, PlaygroundForm, PlaygroundUploadForm, LogForm, Utilities, PlaygroundFilesForm, PlaygroundFilesEditForm, PlaygroundPackagesForm, GoogleDriveForm, OneDriveForm, GitHubForm, PullPlaygroundPackage, TrainingForm, TrainingUploadForm, APIKey, AddinUploadForm, FunctionFileForm, RenameProject, DeleteProject, NewProject
 import docassemble_flask_user.signals
 import docassemble_flask_user.emails
 import docassemble_flask_user.views
@@ -1252,7 +1253,7 @@ def remove_question_package(args):
         del args['_package']
 
 def get_url_from_file_reference(file_reference, **kwargs):
-    if 'jsembed' in docassemble.base.functions.this_thread.misc:
+    if 'jsembed' in docassemble.base.functions.this_thread.misc or COOKIELESS_SESSIONS:
         kwargs['_external'] = True
     if 'privileged' in kwargs:
         privileged = kwargs['privileged']
@@ -1979,7 +1980,12 @@ def additional_scripts(interview_status, yaml_filename, as_javascript=False):
         ga_id = None
     output_js = ''
     if api_key is not None:
-        scripts += "\n" + '    <script src="https://maps.googleapis.com/maps/api/js?key=' + api_key + '&libraries=places"></script>'
+        region = google_config.get('region', None)
+        if region is None:
+            region = ''
+        else:
+            region = '&region=' + region
+        scripts += "\n" + '    <script src="https://maps.googleapis.com/maps/api/js?key=' + api_key + region + '&libraries=places"></script>'
         if as_javascript:
             output_js += """\
       var daScript = document.createElement('script');
@@ -2152,48 +2158,48 @@ def process_file(saved_file, orig_file, mimetype, extension, initial=True):
     elif initial:
         shutil.move(orig_file, saved_file.path)
         saved_file.save()
-    if mimetype == 'video/quicktime' and daconfig.get('avconv', 'avconv') is not None:
-        call_array = [daconfig.get('avconv', 'avconv'), '-i', saved_file.path + '.' + extension, '-vcodec', 'libtheora', '-acodec', 'libvorbis', saved_file.path + '.ogv']
-        try:
-            result = subprocess.run(call_array, timeout=120).returncode
-        except subprocess.TimeoutExpired:
-            result = 1
-        call_array = [daconfig.get('avconv', 'avconv'), '-i', saved_file.path + '.' + extension, '-vcodec', 'copy', '-acodec', 'copy', saved_file.path + '.mp4']
-        try:
-            result = subprocess.run(call_array, timeout=120).returncode
-        except subprocess.TimeoutExpired:
-            result = 1
-    if mimetype == 'video/mp4' and daconfig.get('avconv', 'avconv') is not None:
-        call_array = [daconfig.get('avconv', 'avconv'), '-i', saved_file.path + '.' + extension, '-vcodec', 'libtheora', '-acodec', 'libvorbis', saved_file.path + '.ogv']
-        try:
-            result = subprocess.run(call_array, timeout=120).returncode
-        except subprocess.TimeoutExpired:
-            result = 1
-    if mimetype == 'video/ogg' and daconfig.get('avconv', 'avconv') is not None:
-        call_array = [daconfig.get('avconv', 'avconv'), '-i', saved_file.path + '.' + extension, '-c:v', 'libx264', '-preset', 'veryslow', '-crf', '22', '-c:a', 'libmp3lame', '-qscale:a', '2', '-ac', '2', '-ar', '44100', saved_file.path + '.mp4']
-        try:
-            result = subprocess.run(call_array, timeout=120).returncode
-        except subprocess.TimeoutExpired:
-            result = 1
-    if mimetype == 'audio/mpeg' and daconfig.get('pacpl', 'pacpl') is not None:
-        call_array = [daconfig.get('pacpl', 'pacpl'), '-t', 'ogg', saved_file.path + '.' + extension]
-        try:
-            result = subprocess.run(call_array, timeout=120).returncode
-        except subprocess.TimeoutExpired:
-            result = 1
+    # if mimetype == 'video/quicktime' and daconfig.get('ffmpeg', 'ffmpeg') is not None:
+    #     call_array = [daconfig.get('ffmpeg', 'ffmpeg'), '-i', saved_file.path + '.' + extension, '-vcodec', 'libtheora', '-acodec', 'libvorbis', saved_file.path + '.ogv']
+    #     try:
+    #         result = subprocess.run(call_array, timeout=120).returncode
+    #     except subprocess.TimeoutExpired:
+    #         result = 1
+    #     call_array = [daconfig.get('ffmpeg', 'ffmpeg'), '-i', saved_file.path + '.' + extension, '-vcodec', 'copy', '-acodec', 'copy', saved_file.path + '.mp4']
+    #     try:
+    #         result = subprocess.run(call_array, timeout=120).returncode
+    #     except subprocess.TimeoutExpired:
+    #         result = 1
+    # if mimetype == 'video/mp4' and daconfig.get('ffmpeg', 'ffmpeg') is not None:
+    #     call_array = [daconfig.get('ffmpeg', 'ffmpeg'), '-i', saved_file.path + '.' + extension, '-vcodec', 'libtheora', '-acodec', 'libvorbis', saved_file.path + '.ogv']
+    #     try:
+    #         result = subprocess.run(call_array, timeout=120).returncode
+    #     except subprocess.TimeoutExpired:
+    #         result = 1
+    # if mimetype == 'video/ogg' and daconfig.get('ffmpeg', 'ffmpeg') is not None:
+    #     call_array = [daconfig.get('ffmpeg', 'ffmpeg'), '-i', saved_file.path + '.' + extension, '-c:v', 'libx264', '-preset', 'veryslow', '-crf', '22', '-c:a', 'libmp3lame', '-qscale:a', '2', '-ac', '2', '-ar', '44100', saved_file.path + '.mp4']
+    #     try:
+    #         result = subprocess.run(call_array, timeout=120).returncode
+    #     except subprocess.TimeoutExpired:
+    #         result = 1
+    # if mimetype == 'audio/mpeg' and daconfig.get('pacpl', 'pacpl') is not None:
+    #     call_array = [daconfig.get('pacpl', 'pacpl'), '-t', 'ogg', saved_file.path + '.' + extension]
+    #     try:
+    #         result = subprocess.run(call_array, timeout=120).returncode
+    #     except subprocess.TimeoutExpired:
+    #         result = 1
     if mimetype == 'audio/ogg' and daconfig.get('pacpl', 'pacpl') is not None:
         call_array = [daconfig.get('pacpl', 'pacpl'), '-t', 'mp3', saved_file.path + '.' + extension]
         try:
             result = subprocess.run(call_array, timeout=120).returncode
         except subprocess.TimeoutExpired:
             result = 1
-    if mimetype == 'audio/3gpp' and daconfig.get('avconv', 'avconv') is not None:
-        call_array = [daconfig.get('avconv', 'avconv'), '-i', saved_file.path + '.' + extension, saved_file.path + '.ogg']
+    if mimetype == 'audio/3gpp' and daconfig.get('ffmpeg', 'ffmpeg') is not None:
+        call_array = [daconfig.get('ffmpeg', 'ffmpeg'), '-i', saved_file.path + '.' + extension, saved_file.path + '.ogg']
         try:
             result = subprocess.run(call_array, timeout=120).returncode
         except subprocess.TimeoutExpired:
             result = 1
-        call_array = [daconfig.get('avconv', 'avconv'), '-i', saved_file.path + '.' + extension, saved_file.path + '.mp3']
+        call_array = [daconfig.get('ffmpeg', 'ffmpeg'), '-i', saved_file.path + '.' + extension, saved_file.path + '.mp3']
         try:
             result = subprocess.run(call_array, timeout=120).returncode
         except subprocess.TimeoutExpired:
@@ -3824,21 +3830,21 @@ def wait_for_task(task_id, timeout=None):
 #     return
 
 def trigger_update(except_for=None):
-    logmessage("trigger_update: except_for is " + str(except_for) + " and hostname is " + hostname)
+    sys.stderr.write("trigger_update: except_for is " + str(except_for) + " and hostname is " + hostname + "\n")
     if USING_SUPERVISOR:
         for host in Supervisors.query.all():
             if host.url and not (except_for and host.hostname == except_for):
                 if host.hostname == hostname:
                     the_url = 'http://localhost:9001'
-                    logmessage("trigger_update: using http://localhost:9001")
+                    sys.stderr.write("trigger_update: using http://localhost:9001\n")
                 else:
                     the_url = host.url
                 args = [SUPERVISORCTL, '-s', the_url, 'start', 'update']
                 result = subprocess.run(args).returncode
                 if result == 0:
-                    logmessage("trigger_update: sent update to " + str(host.hostname) + " using " + the_url)
+                    sys.stderr.write("trigger_update: sent update to " + str(host.hostname) + " using " + the_url + "\n")
                 else:
-                    logmessage("trigger_update: call to supervisorctl on " + str(host.hostname) + " was not successful")
+                    sys.stderr.write("trigger_update: call to supervisorctl on " + str(host.hostname) + " was not successful\n")
     return
 
 def restart_on(host):
@@ -5557,6 +5563,8 @@ def setup_variables():
 def apply_security_headers(response):
     if app.config['SESSION_COOKIE_SECURE']:
         response.headers['Strict-Transport-Security'] = 'max-age=31536000'
+    if 'embed' in g:
+        return response
     if daconfig.get('allow embedding', False) is not True:
         response.headers["Content-Security-Policy"] = "frame-ancestors 'self';"
     elif daconfig.get('cross site domains', []):
@@ -5647,6 +5655,8 @@ def rootindex():
         if 'default interview' not in daconfig and len(daconfig['dispatch']):
             return redirect(url_for('interview_start'))
         yaml_filename = final_default_yaml_filename
+    if COOKIELESS_SESSIONS:
+        return html_index()
     the_args = dict()
     for key, val in request.args.items():
         the_args[key] = val
@@ -5684,6 +5694,8 @@ def test_embed():
 
 @app.route("/launch", methods=['GET'])
 def launch():
+    if COOKIELESS_SESSIONS:
+        return html_index()
     code = request.args.get('c', None)
     if code is None:
         abort(403)
@@ -5760,7 +5772,14 @@ def populate_social(social, metadata):
                 elif isinstance(val, str):
                     social[key][subkey] = val.replace('\n', ' ').replace('"', '&quot;').strip()
 
-@app.route("/interview", methods=['POST', 'GET'])
+if COOKIELESS_SESSIONS:
+    index_path = '/i'
+    html_index_path = '/interview'
+else:
+    index_path = '/interview'
+    html_index_path = '/i'
+
+@app.route(index_path, methods=['POST', 'GET'])
 def index(action_argument=None, refer=None):
     import pprint
     print("session")
@@ -6154,7 +6173,7 @@ def index(action_argument=None, refer=None):
         else:
             ml_info = dict()
     something_changed = False
-    if '_tracker' in post_data and user_dict['_internal']['tracker'] != int(post_data['_tracker']):
+    if '_tracker' in post_data and re.search(r'^-?[0-9]+$', post_data['_tracker']) and user_dict['_internal']['tracker'] != int(post_data['_tracker']):
         if user_dict['_internal']['tracker'] > int(post_data['_tracker']):
             logmessage("index: the assemble function has been run since the question was posed.")
         else:
@@ -6253,6 +6272,8 @@ def index(action_argument=None, refer=None):
             empty_fields = list()
         authorized_fields = set()
     changed = False
+    if '_null_question' in post_data:
+        changed = True
     if '_email_attachments' in post_data and '_attachment_email_address' in post_data:
         success = False
         attachment_email_address = post_data['_attachment_email_address'].strip()
@@ -6407,7 +6428,7 @@ def index(action_argument=None, refer=None):
         the_question = None
     key_to_orig_key = dict()
     for orig_key in copy.deepcopy(post_data):
-        if orig_key in ('_checkboxes', '_empties', '_ml_info', '_back_one', '_files', '_files_inline', '_question_name', '_the_image', '_save_as', '_success', '_datatypes', '_event', '_visible', '_tracker', '_track_location', '_varnames', '_next_action', '_next_action_to_set', 'ajax', 'json', 'informed', 'csrf_token', '_action', '_order_changes', '_collect', '_collect_delete', '_list_collect_list') or orig_key.startswith('_ignore'):
+        if orig_key in ('_checkboxes', '_empties', '_ml_info', '_back_one', '_files', '_files_inline', '_question_name', '_the_image', '_save_as', '_success', '_datatypes', '_event', '_visible', '_tracker', '_track_location', '_varnames', '_next_action', '_next_action_to_set', 'ajax', 'json', 'informed', 'csrf_token', '_action', '_order_changes', '_collect', '_collect_delete', '_list_collect_list', '_null_question') or orig_key.startswith('_ignore'):
             continue
         try:
             key = myb64unquote(orig_key)
@@ -6444,7 +6465,7 @@ def index(action_argument=None, refer=None):
     imported_core = False
     special_question = None
     for orig_key in post_data:
-        if orig_key in ('_checkboxes', '_empties', '_ml_info', '_back_one', '_files', '_files_inline', '_question_name', '_the_image', '_save_as', '_success', '_datatypes', '_event', '_visible', '_tracker', '_track_location', '_varnames', '_next_action', '_next_action_to_set', 'ajax', 'json', 'informed', 'csrf_token', '_action', '_order_changes', '', '_collect', '_collect_delete', '_list_collect_list') or orig_key.startswith('_ignore'):
+        if orig_key in ('_checkboxes', '_empties', '_ml_info', '_back_one', '_files', '_files_inline', '_question_name', '_the_image', '_save_as', '_success', '_datatypes', '_event', '_visible', '_tracker', '_track_location', '_varnames', '_next_action', '_next_action_to_set', 'ajax', 'json', 'informed', 'csrf_token', '_action', '_order_changes', '', '_collect', '_collect_delete', '_list_collect_list', '_null_question') or orig_key.startswith('_ignore'):
             continue
         data = post_data[orig_key]
         try:
@@ -6921,8 +6942,8 @@ def index(action_argument=None, refer=None):
             orderChanges = json.loads(post_data['_order_changes'])
             for tableName, changes in orderChanges.items():
                 tableName = myb64unquote(tableName)
-                if STRICT_MODE and tableName not in authorized_fields:
-                    raise DAError("The variable " + repr(tableName) + " was not in the allowed fields, which were " + repr(authorized_fields))
+                #if STRICT_MODE and tableName not in authorized_fields:
+                #    raise DAError("The variable " + repr(tableName) + " was not in the allowed fields, which were " + repr(authorized_fields))
                 if illegal_variable_name(tableName):
                     error_messages.append(("error", "Error: Invalid character in table reorder: " + str(tableName)))
                     continue
@@ -7697,7 +7718,7 @@ def index(action_argument=None, refer=None):
       var daQuestionID = """ + json.dumps(question_id_dict) + """;
       var daCsrf = """ + json.dumps(generate_csrf()) + """;
       var daShowIfInProcess = false;
-      var daFieldsToSkip = ['_checkboxes', '_empties', '_ml_info', '_back_one', '_files', '_files_inline', '_question_name', '_the_image', '_save_as', '_success', '_datatypes', '_event', '_visible', '_tracker', '_track_location', '_varnames', '_next_action', '_next_action_to_set', 'ajax', 'json', 'informed', 'csrf_token', '_action', '_order_changes', '_collect', '_list_collect_list'];
+      var daFieldsToSkip = ['_checkboxes', '_empties', '_ml_info', '_back_one', '_files', '_files_inline', '_question_name', '_the_image', '_save_as', '_success', '_datatypes', '_event', '_visible', '_tracker', '_track_location', '_varnames', '_next_action', '_next_action_to_set', 'ajax', 'json', 'informed', 'csrf_token', '_action', '_order_changes', '_collect', '_list_collect_list', '_null_question'];
       var daVarLookup = Object();
       var daVarLookupRev = Object();
       var daVarLookupMulti = Object();
@@ -8832,6 +8853,12 @@ def index(action_argument=None, refer=None):
           var theHtml = xhr.responseText;
           theHtml = theHtml.replace(/<script[^>]*>[^<]*<\/script>/g, '');
           $(daTargetDiv).html(theHtml);
+          if (daJsEmbed){
+            $(daTargetDiv)[0].scrollTo(0, 1);
+          }
+          else{
+            window.scrollTo(0, 1);
+          }
         }
         else {
           console.log("daProcessAjaxError: response was not text");
@@ -9868,7 +9895,7 @@ def index(action_argument=None, refer=None):
             return false;
           });
         });
-        $("#daemailform").validate({'submitHandler': daValidationHandler, 'rules': {'_attachment_email_address': {'minlength': 1, 'required': true, 'email': true}}, 'messages': {'_attachment_email_address': {'required': """ + json.dumps(word("An e-mail address is required.")) + """, 'email': """ + json.dumps(word("You need to enter a complete e-mail address.")) + """}}, 'errorClass': 'da-has-error'});
+        $("#daemailform").validate({'submitHandler': daValidationHandler, 'rules': {'_attachment_email_address': {'minlength': 1, 'required': true, 'email': true}}, 'messages': {'_attachment_email_address': {'required': """ + json.dumps(word("An e-mail address is required.")) + """, 'email': """ + json.dumps(word("You need to enter a complete e-mail address.")) + """}}, 'errorClass': 'da-has-error text-danger'});
         $("a[data-embaction]").click(daEmbeddedAction);
         $("a[data-js]").click(daEmbeddedJs);
         $("a.da-review-action").click(daReviewAction);
@@ -10599,7 +10626,7 @@ def index(action_argument=None, refer=None):
             $(element).removeClass('is-invalid');
         },
         errorElement: 'span',
-        errorClass: 'da-has-error',
+        errorClass: 'da-has-error text-danger',
         errorPlacement: function(error, element) {
             $(error).addClass('text-danger');
             var elementName = $(element).attr("name");
@@ -10803,7 +10830,7 @@ def index(action_argument=None, refer=None):
         interview_language = interview_status.question.language
     else:
         interview_language = current_language
-    validation_rules = {'rules': {}, 'messages': {}, 'errorClass': 'da-has-error', 'debug': False}
+    validation_rules = {'rules': {}, 'messages': {}, 'errorClass': 'da-has-error text-danger', 'debug': False}
     interview_status.exit_url = title_info.get('exit url', None)
     interview_status.exit_link = title_info.get('exit link', 'exit')
     interview_status.exit_label = title_info.get('exit label', word('Exit'))
@@ -11252,7 +11279,11 @@ def get_history(interview, interview_status):
     seeking_len = len(interview_status.seeking)
     if seeking_len:
         starttime = interview_status.seeking[0]['time']
+        seen_done = False
         for stage in interview_status.seeking:
+            if seen_done:
+                output = ''
+                seen_done = False
             index += 1
             if index < seeking_len and 'reason' in interview_status.seeking[index] and interview_status.seeking[index]['reason'] in ('asking', 'running') and interview_status.seeking[index]['question'] is stage['question'] and 'question' in stage and 'reason' in stage and stage['reason'] == 'considering':
                 continue
@@ -11288,6 +11319,7 @@ def get_history(interview, interview_status):
                 output += "          <h5>Needed definition of <code>" + str(stage['variable']) + "</code>" + the_time + "</h5>\n"
             elif 'done' in stage:
                 output += "          <h5>Completed processing" + the_time + "</h5>\n"
+                seen_done = True
     return output
 
 def is_mobile_or_tablet():
@@ -11301,8 +11333,10 @@ def is_mobile_or_tablet():
 def get_referer():
     return request.referrer or None
 
-def add_referer(user_dict):
-    if request.referrer:
+def add_referer(user_dict, referer=None):
+    if referer:
+        user_dict['_internal']['referer'] = referer
+    elif request.referrer:
         user_dict['_internal']['referer'] = request.referrer
     else:
         user_dict['_internal']['referer'] = None
@@ -11493,6 +11527,8 @@ def interview_start():
 
 @app.route('/start/<package>/<directory>/<filename>/', methods=['GET'])
 def redirect_to_interview_in_package_directory(package, directory, filename):
+    if COOKIELESS_SESSIONS:
+        return html_index()
     arguments = dict()
     for arg in request.args:
         arguments[arg] = request.args[arg]
@@ -11504,6 +11540,8 @@ def redirect_to_interview_in_package_directory(package, directory, filename):
 
 @app.route('/start/<package>/<filename>/', methods=['GET'])
 def redirect_to_interview_in_package(package, filename):
+    if COOKIELESS_SESSIONS:
+        return html_index()
     arguments = dict()
     for arg in request.args:
         arguments[arg] = request.args[arg]
@@ -11519,6 +11557,8 @@ def redirect_to_interview_in_package(package, filename):
 @app.route('/start/<dispatch>/', methods=['GET'])
 def redirect_to_interview(dispatch):
     #logmessage("redirect_to_interview: the dispatch is " + str(dispatch))
+    if COOKIELESS_SESSIONS:
+        return html_index()
     yaml_filename = daconfig['dispatch'].get(dispatch, None)
     if yaml_filename is None:
         return ('File not found', 404)
@@ -11533,6 +11573,8 @@ def redirect_to_interview(dispatch):
 
 @app.route('/run/<package>/<directory>/<filename>/', methods=['GET'])
 def run_interview_in_package_directory(package, directory, filename):
+    if COOKIELESS_SESSIONS:
+        return html_index()
     arguments = dict()
     for arg in request.args:
         arguments[arg] = request.args[arg]
@@ -11542,6 +11584,8 @@ def run_interview_in_package_directory(package, directory, filename):
 
 @app.route('/run/<package>/<filename>/', methods=['GET'])
 def run_interview_in_package(package, filename):
+    if COOKIELESS_SESSIONS:
+        return html_index()
     arguments = dict()
     for arg in request.args:
         arguments[arg] = request.args[arg]
@@ -11554,6 +11598,8 @@ def run_interview_in_package(package, filename):
 
 @app.route('/run/<dispatch>/', methods=['GET'])
 def run_interview(dispatch):
+    if COOKIELESS_SESSIONS:
+        return html_index()
     yaml_filename = daconfig['dispatch'].get(dispatch, None)
     if yaml_filename is None:
         return ('File not found', 404)
@@ -11864,7 +11910,7 @@ def observer():
       var daDisable = null;
       var daCsrf = """ + json.dumps(generate_csrf()) + """;
       var daShowIfInProcess = false;
-      var daFieldsToSkip = ['_checkboxes', '_empties', '_ml_info', '_back_one', '_files', '_files_inline', '_question_name', '_the_image', '_save_as', '_success', '_datatypes', '_event', '_visible', '_tracker', '_track_location', '_varnames', '_next_action', '_next_action_to_set', 'ajax', 'json', 'informed', 'csrf_token', '_action', '_order_changes', '_collect'];
+      var daFieldsToSkip = ['_checkboxes', '_empties', '_ml_info', '_back_one', '_files', '_files_inline', '_question_name', '_the_image', '_save_as', '_success', '_datatypes', '_event', '_visible', '_tracker', '_track_location', '_varnames', '_next_action', '_next_action_to_set', 'ajax', 'json', 'informed', 'csrf_token', '_action', '_order_changes', '_collect', '_null_question'];
       var daVarLookup = Object();
       var daVarLookupRev = Object();
       var daVarLookupMulti = Object();
@@ -12177,6 +12223,12 @@ def observer():
           var theHtml = xhr.responseText;
           theHtml = theHtml.replace(/<script[^>]*>[^<]*<\/script>/g, '');
           $(daTargetDiv).html(theHtml);
+          if (daJsEmbed){
+            $(daTargetDiv)[0].scrollTo(0, 1);
+          }
+          else{
+            window.scrollTo(0, 1);
+          }
         }
         else {
           console.log("daProcessAjaxError: response was not text");
@@ -14144,14 +14196,17 @@ def update_package_ajax():
         return jsonify(success=False)
     setup_translation()
     result = docassemble.webapp.worker.workerapp.AsyncResult(id=session['taskwait'])
-    if result.ready() and START_TIME > session['serverstarttime']:
+    if result.ready():
         #if 'taskwait' in session:
         #    del session['taskwait']
         the_result = result.get()
         if isinstance(the_result, ReturnValue):
             if the_result.ok:
                 #logmessage("update_package_ajax: success")
-                return jsonify(success=True, status='finished', ok=the_result.ok, summary=summarize_results(the_result.results, the_result.logmessages))
+                if (hasattr(the_result, 'restart') and not the_result.restart) or START_TIME > session['serverstarttime']:
+                    return jsonify(success=True, status='finished', ok=the_result.ok, summary=summarize_results(the_result.results, the_result.logmessages))
+                else:
+                    return jsonify(success=True, status='waiting')
             elif hasattr(the_result, 'error_message'):
                 logmessage("update_package_ajax: failed return value is " + str(the_result.error_message))
                 return jsonify(success=True, status='failed', error_message=str(the_result.error_message))
@@ -14695,6 +14750,7 @@ def create_playground_package():
                     else:
                         raise DAError("create_playground_package: GitHub repository could not be found after creating it.")
                 if first_time:
+                    logmessage("Not checking for stored commit code because no target repository exists")
                     pulled_already = False
                 else:
                     current_commit_file = os.path.join(directory_for(area['playgroundpackages'], current_project), '.' + github_package_name)
@@ -14704,10 +14760,13 @@ def create_playground_package():
                         commit_code = commit_code.strip()
                         resp, content = http.request("https://api.github.com/repos/" + commit_repository['full_name'] + "/commits/" + commit_code , "GET")
                         if int(resp['status']) == 200:
+                            logmessage("Stored commit code is valid")
                             pulled_already = True
                         else:
+                            logmessage("Stored commit code is invalid")
                             pulled_already = False
                     else:
+                        logmessage("Commit file not found")
                         pulled_already = False
                 directory = tempfile.mkdtemp()
                 (private_key_file, public_key_file) = get_ssh_keys(github_email)
@@ -14812,6 +14871,7 @@ def create_playground_package():
                     the_branch = branch
                 else:
                     the_branch = commit_branch
+                output += "Going to use " + the_branch + " as the branch.\n"
                 if not is_empty:
                     output += "Doing git config user.email " + json.dumps(github_email) + "\n"
                     try:
@@ -16234,7 +16294,15 @@ def google_drive_page():
     #items = []
     page_token = None
     while True:
-        response = service.files().list(spaces="drive", pageToken=page_token, fields="nextPageToken, files(id, name, mimeType, shortcutDetails)", q="trashed=false and 'root' in parents and (mimeType = 'application/vnd.google-apps.folder' or (mimeType = 'application/vnd.google-apps.shortcut' and shortcutDetails.targetMimeType = 'application/vnd.google-apps.folder'))").execute()
+        try:
+            response = service.files().list(spaces="drive", pageToken=page_token, fields="nextPageToken, files(id, name, mimeType, shortcutDetails)", q="trashed=false and 'root' in parents and (mimeType = 'application/vnd.google-apps.folder' or (mimeType = 'application/vnd.google-apps.shortcut' and shortcutDetails.targetMimeType = 'application/vnd.google-apps.folder'))").execute()
+        except Exception as err:
+            logmessage("google_drive_page: " + err.__class__.__name__ + ": " + str(err))
+            set_gd_folder(None)
+            storage.release_lock()
+            storage.locked_delete()
+            flash(word('There was a Google Drive error: ' + err.__class__.__name__ + ": " + str(err)), 'error')
+            return redirect(url_for('google_drive_page'))
         for the_file in response.get('files', []):
             if the_file['mimeType'] == 'application/vnd.google-apps.shortcut':
                 the_file['id'] = the_file['shortcutDetails']['targetId']
@@ -16305,6 +16373,7 @@ def google_drive_page():
     description = 'Select the folder from your Google Drive that you want to be synchronized with the Playground.'
     if app.config['USE_ONEDRIVE'] is True and get_od_folder() is not None:
         description += '  ' + word('Note that if you connect to a Google Drive folder, you will disable your connection to OneDrive.')
+
     response = make_response(render_template('pages/googledrive.html', version_warning=version_warning, description=description, bodyclass='daadminbody', header=word('Google Drive'), tab_title=word('Google Drive'), items=items, the_folder=the_folder, page_title=word('Google Drive'), form=form), 200)
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
@@ -16680,16 +16749,21 @@ def playground_download(current_project, userid, filename):
     return ('File not found', 404)
 
 @app.route('/officefunctionfile', methods=['GET', 'POST'])
+@cross_origin(origins='*', methods=['GET', 'POST', 'HEAD'], automatic_options=True)
 def playground_office_functionfile():
+    g.embed = True
     docassemble.base.functions.set_language(DEFAULT_LANGUAGE)
     if not app.config['ENABLE_PLAYGROUND']:
         return ('File not found', 404)
-    response = make_response(render_template('pages/officefunctionfile.html', current_project=get_current_project(), page_title=word("Docassemble Playground"), tab_title=word("Playground"), parent_origin=daconfig.get('office addin url', daconfig.get('url root', get_base_url()))), 200)
+    functionform = FunctionFileForm(request.form)
+    response = make_response(render_template('pages/officefunctionfile.html', current_project=get_current_project(), page_title=word("Docassemble Playground"), tab_title=word("Playground"), parent_origin=daconfig.get('office addin url', daconfig.get('url root', get_base_url())), form=functionform), 200)
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
 
 @app.route('/officetaskpane', methods=['GET', 'POST'])
+@cross_origin(origins='*', methods=['GET', 'POST', 'HEAD'], automatic_options=True)
 def playground_office_taskpane():
+    g.embed = True
     docassemble.base.functions.set_language(DEFAULT_LANGUAGE)
     if not app.config['ENABLE_PLAYGROUND']:
         return ('File not found', 404)
@@ -16699,9 +16773,11 @@ def playground_office_taskpane():
     return response
 
 @app.route('/officeaddin', methods=['GET', 'POST'])
+@cross_origin(origins='*', methods=['GET', 'POST', 'HEAD'], automatic_options=True)
 @login_required
 @roles_required(['developer', 'admin'])
 def playground_office_addin():
+    g.embed = True
     setup_translation()
     if not app.config['ENABLE_PLAYGROUND']:
         return ('File not found', 404)
@@ -17777,7 +17853,7 @@ def playground_packages():
                     zippath = tempfile.NamedTemporaryFile(mode="wb", suffix=".zip", delete=True)
                     up_file.save(zippath.name)
                     area_sec = dict(templates='playgroundtemplate', static='playgroundstatic', sources='playgroundsources', questions='playground')
-                    with zipfile.ZipFile(zippath.name, mode='r') as zf:
+                    with zipfile.ZipFile(zippath, mode='r') as zf:
                         readme_text = ''
                         setup_py = ''
                         extracted = dict()
@@ -17924,8 +18000,10 @@ def playground_packages():
                 expected_name = re.sub(r'docassemble-', '', expected_name)
                 try:
                     if branch is not None:
+                        logmessage("Doing git clone -b " + branch + " " + github_url)
                         output += subprocess.check_output(['git', 'clone', '-b', branch, github_url], cwd=directory, stderr=subprocess.STDOUT).decode()
                     else:
+                        logmessage("Doing git clone " + github_url)
                         output += subprocess.check_output(['git', 'clone', github_url], cwd=directory, stderr=subprocess.STDOUT).decode()
                 except subprocess.CalledProcessError as err:
                     output += err.output.decode()
@@ -17942,6 +18020,7 @@ def playground_packages():
                     raise DAError("playground_packages: error running git rev-parse.  " + output)
                 with open(commit_file, 'w', encoding='utf-8') as fp:
                     fp.write(current_commit.strip())
+                logmessage("Wrote " + current_commit.strip() + " to " + commit_file)
             else:
                 logmessage("Did not find a single directory inside repo")
             do_pypi_also = true_or_false(request.args.get('pypi_also', False))
@@ -17952,6 +18031,7 @@ def playground_packages():
                     the_args['pypi'] = '1'
                 if do_install_also:
                     the_args['install'] = '1'
+                area['playgroundpackages'].finalize()
                 return redirect(url_for('create_playground_package', **the_args))
         elif 'pypi' in request.args:
             pypi_package = re.sub(r'[^A-Za-z0-9\-\.\_\~\:\/\?\#\[\]\@\!\$\&\'\(\)\*\+\,\;\=\`]', '', request.args['pypi'])
@@ -18068,6 +18148,9 @@ def playground_packages():
         return redirect(url_for('playground_packages', project=current_project, file=the_file))
     if request.method == 'POST' and validated and form.delete.data and the_file != '' and the_file == form.file_name.data and os.path.isfile(os.path.join(directory_for(area['playgroundpackages'], current_project), 'docassemble.' + the_file)):
         os.remove(os.path.join(directory_for(area['playgroundpackages'], current_project), 'docassemble.' + the_file))
+        dotfile = os.path.join(directory_for(area['playgroundpackages'], current_project), '.docassemble-' + the_file)
+        if os.path.exists(dotfile):
+            os.remove(dotfile)
         area['playgroundpackages'].finalize()
         flash(word("Deleted package"), "success")
         return redirect(url_for('playground_packages', project=current_project))
@@ -20036,7 +20119,7 @@ def logs():
     if LOGSERVER is None and use_zip:
         timezone = get_default_timezone()
         zip_archive = tempfile.NamedTemporaryFile(mode="wb", prefix="datemp", suffix=".zip", delete=False)
-        zf = zipfile.ZipFile(zip_archive.name, mode='w')
+        zf = zipfile.ZipFile(zip_archive, mode='w')
         for f in os.listdir(LOG_DIRECTORY):
             zip_path = os.path.join(LOG_DIRECTORY, f)
             if f.startswith('.') or not os.path.isfile(zip_path):
@@ -23057,7 +23140,7 @@ def translation_file():
         else:
             zip_file = tempfile.NamedTemporaryFile(suffix='.zip', delete=False)
             zip_file_name = docassemble.base.functions.space_to_underscore(os.path.splitext(os.path.basename(re.sub(r'.*:', '', yaml_filename)))[0]) + "_" + tr_lang + ".zip"
-            with zipfile.ZipFile(zip_file.name, mode='w') as zf:
+            with zipfile.ZipFile(zip_file, mode='w') as zf:
                 for item in xliff_files:
                     info = zipfile.ZipInfo(item[1])
                     with open(item[0].name, 'rb') as fp:
@@ -23958,17 +24041,20 @@ def api_file(file_number):
             return(response)
         return ('File not found', 404)
 
-def get_session_variables(yaml_filename, session_id, secret=None, simplify=True):
-    #obtain_lock(session_id, yaml_filename)
+def get_session_variables(yaml_filename, session_id, secret=None, simplify=True, use_lock=False):
+    if use_lock:
+        obtain_lock(session_id, yaml_filename)
     #sys.stderr.write("get_session_variables: fetch_user_dict\n")
     if secret is None:
         secret = docassemble.base.functions.this_thread.current_info.get('secret', None)
     try:
         steps, user_dict, is_encrypted = fetch_user_dict(session_id, yaml_filename, secret=str(secret))
     except Exception as the_err:
-        #release_lock(session_id, yaml_filename)
+        if use_lock:
+            release_lock(session_id, yaml_filename)
         raise Exception("Unable to decrypt interview dictionary: " + str(the_err))
-    #release_lock(session_id, yaml_filename)
+    if use_lock:
+        release_lock(session_id, yaml_filename)
     if user_dict is None:
         raise Exception("Unable to obtain interview dictionary.")
     if simplify:
@@ -23977,49 +24063,59 @@ def get_session_variables(yaml_filename, session_id, secret=None, simplify=True)
         return variables
     return user_dict
 
-def go_back_in_session(yaml_filename, session_id, secret=None, return_question=False):
-    #obtain_lock(session_id, yaml_filename)
+def go_back_in_session(yaml_filename, session_id, secret=None, return_question=False, use_lock=False, encode=False):
+    if use_lock:
+        obtain_lock(session_id, yaml_filename)
     try:
         steps, user_dict, is_encrypted = fetch_user_dict(session_id, yaml_filename, secret=secret)
     except:
-        #release_lock(session_id, yaml_filename)
+        if use_lock:
+            release_lock(session_id, yaml_filename)
         raise Exception("Unable to decrypt interview dictionary.")
     if user_dict is None:
-        #release_lock(session_id, yaml_filename)
+        if use_lock:
+            release_lock(session_id, yaml_filename)
         raise Exception("Unable to obtain interview dictionary.")
     if steps == 1:
-        #release_lock(session_id, yaml_filename)
+        if use_lock:
+            release_lock(session_id, yaml_filename)
         raise Exception("Cannot go back.")
     old_user_dict = user_dict
     steps, user_dict, is_encrypted = fetch_previous_user_dict(session_id, yaml_filename, secret)
     if user_dict is None:
-        #release_lock(session_id, yaml_filename)
+        if use_lock:
+            release_lock(session_id, yaml_filename)
         raise Exception("Unable to obtain interview dictionary.")
     if return_question:
         try:
-            data = get_question_data(yaml_filename, session_id, secret, use_lock=False, user_dict=user_dict, steps=steps, is_encrypted=is_encrypted, old_user_dict=old_user_dict)
+            data = get_question_data(yaml_filename, session_id, secret, use_lock=False, user_dict=user_dict, steps=steps, is_encrypted=is_encrypted, old_user_dict=old_user_dict, encode=encode)
         except Exception as the_err:
-            #release_lock(session_id, yaml_filename)
+            if use_lock:
+                release_lock(session_id, yaml_filename)
             raise Exception("Problem getting current question:" + str(the_err))
     else:
         data = None
-    #release_lock(session_id, yaml_filename)
+    if use_lock:
+        release_lock(session_id, yaml_filename)
     return data
 
-def set_session_variables(yaml_filename, session_id, variables, secret=None, return_question=False, literal_variables=None, del_variables=None, question_name=None, event_list=None, advance_progress_meter=False, post_setting=True):
-    #obtain_lock(session_id, yaml_filename)
+def set_session_variables(yaml_filename, session_id, variables, secret=None, return_question=False, literal_variables=None, del_variables=None, question_name=None, event_list=None, advance_progress_meter=False, post_setting=True, use_lock=False, encode=False):
+    if use_lock:
+        obtain_lock(session_id, yaml_filename)
     device_id = docassemble.base.functions.this_thread.current_info['user']['device_id']
     if secret is None:
         secret = docassemble.base.functions.this_thread.current_info.get('secret', None)
     try:
         steps, user_dict, is_encrypted = fetch_user_dict(session_id, yaml_filename, secret=secret)
     except:
-        #release_lock(session_id, yaml_filename)
+        if use_lock:
+            release_lock(session_id, yaml_filename)
         raise Exception("Unable to decrypt interview dictionary.")
     vars_set = set()
     old_values = dict()
     if user_dict is None:
-        #release_lock(session_id, yaml_filename)
+        if use_lock:
+            release_lock(session_id, yaml_filename)
         raise Exception("Unable to obtain interview dictionary.")
     pre_assembly_necessary = False
     for key, val in variables.items():
@@ -24056,12 +24152,15 @@ def set_session_variables(yaml_filename, session_id, variables, secret=None, ret
                 del user_dict['_internal']['_tempvar']
             process_set_variable(str(key), user_dict, vars_set, old_values)
     except Exception as the_err:
-        #release_lock(session_id, yaml_filename)
+        if use_lock:
+            release_lock(session_id, yaml_filename)
         raise Exception("Problem setting variables:" + str(the_err))
     if literal_variables is not None:
         exec('import docassemble.base.core', user_dict)
         for key, val in literal_variables.items():
             if illegal_variable_name(key):
+                if use_lock:
+                    release_lock(session_id, yaml_filename)
                 raise Exception("Illegal value as variable name.")
             exec(str(key) + ' = ' + val, user_dict)
             process_set_variable(str(key), user_dict, vars_set, old_values)
@@ -24075,10 +24174,13 @@ def set_session_variables(yaml_filename, session_id, variables, secret=None, ret
         try:
             for key in del_variables:
                 if illegal_variable_name(key):
+                    if use_lock:
+                        release_lock(session_id, yaml_filename)
                     raise Exception("Illegal value as variable name.")
                 exec('del ' + str(key), user_dict)
         except Exception as the_err:
-            #release_lock(session_id, yaml_filename)
+            if use_lock:
+                release_lock(session_id, yaml_filename)
             raise Exception("Problem deleting variables: " + str(the_err))
     session_uid = docassemble.base.functions.this_thread.current_info['user']['session_uid']
     #if 'event_stack' in user_dict['_internal']:
@@ -24113,9 +24215,10 @@ def set_session_variables(yaml_filename, session_id, variables, secret=None, ret
         steps += 1
     if return_question:
         try:
-            data = get_question_data(yaml_filename, session_id, secret, use_lock=True, user_dict=user_dict, steps=steps, is_encrypted=is_encrypted, post_setting=post_setting, advance_progress_meter=advance_progress_meter)
+            data = get_question_data(yaml_filename, session_id, secret, use_lock=False, user_dict=user_dict, steps=steps, is_encrypted=is_encrypted, post_setting=post_setting, advance_progress_meter=advance_progress_meter, encode=encode)
         except Exception as the_err:
-            #release_lock(session_id, yaml_filename)
+            if use_lock:
+                release_lock(session_id, yaml_filename)
             raise Exception("Problem getting current question:" + str(the_err))
     else:
         data = None
@@ -24128,7 +24231,8 @@ def set_session_variables(yaml_filename, session_id, variables, secret=None, ret
             if user_dict.get('multi_user', False) is False and is_encrypted is False:
                 encrypt_session(secret, user_code=session_id, filename=yaml_filename)
                 is_encrypted = True
-    #release_lock(session_id, yaml_filename)
+    if use_lock:
+        release_lock(session_id, yaml_filename)
     return data
 
 @app.route('/api/session/new', methods=['GET'])
@@ -24161,7 +24265,7 @@ def api_session_new():
     else:
         return jsonify(dict(session=session_id, i=yaml_filename, encrypted=encrypted))
 
-def create_new_interview(yaml_filename, secret, url_args=None, req=None):
+def create_new_interview(yaml_filename, secret, url_args=None, referer=None, req=None):
     interview = docassemble.base.interview_cache.get_interview(yaml_filename)
     if current_user.is_anonymous:
         if not interview.allowed_to_initiate(is_anonymous=True):
@@ -24178,7 +24282,7 @@ def create_new_interview(yaml_filename, secret, url_args=None, req=None):
     if secret is None:
         secret = random_string(16)
     session_id, user_dict = reset_session(yaml_filename, secret)
-    add_referer(user_dict)
+    add_referer(user_dict, referer=referer)
     if url_args:
         for key, val in url_args.items():
             if isinstance(val, str):
@@ -24233,7 +24337,7 @@ def api_session_question():
         return data['response']
     return jsonify(**data)
 
-def get_question_data(yaml_filename, session_id, secret, use_lock=True, user_dict=None, steps=None, is_encrypted=None, old_user_dict=None, save=True, post_setting=False, advance_progress_meter=False):
+def get_question_data(yaml_filename, session_id, secret, use_lock=True, user_dict=None, steps=None, is_encrypted=None, old_user_dict=None, save=True, post_setting=False, advance_progress_meter=False, action=None, encode=False):
     if use_lock:
         obtain_lock(session_id, yaml_filename)
     if user_dict is None:
@@ -24245,7 +24349,7 @@ def get_question_data(yaml_filename, session_id, secret, use_lock=True, user_dic
             raise Exception("Unable to obtain interview dictionary: " + str(err))
     interview = docassemble.base.interview_cache.get_interview(yaml_filename)
     device_id = docassemble.base.functions.this_thread.current_info['user']['device_id']
-    ci = current_info(yaml=yaml_filename, req=request, secret=secret, device_id=device_id)
+    ci = current_info(yaml=yaml_filename, req=request, secret=secret, device_id=device_id, action=action)
     ci['session'] = session_id
     ci['encrypted'] = is_encrypted
     ci['secret'] = secret
@@ -24357,7 +24461,7 @@ def get_question_data(yaml_filename, session_id, secret, use_lock=True, user_dic
     data = dict(browser_title=interview_status.tabtitle, exit_link=interview_status.exit_link, exit_url=interview_status.exit_url, exit_label=interview_status.exit_label, title=interview_status.title, display_title=interview_status.display_title, short_title=interview_status.short_title, lang=interview_language, steps=steps, allow_going_back=allow_going_back, message_log=docassemble.base.functions.get_message_log(), section=the_section, display_section=the_section_display, sections=the_sections)
     if allow_going_back:
         data['cornerBackButton'] = interview_status.cornerback
-    data.update(interview_status.as_data(user_dict, encode=False))
+    data.update(interview_status.as_data(user_dict, encode=encode))
     if 'source' in data:
         data['source']['varsLink'] = url_for('get_variables', i=yaml_filename)
         data['source']['varsLabel'] = word('Show variables and values')
@@ -24371,6 +24475,7 @@ def get_question_data(yaml_filename, session_id, secret, use_lock=True, user_dic
         reload_after = 0
     #if next_action_review:
     #    data['next_action'] = next_action_review
+    data['interview_options'] = interview_status.question.interview.options
     if reload_after and reload_after > 0:
         data['reload_after'] = reload_after
     for key in list(data.keys()):
@@ -24743,6 +24848,7 @@ def api_package():
         return jsonify(packages)
     if request.method == 'DELETE':
         target = request.args.get('package', None)
+        do_restart = true_or_false(request.args.get('restart', True))
         if target is None:
             return jsonify_with_status("Missing package name.", 400)
         package_list, package_auth = get_package_info()
@@ -24756,12 +24862,16 @@ def api_package():
         if not the_package.can_uninstall:
             return jsonify_with_status("You are not allowed to uninstall that package.", 400)
         uninstall_package(target)
-        result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s())
+        if do_restart:
+            result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s())
+        else:
+            result = docassemble.webapp.worker.update_packages.delay(restart=False)
         return jsonify_task(result)
     if request.method == 'POST':
         post_data = request.get_json(silent=True)
         if post_data is None:
             post_data = request.form.copy()
+        do_restart = true_or_false(post_data.get('restart', True))
         num_commands = 0
         if 'update' in post_data:
             num_commands += 1
@@ -24799,7 +24909,10 @@ def api_package():
                         existing_package.limitation = None
                     install_pip_package(existing_package.name, existing_package.limitation)
             db.session.commit()
-            result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s())
+            if do_restart:
+                result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s())
+            else:
+                result = docassemble.webapp.worker.update_packages.delay(restart=False)
             return jsonify_task(result)
         if 'github_url' in post_data:
             github_url = post_data['github_url']
@@ -24814,7 +24927,10 @@ def api_package():
             packagename = re.sub(r'^docassemble-', 'docassemble.', packagename)
             if user_can_edit_package(giturl=github_url) and user_can_edit_package(pkgname=packagename):
                 install_git_package(packagename, github_url, branch)
-                result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s())
+                if do_restart:
+                    result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s())
+                else:
+                    result = docassemble.webapp.worker.update_packages.delay(restart=False)
                 return jsonify_task(result)
             else:
                 jsonify_with_status("You do not have permission to install that package.", 403)
@@ -24829,6 +24945,10 @@ def api_package():
             packagename = re.sub(r'[^A-Za-z0-9\_\-\.]', '', packagename)
             if user_can_edit_package(pkgname=packagename):
                 install_pip_package(packagename, limitation)
+                if do_restart:
+                    result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s())
+                else:
+                    result = docassemble.webapp.worker.update_packages.delay(restart=False)
                 result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s())
                 return jsonify_task(result)
             else:
@@ -24847,7 +24967,10 @@ def api_package():
                 pkgname = get_package_name_from_zip(zippath)
                 if user_can_edit_package(pkgname=pkgname):
                     install_zip_package(pkgname, file_number)
-                    result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s())
+                    if do_restart:
+                        result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s())
+                    else:
+                        result = docassemble.webapp.worker.update_packages.delay(restart=False)
                     return jsonify_task(result)
                 return jsonify_with_status("You do not have permission to install that package.", 403)
             except:
@@ -24868,19 +24991,25 @@ def api_package_update_status():
         return jsonify({'status': 'unknown'})
     task_info = json.loads(task_data.decode())
     result = docassemble.webapp.worker.workerapp.AsyncResult(id=task_info['id'])
-    if result.ready() and START_TIME > task_info['server_start_time']:
-        r.delete(the_key)
+    if result.ready():
         the_result = result.get()
         if isinstance(the_result, ReturnValue):
             if the_result.ok:
+                if the_result.restart and START_TIME <= task_info['server_start_time']:
+                    return jsonify(status='working')
+                r.delete(the_key)
                 return jsonify(status='completed', ok=True, log=summarize_results(the_result.results, the_result.logmessages, html=False))
             elif hasattr(the_result, 'error_message'):
+                r.delete(the_key)
                 return jsonify(status='completed', ok=False, error_message=str(the_result.error_message))
             elif hasattr(the_result, 'results') and hasattr(the_result, 'logmessages'):
+                r.delete(the_key)
                 return jsonify(status='completed', ok=False, error_message=summarize_results(the_result.results, the_result.logmessages, html=False))
             else:
+                r.delete(the_key)
                 return jsonify(status='completed', ok=False, error_message=str("No error message.  Result is " + str(the_result)))
         else:
+            r.delete(the_key)
             return jsonify(status='completed', ok=False, error_message=str(the_result))
     else:
         return jsonify(status='working')
@@ -24999,6 +25128,147 @@ def api_config():
             fp.write(yaml_data)
         restart_all()
         return ('', 204)
+
+@app.route('/api/playground_install', methods=['GET', 'POST', 'DELETE'])
+@csrf.exempt
+@cross_origin(origins='*', methods=['POST', 'HEAD'], automatic_options=True)
+def api_playground_install():
+    if not api_verify(request, roles=['admin', 'developer']):
+        return jsonify_with_status("Access denied.", 403)
+    post_data = request.get_json(silent=True)
+    if post_data is None:
+        post_data = request.form.copy()
+    do_restart = true_or_false(post_data.get('restart', True))
+    current_project = post_data.get('project', 'default')
+    try:
+        if current_user.has_role('admin'):
+            user_id = int(post_data.get('user_id', current_user.id))
+        else:
+            if 'user_id' in post_data:
+                assert int(post_data['user_id']) == current_user.id
+            user_id = current_user.id
+    except:
+        return jsonify_with_status("Invalid user_id.", 400)
+    if current_project != 'default' and current_project not in get_list_of_projects(user_id):
+        return jsonify_with_status("Invalid project.", 400)
+    docassemble.base.functions.this_thread.current_info['user'] = dict(is_anonymous=False, theid=user_id)
+    found = False
+    expected_name = 'unknown'
+    need_to_restart = False
+    area = dict()
+    area_sec = dict(templates='playgroundtemplate', static='playgroundstatic', sources='playgroundsources', questions='playground')
+    for sec in ('playground', 'playgroundpackages', 'playgroundtemplate', 'playgroundstatic', 'playgroundsources', 'playgroundmodules'):
+        area[sec] = SavedFile(user_id, fix=True, section=sec)
+    try:
+        for filekey in request.files:
+            the_files = request.files.getlist(filekey)
+            if not the_files:
+                continue
+            for up_file in the_files:
+                found = True
+                zippath = tempfile.NamedTemporaryFile(mode="wb", prefix='datemp', suffix=".zip", delete=False)
+                up_file.save(zippath)
+                up_file.close()
+                zippath.close()
+                with zipfile.ZipFile(zippath.name, mode='r') as zf:
+                    readme_text = ''
+                    setup_py = ''
+                    extracted = dict()
+                    data_files = dict(templates=list(), static=list(), sources=list(), interviews=list(), modules=list(), questions=list())
+                    has_docassemble_dir = set()
+                    has_setup_file = set()
+                    for zinfo in zf.infolist():
+                        if zinfo.is_dir():
+                            if zinfo.filename.endswith('/docassemble/'):
+                                has_docassemble_dir.add(re.sub(r'/docassemble/$', '', zinfo.filename))
+                            if zinfo.filename == 'docassemble/':
+                                has_docassemble_dir.add('')
+                        elif zinfo.filename.endswith('/setup.py'):
+                            (directory, filename) = os.path.split(zinfo.filename)
+                            has_setup_file.add(directory)
+                        elif zinfo.filename == 'setup.py':
+                            has_setup_file.add('')
+                    root_dir = None
+                    for directory in has_docassemble_dir.union(has_setup_file):
+                        if root_dir is None or len(directory) < len(root_dir):
+                            root_dir = directory
+                    if root_dir is None:
+                        return jsonify_with_status("Not a docassemble package.", 400)
+                    for zinfo in zf.infolist():
+                        if zinfo.filename.endswith('/'):
+                            continue
+                        (directory, filename) = os.path.split(zinfo.filename)
+                        if filename.startswith('#') or filename.endswith('~'):
+                            continue
+                        dirparts = splitall(directory)
+                        if '.git' in dirparts:
+                            continue
+                        levels = re.findall(r'/', directory)
+                        time_tuple = zinfo.date_time
+                        the_time = time.mktime(datetime.datetime(*time_tuple).timetuple())
+                        for sec in ('templates', 'static', 'sources', 'questions'):
+                            if directory.endswith('data/' + sec) and filename != 'README.md':
+                                data_files[sec].append(filename)
+                                target_filename = os.path.join(directory_for(area[area_sec[sec]], current_project), filename)
+                                with zf.open(zinfo) as source_fp, open(target_filename, 'wb') as target_fp:
+                                    shutil.copyfileobj(source_fp, target_fp)
+                                os.utime(target_filename, (the_time, the_time))
+                        if filename == 'README.md' and directory == root_dir:
+                            with zf.open(zinfo) as f:
+                                the_file_obj = TextIOWrapper(f, encoding='utf8')
+                                readme_text = the_file_obj.read()
+                        if filename == 'setup.py' and directory == root_dir:
+                            with zf.open(zinfo) as f:
+                                the_file_obj = TextIOWrapper(f, encoding='utf8')
+                                setup_py = the_file_obj.read()
+                        elif len(levels) >= 2 and filename.endswith('.py') and filename != '__init__.py' and 'tests' not in dirparts:
+                            need_to_restart = True
+                            data_files['modules'].append(filename)
+                            target_filename = os.path.join(directory_for(area['playgroundmodules'], current_project), filename)
+                            with zf.open(zinfo) as source_fp, open(target_filename, 'wb') as target_fp:
+                                shutil.copyfileobj(source_fp, target_fp)
+                                os.utime(target_filename, (the_time, the_time))
+                    setup_py = re.sub(r'.*setup\(', '', setup_py, flags=re.DOTALL)
+                    for line in setup_py.splitlines():
+                        m = re.search(r"^ *([a-z_]+) *= *\(?'(.*)'", line)
+                        if m:
+                            extracted[m.group(1)] = m.group(2)
+                        m = re.search(r'^ *([a-z_]+) *= *\(?"(.*)"', line)
+                        if m:
+                            extracted[m.group(1)] = m.group(2)
+                        m = re.search(r'^ *([a-z_]+) *= *\[(.*)\]', line)
+                        if m:
+                            the_list = list()
+                            for item in re.split(r', *', m.group(2)):
+                                inner_item = re.sub(r"'$", '', item)
+                                inner_item = re.sub(r"^'", '', inner_item)
+                                inner_item = re.sub(r'"+$', '', inner_item)
+                                inner_item = re.sub(r'^"+', '', inner_item)
+                                the_list.append(inner_item)
+                            extracted[m.group(1)] = the_list
+                    info_dict = dict(readme=readme_text, interview_files=data_files['questions'], sources_files=data_files['sources'], static_files=data_files['static'], module_files=data_files['modules'], template_files=data_files['templates'], dependencies=[z for z in map(lambda y: re.sub(r'[\>\<\=].*', '', y), extracted.get('install_requires', list()))], description=extracted.get('description', ''), author_name=extracted.get('author', ''), author_email=extracted.get('author_email', ''), license=extracted.get('license', ''), url=extracted.get('url', ''), version=extracted.get('version', ''))
+
+                    info_dict['dependencies'] = [x for x in [z for z in map(lambda y: re.sub(r'[\>\<\=].*', '', y), info_dict['dependencies'])] if x not in ('docassemble', 'docassemble.base', 'docassemble.webapp')]
+                    package_name = re.sub(r'^docassemble\.', '', extracted.get('name', expected_name))
+                    with open(os.path.join(directory_for(area['playgroundpackages'], current_project), 'docassemble.' + package_name), 'w', encoding='utf-8') as fp:
+                        the_yaml = yaml.safe_dump(info_dict, default_flow_style=False, default_style='|')
+                        fp.write(str(the_yaml))
+                    for key in r.keys('da:interviewsource:docassemble.playground' + str(current_user.id) + project_name(current_project) + ':*'):
+                        r.incr(key.decode())
+                    for sec in area:
+                        area[sec].finalize()
+                    the_file = package_name
+                zippath.close()
+    except Exception as err:
+        logmessage("api_playground_install: " + err.__class__.__name__ + ": " + str(err))
+        return jsonify_with_status("Error installing packages.", 400)
+    if not found:
+        return jsonify_with_status("No package found.", 400)
+    for key in r.keys('da:interviewsource:docassemble.playground' + str(user_id) + project_name(current_project) + ':*'):
+        r.incr(key.decode())
+    if do_restart and need_to_restart:
+        restart_all()
+    return ('', 204)
 
 @app.route('/api/playground', methods=['GET', 'POST', 'DELETE'])
 @csrf.exempt
@@ -25646,9 +25916,11 @@ def manage_api():
         argu['has_any_keys'] = True if len(avail_keys) > 0 else False
     return render_template('pages/manage_api.html', **argu)
 
-@app.route('/i', methods=['GET'])
+@app.route(html_index_path, methods=['GET'])
 def html_index():
-    return app.send_static_file('index.html')
+    resp = app.send_static_file('index.html')
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
+    return resp
 
 @app.route('/api/interview', methods=['GET', 'POST'])
 @csrf.exempt
@@ -25664,18 +25936,25 @@ def api_interview():
         url_args = post_data.get('url_args', None)
         user_code = post_data.get('user_code', None)
         command = post_data.get('command', None)
+        referer = post_data.get('referer', None)
     else:
         yaml_filename = request.args.get('i', None)
         secret = request.args.get('secret', None)
         session_id = request.args.get('session', None)
         url_args = dict()
         user_code = request.args.get('user_code', None)
+        command = request.args.get('command', None)
+        referer = request.args.get('referer', None)
         for key, val in request.args.items():
-            if key not in ('session', 'secret', 'i', 'user_code'):
+            if key not in ('session', 'secret', 'i', 'user_code', 'command', 'referer', 'action'):
                 url_args[key] = val
         if len(url_args) == 0:
             url_args = None
     output = dict()
+    action = None
+    reset_fully = False
+    is_new = False
+    changed = False
     if user_code:
         key = 'da:apiinterview:usercode:' + user_code
         user_info = r.get(key)
@@ -25689,7 +25968,7 @@ def api_interview():
                 user_code = None
         if user_code:
             if user_info['user_id']:
-                user = UserModel.query.filter_by(id=user_id).first()
+                user = UserModel.query.filter_by(id=user_info['user_id']).first()
                 if user is None or user.social_id.startswith('disabled$') or not user.active:
                     user_code = None
                 else:
@@ -25698,56 +25977,268 @@ def api_interview():
             else:
                 session['tempuser'] = user_info['temp_user_id']
     if not user_code:
-        user_code = random_string(32)
-        new_temp_user = TempUser()
-        db.session.add(new_temp_user)
-        db.session.commit()
-        session['tempuser'] = new_temp_user.id
-        user_info = {"user_id": None, "temp_user_id": new_temp_user.id}
-        key = 'da:apiinterview:usercode:' + user_code
-        pipe = r.pipeline()
-        pipe.set(key, json.dumps(user_info))
-        pipe.expire(key, 60*60*24*30)
-        pipe.execute()
+        user_code = app.session_interface.manual_save_session(app, session).decode()
+        if current_user.is_anonymous:
+            new_temp_user = TempUser()
+            db.session.add(new_temp_user)
+            db.session.commit()
+            session['tempuser'] = new_temp_user.id
+            user_info = {"user_id": None, "temp_user_id": new_temp_user.id, "sessions": {}}
+        else:
+            user_info = {"user_id": current_user.id, "temp_user_id": None, "sessions": {}}
         output['user_code'] = user_code
-    docassemble.base.functions.this_thread.current_info = current_info(req=request, interface='api', secret=secret)
+        changed = True
+    need_to_reset = False
+    new_session = False
+    send_initial = False
+    if yaml_filename.startswith('/'):
+        parts = urlparse(yaml_filename)
+        params = urllib.parse.parse_qs(parts.query)
+        if params.get('action', '') != '':
+            try:
+                action = tidy_action(json.loads(myb64unquote(params['action'])))
+            except:
+                return jsonify_with_status(word("Invalid action."), 400)
+        url_args = dict()
+        for key, val in dict(params).items():
+            params[key] = val[0]
+            if key not in reserved_argnames:
+                url_args[key] = val[0]
+        if parts.path == '/launch':
+            code = params.get('c', None)
+            if code is None:
+                abort(403)
+            the_key = 'da:resume_interview:' + str(code)
+            data = r.get(the_key)
+            if data is None:
+                return jsonify_with_status(word("The link has expired."), 403)
+            data = json.loads(data.decode())
+            if data.get('once', False):
+                r.delete(the_key)
+            args = dict()
+            for key, val in params.items():
+                if key != 'session':
+                    args[key] = val
+            yaml_filename = data['i']
+            if 'session' in data:
+                session_id = data['session']
+                user_info['sessions'][yaml_filename] = session_id
+            else:
+                new_session = True
+        if parts.path in ('/i', '/interview', '/'):
+            ok = False
+            if 'i' in params:
+                yaml_filename = params['i']
+                ok = True
+            elif 'state' in params:
+                try:
+                    yaml_filename = re.sub(r'\^.*', '', from_safeid(params['state']))
+                    ok = True
+                except:
+                    ok = False
+            if not ok:
+                if current_user.is_anonymous and not daconfig.get('allow anonymous access', True):
+                    output['redirect'] = url_for('user.login')
+                    return jsonify(output)
+                if len(daconfig['dispatch']):
+                    output['redirect'] = url_for('interview_start')
+                    return jsonify(output)
+                else:
+                    yaml_filename = final_default_yaml_filename
+        refer = None
+        if parts.path.startswith('/start/') or parts.path.startswith('/run/'):
+            m = re.search(r'/(start|run)/([^/]+)/$', parts.path)
+            if m:
+                refer = [m.group(1) + '_dispatch', m.group(2)]
+                dispatch = m.group(2)
+            else:
+                m = re.search(r'/(start|run)/([^/]+)/([^/]+)/(.*)/$', parts.path)
+                if m:
+                    refer = [m.group(1) + '_directory', m.group(2), m.group(3), m.group(4)]
+                    yaml_filename = 'docassemble.' + m.group(2) + ':data/questions/' + m.group(3) + '/' + m.group(4) + '.yml'
+                else:
+                    m = re.search(r'/(start|run)/([^/]+)/(.*)/$', parts.path)
+                    if m:
+                        refer = [m.group(1), m.group(2), m.group(3)]
+                        if re.search(r'playground[0-9]', m.group(2)):
+                            yaml_filename = 'docassemble.' + m.group(2) + ':' + m.group(3) + '.yml'
+                        else:
+                            yaml_filename = 'docassemble.' + m.group(2) + ':data/questions/' + m.group(3) + '.yml'
+                    else:
+                        yaml_filename = None
+            if yaml_filename is None:
+                return jsonify_with_status("File not found", 404)
+            if m.group(1) == 'start':
+                new_session = True
+        if true_or_false(params.get('reset', False)):
+            need_to_reset = True
+            if str(params['reset']) == '2':
+                reset_fully = True
+        if true_or_false(params.get('new_session', False)):
+            new_session = True
+        index_params = dict(i=yaml_filename)
+        output['i'] = yaml_filename
+        output['page_sep'] = "#page"
+        if refer is None:
+            output['location_bar'] = url_for('index', **index_params)
+        elif refer[0] in ('start', 'run'):
+            output['location_bar'] = url_for('run_interview_in_package', package=refer[1], filename=refer[2])
+            output['page_sep'] = "#/"
+        elif refer[0] in ('start_dispatch', 'run_dispatch'):
+            output['location_bar'] = url_for('run_interview', dispatch=refer[1])
+            output['page_sep'] = "#/"
+        elif refer[0] in ('start_directory', 'run_directory'):
+            output['location_bar'] = url_for('run_interview_in_package_directory', package=refer[1], directory=refer[2], filename=refer[3])
+            output['page_sep'] = "#/"
+        else:
+            output['location_bar'] = None
+            for k, v in daconfig['dispatch'].items():
+                if v == yaml_filename:
+                    output['location_bar'] = url_for('run_interview', dispatch=k)
+                    output['page_sep'] = "#/"
+                    break
+            if output['location_bar'] is None:
+                output['location_bar'] = url_for('index', **index_params)
+        send_initial = True
     if not yaml_filename:
         return jsonify_with_status("Parameter i is required.", 400)
     if not secret:
         secret = random_string(16)
         output['secret'] = secret
     secret = str(secret)
-    if not session_id:
-        try:
-            (encrypted, session_id) = create_new_interview(yaml_filename, secret, url_args=url_args, req=request)
-        except Exception as err:
-            return jsonify_with_status(err.__class__.__name__ + ': ' + str(err), 400)
-        output['session'] = session_id
-    if url_args is not None and isinstance(url_args, dict):
-        variables = dict()
-        for key, val in url_args.items():
-            variables["url_args[%s]" % (repr(key),)] = val
-        try:
-            set_session_variables(yaml_filename, session_id, variables, secret=secret)
-        except Exception as the_err:
-            return jsonify_with_status(str(the_err), 400)
-    try:
-        data = get_question_data(yaml_filename, session_id, secret)
-    except Exception as err:
-        return jsonify_with_status(str(err), 400)
-    if request.method == 'POST':
-        if command:
-            if command == 'back':
-                if data['allow_going_back']:
-                    try:
-                        data = go_back_in_session(yaml_filename, session_id, secret=secret, return_question=True)
-                    except Exception as the_err:
-                        return jsonify_with_status(str(the_err), 400)
-            else:
-                return jsonify_with_status("Invalid command", 400)
+    docassemble.base.functions.this_thread.current_info = current_info(req=request, interface='api', secret=secret)
+    if yaml_filename not in user_info['sessions'] or need_to_reset or new_session:
+        was_new = True
+        if (PREVENT_DEMO) and (yaml_filename.startswith('docassemble.base:') or yaml_filename.startswith('docassemble.demo:')) and (current_user.is_anonymous or not current_user.has_role('admin', 'developer')):
+            return jsonify_with_status(word("Not authorized"), 403)
+        if current_user.is_anonymous and not daconfig.get('allow anonymous access', True):
+            output['redirect'] = url_for('user.login', next=url_for('index', i=yaml_filename, **url_args))
+            return jsonify(output)
+        if yaml_filename.startswith('docassemble.playground'):
+            if not app.config['ENABLE_PLAYGROUND']:
+                return jsonify_with_status(word("Not authorized"), 403)
         else:
+            yaml_filename = re.sub(r':([^\/]+)$', r':data/questions/\1', yaml_filename)
+        interview = docassemble.base.interview_cache.get_interview(yaml_filename)
+        if session_id is None:
+            if need_to_reset and yaml_filename in user_info['sessions']:
+                reset_user_dict(user_info['sessions'][yaml_filename], yaml_filename)
+                del user_info['sessions'][yaml_filename]
+            unique_sessions = interview.consolidated_metadata.get('sessions are unique', False)
+            if unique_sessions is not False and not current_user.is_authenticated:
+                if yaml_filename in user_info['sessions']:
+                    del user_info['sessions'][yaml_filename]
+                output['redirect'] = url_for('user.login', next=url_for('index', i=yaml_filename, **url_args))
+                return jsonify(output)
+            if interview.consolidated_metadata.get('temporary session', False):
+                if yaml_filename in user_info['sessions']:
+                    reset_user_dict(user_info['sessions'][yaml_filename], yaml_filename)
+                    del user_info['sessions'][yaml_filename]
+                if current_user.is_authenticated:
+                    while True:
+                        the_session_id, encrypted = get_existing_session(yaml_filename, secret)
+                        if the_session_id:
+                            reset_user_dict(the_session_id, yaml_filename)
+                        else:
+                            break
+                    need_to_reset = True
+            if current_user.is_anonymous:
+                if (not interview.allowed_to_initiate(is_anonymous=True)) or (not interview.allowed_to_access(is_anonymous=True)):
+                    output['redirect'] = url_for('user.login', next=url_for('index', i=yaml_filename, **url_args))
+                    return jsonify(output)
+            elif not interview.allowed_to_initiate(has_roles=[role.name for role in current_user.roles]):
+                return jsonify_with_status(word("You are not allowed to access this interview."), 403)
+            elif not interview.allowed_to_access(has_roles=[role.name for role in current_user.roles]):
+                return jsonify_with_status(word("You are not allowed to access this interview."), 403)
+            session_id = None
+            if reset_fully:
+                user_info['sessions'] = {}
+            if (not need_to_reset) and (unique_sessions is True or (isinstance(unique_sessions, list) and len(unique_sessions) and current_user.has_role(*unique_sessions))):
+                session_id, encrypted = get_existing_session(yaml_filename, secret)
+        else:
+            unique_sessions = interview.consolidated_metadata.get('sessions are unique', False)
+            if unique_sessions is not False and not current_user.is_authenticated:
+                if yaml_filename in user_info['sessions']:
+                    del user_info['sessions'][yaml_filename]
+                output['redirect'] = url_for('user.login', next=url_for('index', i=yaml_filename, session=session_id, **url_args))
+                return jsonify(output)
+            if current_user.is_anonymous:
+                if (not interview.allowed_to_initiate(is_anonymous=True)) or (not interview.allowed_to_access(is_anonymous=True)):
+                    output['redirect'] = url_for('user.login', next=url_for('index', i=yaml_filename, session=session_id, **url_args))
+                    return jsonify(output)
+            elif not interview.allowed_to_initiate(has_roles=[role.name for role in current_user.roles]):
+                if yaml_filename in user_info['sessions']:
+                    del user_info['sessions'][yaml_filename]
+                return jsonify_with_status(word("You are not allowed to access this interview."), 403)
+            elif not interview.allowed_to_access(has_roles=[role.name for role in current_user.roles]):
+                if yaml_filename in user_info['sessions']:
+                    del user_info['sessions'][yaml_filename]
+                return jsonify_with_status(word("You are not allowed to access this interview."), 403)
+            if need_to_reset:
+                reset_user_dict(session_id, yaml_filename)
+        session_id = None
+    if new_session:
+        session_id = None
+        if yaml_filename in user_info['sessions']:
+            del user_info['sessions'][yaml_filename]
+    if not session_id:
+        if yaml_filename in user_info['sessions']:
+            session_id = user_info['sessions'][yaml_filename]
+        else:
+            try:
+                (encrypted, session_id) = create_new_interview(yaml_filename, secret, url_args=url_args, referer=referer, req=request)
+            except Exception as err:
+                return jsonify_with_status(err.__class__.__name__ + ': ' + str(err), 400)
+            user_info['sessions'][yaml_filename] = session_id
+            changed = True
+            is_new = True
+        #output['session'] = session_id
+    if changed:
+        key = 'da:apiinterview:usercode:' + user_code
+        pipe = r.pipeline()
+        pipe.set(key, json.dumps(user_info))
+        pipe.expire(key, 60*60*24*30)
+        pipe.execute()
+    if not is_new:
+        if url_args is not None and isinstance(url_args, dict) and len(url_args) > 0:
+            logmessage("url_args is " + repr(url_args))
+            variables = dict()
+            for key, val in url_args.items():
+                variables["url_args[%s]" % (repr(key),)] = val
+            try:
+                set_session_variables(yaml_filename, session_id, variables, secret=secret, use_lock=True)
+            except Exception as the_err:
+                return jsonify_with_status(str(the_err), 400)
+    obtain_lock(session_id, yaml_filename)
+    if request.method == 'POST' and command == 'action':
+        action = post_data.get('action', None)
+    if action is not None:
+        if not isinstance(action, dict) or 'action' not in action or 'arguments' not in action:
+            release_lock(session_id, yaml_filename)
+            return jsonify_with_status("Invalid action", 400)
+        try:
+            data = get_question_data(yaml_filename, session_id, secret, save=True, use_lock=False, action=action, post_setting=True, advance_progress_meter=True, encode=True)
+        except Exception as err:
+            release_lock(session_id, yaml_filename)
+            return jsonify_with_status(str(err), 400)
+    else:
+        try:
+            data = get_question_data(yaml_filename, session_id, secret, save=False, use_lock=False, encode=True)
+        except Exception as err:
+            release_lock(session_id, yaml_filename)
+            return jsonify_with_status(str(err), 400)
+    if request.method == 'POST':
+        if command == 'back':
+            if data['allow_going_back']:
+                try:
+                    data = go_back_in_session(yaml_filename, session_id, secret=secret, return_question=True, encode=True)
+                except Exception as the_err:
+                    release_lock(session_id, yaml_filename)
+                    return jsonify_with_status(str(the_err), 400)
+        elif command is None:
             variables = post_data.get('variables', None)
             if not isinstance(variables, dict):
+                release_lock(session_id, yaml_filename)
                 return jsonify_with_status("variables must be a dictionary", 400)
             if variables is not None:
                 variables = transform_json_variables(variables)
@@ -25756,22 +26247,59 @@ def api_interview():
                 for field in data['fields']:
                     if 'variable_name' in field and field.get('active', False):
                         valid_variables[field['variable_name']] = field
-                    if field.get('required', False):
+                    if field.get('required', False) and 'variable_name' in field:
                         if field['variable_name'] not in variables:
+                            release_lock(session_id, yaml_filename)
                             return jsonify_with_status("variable %s is missing" % (field['variable_name'],), 400)
             for key, val in variables.items():
                 if key not in valid_variables:
+                    release_lock(session_id, yaml_filename)
                     return jsonify_with_status("invalid variable name " + repr(key), 400)
             try:
-                data = set_session_variables(yaml_filename, session_id, variables, secret=secret, return_question=True, event_list=data.get('event_list', None), question_name=data.get('questionName', None))
+                data = set_session_variables(yaml_filename, session_id, variables, secret=secret, return_question=True, event_list=data.get('event_list', None), question_name=data.get('questionName', None), encode=True)
             except Exception as the_err:
+                release_lock(session_id, yaml_filename)
                 return jsonify_with_status(str(the_err), 400)
-    if data.get('questionType', None) is 'response':
+        elif command != 'action':
+            release_lock(session_id, yaml_filename)
+            return jsonify_with_status("Invalid command", 400)
+    if data.get('questionType', None) in ('response', 'sendfile'):
         output['question'] = {
-            'questionType': 'response'
+            'questionType': data['questionType']
         }
     else:
         output['question'] = data
+    release_lock(session_id, yaml_filename)
+    if send_initial:
+        output['setup'] = {}
+        if 'google maps api key' in google_config:
+            api_key = google_config.get('google maps api key')
+        elif 'api key' in google_config:
+            api_key = google_config.get('api key')
+        else:
+            api_key = None
+        if api_key:
+            output['setup']['googleApiKey'] = api_key
+        if ga_configured and data['interview_options'].get('analytics on', True):
+            interview_package = re.sub(r'^docassemble\.', '', re.sub(r':.*', '', yaml_filename))
+            interview_filename = re.sub(r'\.ya?ml$', '', re.sub(r'.*[:\/]', '', yaml_filename), re.IGNORECASE)
+            output['setup']['googleAnalytics'] = dict(enable=True, ga_id=google_config.get('analytics id'), prefix=interview_package + '/' + interview_filename)
+        else:
+            output['setup']['googleAnalytics'] = dict(enable=False)
+      #<script src="https://maps.googleapis.com/maps/api/js?key=' + api_key + '&libraries=places"></script>'
+      #window.dataLayer = window.dataLayer || [];
+      #function gtag(){dataLayer.push(arguments);}
+      #gtag('js', new Date());
+      #function daPageview(){
+      #  var idToUse = daQuestionID['id'];
+      #  if (daQuestionID['ga'] != undefined && daQuestionID['ga'] != null){
+      #    idToUse = daQuestionID['ga'];
+      #  }
+      #  if (idToUse != null){
+      #    gtag('config', """ + json.dumps(ga_id) + """, {""" + ("'cookie_flags': 'SameSite=None;Secure', " if app.config['SESSION_COOKIE_SECURE'] else '') + """'page_path': """ + json.dumps(interview_package) + """ + "/" + """ + json.dumps(interview_filename) + """ + "/" + idToUse.replace(/[^A-Za-z0-9]+/g, '_')});
+      #  }
+      #}
+      #<script async src="https://www.googletagmanager.com/gtag/js?id=""" + ga_id + """"></script>
     return jsonify(output)
 
 @app.route('/me', methods=['GET'])
