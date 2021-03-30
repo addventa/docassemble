@@ -3063,6 +3063,8 @@ class Question:
             self.checkin = str(data['check in'])
             self.names_used.add(str(data['check in']))
         if 'yesno' in data:
+            if not isinstance(data['yesno'], str):
+                raise DAError("A yesno must refer to text." + self.idebug(data))
             self.fields.append(Field({'saveas': data['yesno'], 'boolean': 1}))
             if self.scan_for_variables:
                 self.fields_used.add(data['yesno'])
@@ -3070,6 +3072,8 @@ class Question:
                 self.other_fields_used.add(data['yesno'])
             self.question_type = 'yesno'
         if 'noyes' in data:
+            if not isinstance(data['noyes'], str):
+                raise DAError("A noyes must refer to text." + self.idebug(data))
             self.fields.append(Field({'saveas': data['noyes'], 'boolean': -1}))
             if self.scan_for_variables:
                 self.fields_used.add(data['noyes'])
@@ -3077,6 +3081,8 @@ class Question:
                 self.other_fields_used.add(data['noyes'])
             self.question_type = 'noyes'
         if 'yesnomaybe' in data:
+            if not isinstance(data['yesnomaybe'], str):
+                raise DAError("A yesnomaybe must refer to text." + self.idebug(data))
             self.fields.append(Field({'saveas': data['yesnomaybe'], 'threestate': 1}))
             if self.scan_for_variables:
                 self.fields_used.add(data['yesnomaybe'])
@@ -3084,6 +3090,8 @@ class Question:
                 self.other_fields_used.add(data['yesnomaybe'])
             self.question_type = 'yesnomaybe'
         if 'noyesmaybe' in data:
+            if not isinstance(data['noyesmaybe'], str):
+                raise DAError("A noyesmaybe must refer to text." + self.idebug(data))
             self.fields.append(Field({'saveas': data['noyesmaybe'], 'threestate': -1}))
             if self.scan_for_variables:
                 self.fields_used.add(data['noyesmaybe'])
@@ -7473,6 +7481,7 @@ class Interview:
                                 if self.debug:
                                     interview_status.seeking.append({'question': question, 'reason': 'objects', 'time': time.time()})
                                 #logmessage("Going into objects")
+                                docassemble.base.functions.this_thread.current_question = question
                                 for keyvalue in question.objects:
                                     for variable in keyvalue:
                                         object_type_name = keyvalue[variable]
@@ -7984,6 +7993,7 @@ class Interview:
                         question.exec_setup(is_generic, the_x, iterators, user_dict)
                         success = False
                         old_variable = None
+                        docassemble.base.functions.this_thread.current_question = question
                         for keyvalue in question.objects:
                             # logmessage("In a for loop for keyvalue")
                             for variable, object_type_name in keyvalue.items():
