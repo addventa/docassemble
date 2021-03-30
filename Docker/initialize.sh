@@ -39,7 +39,7 @@ echo "config.yml is at" $DA_CONFIG_FILE >&2
 
 echo "1" >&2
 echo "--------------------------" >&2
-echo "Docassemble V1.2.45-1" >&2
+echo "Docassemble V1.2.47-1" >&2
 echo "--------------------------" >&2
 
 export DEBIAN_FRONTEND=noninteractive
