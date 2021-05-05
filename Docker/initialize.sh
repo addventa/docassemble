@@ -421,6 +421,7 @@ if [ ! -f "$DA_CONFIG_FILE" ]; then
         -e 's/{{DABACKUPDAYS}}/'"${DABACKUPDAYS:-14}"'/' \
         -e 's@{{REDIS}}@'"${REDIS:-null}"'@' \
         -e 's#{{RABBITMQ}}#'"${RABBITMQ:-null}"'#' \
+        -e 's@{{DACELERYWORKERS}}@'"${DACELERYWORKERS:-null}"'@' \
         -e 's@{{TIMEZONE}}@'"${TIMEZONE:-null}"'@' \
         -e 's/{{EC2}}/'"${EC2:-false}"'/' \
         -e 's/{{COLLECTSTATISTICS}}/'"${COLLECTSTATISTICS:-false}"'/' \
@@ -944,6 +945,7 @@ echo "40" >&2
 
 if [[ $CONTAINERROLE =~ .*:(all|celery):.* ]] && [ "$CELERYRUNNING" = false ]; then
     supervisorctl --serverurl http://localhost:9001 start celery
+    supervisorctl --serverurl http://localhost:9001 start celerysingle
 fi
 
 NASCENTRUNNING=true;
@@ -1011,11 +1013,13 @@ if [ "${DAWEBSERVER:-nginx}" = "nginx" ]; then
             find / -group $OLDGID -exec chgrp -h www-data {} \;
             if [[ $CONTAINERROLE =~ .*:(all|celery):.* ]] && [ "$CELERYRUNNING" = false ]; then
                 supervisorctl --serverurl http://localhost:9001 stop celery
+                supervisorctl --serverurl http://localhost:9001 stop celerysingle
             fi
             supervisorctl --serverurl http://localhost:9001 reread
             supervisorctl --serverurl http://localhost:9001 update
             if [[ $CONTAINERROLE =~ .*:(all|celery):.* ]] && [ "$CELERYRUNNING" = false ]; then
                 supervisorctl --serverurl http://localhost:9001 start celery
+                supervisorctl --serverurl http://localhost:9001 start celerysingle
             fi
         fi
         echo "41.8" >&2
@@ -1144,11 +1148,13 @@ if [ "${DAWEBSERVER:-nginx}" = "apache" ]; then
             find / -group $OLDGID -exec chgrp -h www-data {} \;
             if [[ $CONTAINERROLE =~ .*:(all|celery):.* ]] && [ "$CELERYRUNNING" = false ]; then
                 supervisorctl --serverurl http://localhost:9001 stop celery
+                supervisorctl --serverurl http://localhost:9001 stop celerysingle
             fi
             supervisorctl --serverurl http://localhost:9001 reread
             supervisorctl --serverurl http://localhost:9001 update
             if [[ $CONTAINERROLE =~ .*:(all|celery):.* ]] && [ "$CELERYRUNNING" = false ]; then
                 supervisorctl --serverurl http://localhost:9001 start celery
+                supervisorctl --serverurl http://localhost:9001 start celerysingle
             fi
         fi
 

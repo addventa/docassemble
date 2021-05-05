@@ -17,4 +17,12 @@ export LANG=$1
 
 export HOME=/var/www
 
-exec celery -A docassemble.webapp.worker worker --loglevel=INFO
+NUMPROCS=$(nproc --all)
+NUMPROCS=${DACELERYWORKERS:-${NUMPROCS}}
+NUMPROCS=$(expr $NUMPROCS - 1)
+if ((NUMPROCS < 1));
+then
+    NUMPROCS=1
+fi
+
+exec celery -A docassemble.webapp.worker worker --loglevel=INFO --concurrency=$NUMPROCS -Q celery

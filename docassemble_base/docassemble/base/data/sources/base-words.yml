@@ -557,6 +557,7 @@
 "Morocco": Null
 "Move down": Null
 "Mozambique": Null
+"Multiselect box": Null
 "Must be a two-letter code": Null
 "Must be a valid e-mail address": Null
 "Must be in E.164 format.  U.S. phone numbers begin with +1.": Null
@@ -947,6 +948,7 @@
 "Test": Null
 "Thailand": Null
 "Thank you for registering with": Null
+"That e-mail address is already taken.": Null
 "That package name is already in use by someone else.  Please change the name.": Null
 "That screen is already being controlled by another operator": Null
 "The author is": Null

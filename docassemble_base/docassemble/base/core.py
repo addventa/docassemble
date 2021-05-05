@@ -1223,7 +1223,7 @@ class DAList(DAObject):
             return self
         if isinstance(other, DAList):
             other._trigger_gather()
-            the_list = DAList(elements=self.elements + other.elements, gathered=True, auto_gather=False)
+            the_list = self.__class__(elements=self.elements + other.elements, gathered=True, auto_gather=False)
             the_list.set_random_instance_name()
             return the_list
         return self.elements + other
@@ -1490,7 +1490,7 @@ class DAList(DAObject):
         """Returns a list of the elements that are complete."""
         if complete_attribute is None and hasattr(self, 'complete_attribute'):
             complete_attribute = self.complete_attribute
-        items = DAList(self.instanceName)
+        items = self.__class__(self.instanceName)
         for item in self.elements:
             if item is None:
                 continue
@@ -3140,21 +3140,21 @@ class DASet(DAObject):
 
         """
         self._trigger_gather()
-        return DASet(elements=self.elements.union(setify(other_set)))
+        return self.__class__(elements=self.elements.union(setify(other_set)))
     def intersection(self, other_set):
         """Returns a Python set consisting of the elements of the current set
         that also exist in the other_set.
 
         """
         self._trigger_gather()
-        return DASet(elements=self.elements.intersection(setify(other_set)))
+        return self.__class__(elements=self.elements.intersection(setify(other_set)))
     def difference(self, other_set):
         """Returns a Python set consisting of the elements of the current set
         that do not exist in the other_set.
 
         """
         self._trigger_gather()
-        return DASet(elements=self.elements.difference(setify(other_set)))
+        return self.__class__(elements=self.elements.difference(setify(other_set)))
     def isdisjoint(self, other_set):
         """Returns True if no elements overlap between the current set and the
         other_set.  Otherwise, returns False."""
@@ -3397,7 +3397,7 @@ class DAFile(DAObject):
         if not os.path.isfile(the_path):
             raise Exception("File " + str(the_path) + " does not exist yet.")
         if auto_decode and hasattr(self, 'mimetype') and (self.mimetype.startswith('text') or self.mimetype in ('application/json', 'application/javascript')):
-            with open(the_path, 'rU', encoding='utf-8') as f:
+            with open(the_path, 'r', encoding='utf-8') as f:
                 return(f.read())
         else:
             with open(the_path, 'rb') as f:
@@ -3408,7 +3408,7 @@ class DAFile(DAObject):
         the_path = self.path()
         if not os.path.isfile(the_path):
             raise Exception("File does not exist yet.")
-        with open(the_path, 'rU', encoding='utf-8') as f:
+        with open(the_path, 'r', encoding='utf-8') as f:
             return(f.readlines())
     def write(self, content, binary=False):
         """Writes the given content to the file, replacing existing contents."""
@@ -4143,10 +4143,10 @@ class DAStaticFile(DAObject):
         if not os.path.isfile(the_path):
             raise Exception("File " + str(the_path) + " does not exist.")
         if auto_decode and hasattr(self, 'mimetype') and (self.mimetype.startswith('text') or self.mimetype in ('application/json', 'application/javascript')):
-            with open(the_path, 'rU', encoding='utf-8') as f:
+            with open(the_path, 'r', encoding='utf-8') as f:
                 return(f.read())
         else:
-            with open(the_path, 'rU') as f:
+            with open(the_path, 'r') as f:
                 return(f.read())
     def path(self):
         """Returns a path and filename at which the file can be accessed.
@@ -4280,9 +4280,9 @@ class DATemplate(DAObject):
         return str(self.content)
     def __str__(self):
         if docassemble.base.functions.this_thread.evaluation_context == 'docx':
-            #return str(self.content)
-            #return str(docassemble.base.filter.docx_template_filter(self.content))
-            return str(docassemble.base.file_docx.markdown_to_docx(self.content, docassemble.base.functions.this_thread.current_question, docassemble.base.functions.this_thread.misc('docx_template', None)))
+            content = self.content
+            content = re.sub(r'\\_', r'\\\\_', content)
+            return str(docassemble.base.file_docx.markdown_to_docx(content, docassemble.base.functions.this_thread.current_question, docassemble.base.functions.this_thread.misc.get('docx_template', None)))
         return(str(self.content))
 
 def table_safe(text):
@@ -4471,8 +4471,6 @@ class DALazyTemplate(DAObject):
         if docassemble.base.functions.this_thread.evaluation_context == 'docx':
             content = self.content
             content = re.sub(r'\\_', r'\\\\_', content)
-            #return str(self.content)
-            #return str(docassemble.base.filter.docx_template_filter(self.content))
             return str(docassemble.base.file_docx.markdown_to_docx(content, docassemble.base.functions.this_thread.current_question, docassemble.base.functions.this_thread.misc.get('docx_template', None)))
         return(str(self.content))
 
@@ -4683,7 +4681,7 @@ def objects_from_file(file_ref, recursive=True, gathered=True, name=None, use_ob
     objects.gathered = True
     objects.revisit = True
     is_singular = True
-    with open(file_info['fullpath'], 'rU', encoding='utf-8') as fp:
+    with open(file_info['fullpath'], 'r', encoding='utf-8') as fp:
         if 'mimetype' in file_info and file_info['mimetype'] == 'application/json':
             document = json.load(fp)
             new_objects = recurse_obj(document, recursive=recursive, use_objects=use_objects)

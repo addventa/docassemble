@@ -6,6 +6,7 @@ import httplib2
 import socket
 import pkg_resources
 from docassemble.base.generate_key import random_string
+from distutils.version import LooseVersion
 # def trenv(key):
 #     if os.environ[key] == 'null':
 #         return None
@@ -116,11 +117,11 @@ def load(**kwargs):
     if not os.path.isfile(filename):
         sys.stderr.write("Configuration file " + str(filename) + " does not exist.\n")
         sys.exit(1)
-    with open(filename, 'rU', encoding='utf-8') as stream:
+    with open(filename, 'r', encoding='utf-8') as stream:
         raw_daconfig = yaml.load(stream, Loader=yaml.FullLoader)
     if raw_daconfig is None:
         sys.stderr.write("Could not open configuration file from " + str(filename) + "\n")
-        with open(filename, 'rU', encoding='utf-8') as fp:
+        with open(filename, 'r', encoding='utf-8') as fp:
             sys.stderr.write(fp.read() + "\n")
         sys.exit(1)
     daconfig.clear()
@@ -140,10 +141,14 @@ def load(**kwargs):
     daconfig['python version'] = str(pkg_resources.get_distribution("docassemble.base").version)
     version_file = daconfig.get('version file', '/usr/share/docassemble/webapp/VERSION')
     if os.path.isfile(version_file) and os.access(version_file, os.R_OK):
-        with open(version_file, 'rU', encoding='utf-8') as fp:
+        with open(version_file, 'r', encoding='utf-8') as fp:
             daconfig['system version'] = fp.read().strip()
     else:
         daconfig['system version'] = '0.1.12'
+    if LooseVersion(daconfig['system version']) >= LooseVersion('1.2.50'):
+        daconfig['has_celery_single_queue'] = True
+    else:
+        daconfig['has_celery_single_queue'] = False
     # for key in [['REDIS', 'redis'], ['RABBITMQ', 'rabbitmq'], ['EC2', 'ec2'], ['LOGSERVER', 'log server'], ['LOGDIRECTORY', 'log'], ['USEHTTPS', 'use https'], ['USELETSENCRYPT', 'use lets encrypt'], ['BEHINDHTTPSLOADBALANCER', 'behind https load balancer'], ['LETSENCRYPTEMAIL', 'lets encrypt email'], ['DAHOSTNAME', 'external hostname']]:
     #     if key[0] in os.environ:
     #         val = trenv(os.environ[key[0]])
@@ -207,7 +212,7 @@ def load(**kwargs):
                 break
         if not ok:
             daconfig['suppress error notificiations'] = []
-            sys.stderr.write("Configuration file suppress error notifications directive not valid")
+            config_error("Configuration file suppress error notifications directive not valid")
     else:
         daconfig['suppress error notificiations'] = []
     if 'maximum content length' in daconfig:
@@ -579,6 +584,8 @@ def load(**kwargs):
             override_config(daconfig, messages, 'redis', 'REDIS')
         if env_exists('RABBITMQ'):
             override_config(daconfig, messages, 'rabbitmq', 'RABBITMQ')
+        if env_exists('DACELERYWORKERS'):
+            override_config(daconfig, messages, 'celery processes', 'DACELERYWORKERS')
         for env_var, key in (('S3ENABLE', 'enable'), ('S3ACCESSKEY', 'access key id'), ('S3SECRETACCESSKEY', 'secret access key'), ('S3BUCKET', 'bucket'), ('S3REGION', 'region'), ('S3ENDPOINTURL', 'endpoint url')):
             if env_exists(env_var):
                 override_config(daconfig, messages, key, env_var, pre_key='s3')

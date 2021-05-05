@@ -15,6 +15,9 @@ class DAError(Exception):
     def __str__(self):
         return str(self.value)
 
+class DANotFoundError(Exception):
+    pass
+
 class DAValidationError(Exception):
     """This is an Exception object that is used when raising an exception inside input validation code."""
     def __init__(self, *pargs, field=None):
@@ -181,6 +184,10 @@ class QuestionError(Exception):
             self.show_exit = kwargs['show_exit'];
         else:
             self.show_exit = None
+        if 'reload' in kwargs:
+            self.reload = kwargs['reload'];
+        else:
+            self.reload = None
         if 'show_restart' in kwargs:
             self.show_restart = kwargs['show_restart'];
         else:

@@ -3,7 +3,7 @@ from docassemble.base.config import daconfig
 from datetime import timedelta
 import docassemble.webapp.database
 import re
-da_version = '1.2.47'
+da_version = '1.2.65'
 app.config['DA_VERSION'] = da_version
 app.config['APP_NAME'] = daconfig.get('appname', 'docassemble')
 app.config['BRAND_NAME'] = daconfig.get('brandname', daconfig.get('appname', 'docassemble'))
@@ -80,7 +80,7 @@ app.config['MAX_CONTENT_LENGTH'] = daconfig.get('maximum content length', 16 * 1
 app.config['USE_X_SENDFILE'] = daconfig.get('xsendfile', True) if daconfig.get('web server', 'nginx') == 'apache' else False
 #if daconfig.get('behind https load balancer', False):
 #    app.config['PREFERRED_URL_SCHEME'] = 'https'
-#app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000
 connect_string = docassemble.webapp.database.connection_string()
 alchemy_connect_string = docassemble.webapp.database.alchemy_connection_string()
 app.config['SQLALCHEMY_DATABASE_URI'] = alchemy_connect_string

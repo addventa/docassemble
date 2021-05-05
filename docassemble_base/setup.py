@@ -46,7 +46,7 @@ def find_package_data(where='.', package='', exclude=standard_exclude, exclude_d
     return out
 
 install_requires = [
-    'docassemble==1.2.47',
+    'docassemble==1.2.65',
     "3to2==1.1.1",
     "alembic==1.4.3",
     "astunparse==1.6.3",
@@ -112,7 +112,7 @@ install_requires = [
     "pandas==1.1.4",
     "passlib==1.7.4",
     "pathlib==1.0.1",
-    "Docassemble-Pattern==3.6.1",
+    "Docassemble-Pattern==3.6.2",
     "pdfminer.six==20201018",
     "phonenumbers==8.12.13",
     "Pillow==8.1.1",
@@ -120,7 +120,7 @@ install_requires = [
     "pluggy==0.13.1",
     "ply==3.11",
     "protobuf==3.14.0",
-    "py==1.9.0",
+    "py==1.10.0",
     "pyasn1==0.4.8",
     "pyasn1-modules==0.2.8",
     "pycountry==20.7.3",
@@ -128,7 +128,7 @@ install_requires = [
     "pycryptodome==3.9.9",
     "pycryptodomex==3.9.9",
     "pycurl==7.43.0.6",
-    "Pygments==2.7.2",
+    "Pygments==2.7.4",
     "PyJWT==1.7.1",
     "PyLaTeX==1.4.1",
     "pyparsing==2.4.7",
@@ -152,7 +152,7 @@ install_requires = [
     "requests-oauthlib==1.3.0",
     "requests-toolbelt==0.9.1",
     "rfc3986==1.4.0",
-    "rsa==4.6",
+    "rsa==4.7",
     "ruamel.yaml==0.16.12",
     "ruamel.yaml.clib==0.2.2",
     "scipy==1.5.4",
@@ -170,7 +170,7 @@ install_requires = [
     "tzlocal==2.1",
     "ua-parser==0.10.0",
     "uritemplate==3.0.1",
-    "urllib3==1.26.3",
+    "urllib3==1.26.4",
     "us==2.0.2",
     "user-agents==2.2.0",
     "wcwidth==0.2.5",
@@ -190,7 +190,7 @@ install_requires = [
 ]
 
 setup(name='docassemble.base',
-      version='1.2.47',
+      version='1.2.65',
       python_requires='>=3.8',
       description=('The base components of the docassemble system.'),
       long_description=read("README.md"),

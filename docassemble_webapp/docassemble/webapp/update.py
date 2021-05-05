@@ -360,12 +360,12 @@ def get_home_page_dict():
         if os.path.isfile(metadata_path):
             name = None
             url = None
-            with open(metadata_path, 'rU', encoding='utf-8') as fp:
+            with open(metadata_path, 'r', encoding='utf-8') as fp:
                 for line in fp:
                     if line.startswith('Name: '):
                         name = line[6:]
                     elif line.startswith('Home-page: '):
-                        url = line[11:]
+                        url = line[11:].rstrip('/')
                         break
             if name:
                 home_page[name.lower()] = url
@@ -494,22 +494,22 @@ def install_package(package, start_time=None):
             gitprefix = 'git+'
         if package.gitsubdir is not None:
             commands = ['pip', 'install']
-            # if disable_pip_cache:
-            #     commands.append('--no-cache-dir')
-            commands.extend(['--quiet', '--prefix=' + PACKAGE_DIRECTORY, '--src=' + temp_dir, "--no-deps", '--log-file=' + pip_log.name, gitprefix + str(package.giturl) + gitsuffix + branchpart + '#egg=' + package.name + '&subdirectory=' + str(package.gitsubdir)])
+            if disable_pip_cache:
+                commands.append('--no-cache-dir')
+            commands.extend(['--quiet', '--prefix=' + PACKAGE_DIRECTORY, '--src=' + temp_dir, '--no-deps', '--log-file=' + pip_log.name, gitprefix + str(package.giturl).rstrip('/') + gitsuffix + branchpart + '#egg=' + package.name + '&subdirectory=' + str(package.gitsubdir)])
         else:
             commands = ['pip', 'install']
-            # if disable_pip_cache:
-            #     commands.append('--no-cache-dir')
-            commands.extend(['--quiet', '--prefix=' + PACKAGE_DIRECTORY, '--src=' + temp_dir, "--no-deps", '--log-file=' + pip_log.name, gitprefix + str(package.giturl) + gitsuffix + branchpart + '#egg=' + package.name])
+            if disable_pip_cache:
+                commands.append('--no-cache-dir')
+            commands.extend(['--quiet', '--prefix=' + PACKAGE_DIRECTORY, '--src=' + temp_dir, '--no-deps', '--log-file=' + pip_log.name, gitprefix + str(package.giturl).rstrip('/') + gitsuffix + branchpart + '#egg=' + package.name])
     elif package.type == 'pip':
         if package.limitation is None:
             limit = ""
         else:
             limit = str(package.limitation)
         commands = ['pip', 'install']
-        # if disable_pip_cache:
-        #     commands.append('--no-cache-dir')
+        if disable_pip_cache:
+            commands.append('--no-cache-dir')
         commands.extend(['--quiet', '--prefix=' + PACKAGE_DIRECTORY, '--src=' + temp_dir, "--no-deps", '--log-file=' + pip_log.name, package.name + limit])
     else:
         sys.stderr.write("Wrong package type after " + str(time.time() - start_time) + " seconds\n")
@@ -528,7 +528,7 @@ def install_package(package, start_time=None):
         sys.stdout.flush()
     #time.sleep(4)
     pip_log.seek(0)
-    with open(pip_log.name, 'rU', encoding='utf-8') as x:
+    with open(pip_log.name, 'r', encoding='utf-8') as x:
         logfilecontents += x.read()
     pip_log.close()
     if False:
@@ -565,7 +565,7 @@ def uninstall_package(package, sleep=True, start_time=None):
         sys.stdout.flush()
     #time.sleep(4)
     pip_log.seek(0)
-    with open(pip_log.name, 'rU', encoding='utf-8') as x:
+    with open(pip_log.name, 'r', encoding='utf-8') as x:
         logfilecontents += x.read()
     pip_log.close()
     if False:

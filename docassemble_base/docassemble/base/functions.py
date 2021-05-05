@@ -46,6 +46,7 @@ import num2words
 from unicodedata import normalize
 from collections.abc import Iterable
 from jinja2.runtime import Undefined
+import warnings
 TypeType = type(type(None))
 locale.setlocale(locale.LC_ALL, '')
 contains_volatile = re.compile('^(x\.|x\[|.*\[[ijklmn]\])')
@@ -332,7 +333,7 @@ def state_name(state_code, country_code=None):
     name."""
     ensure_definition(state_code, country_code)
     if country_code is None:
-        country_code = 'US'
+        country_code = get_country() or 'US'
     for subdivision in pycountry.subdivisions.get(country_code=country_code):
         m = re.search(r'-([A-Z]+)$', subdivision.code)
         if m and m.group(1) == state_code:
@@ -619,7 +620,7 @@ def states_list(country_code=None):
     suitable for use in a multiple choice field."""
     ensure_definition(country_code)
     if country_code is None:
-        country_code = 'US'
+        country_code = get_country() or 'US'
     mapping = dict()
     for subdivision in pycountry.subdivisions.get(country_code=country_code):
         if subdivision.parent_code is not None:
@@ -3344,9 +3345,18 @@ def qr_code(string, width=None, alt_text=None):
         else:
             return('[QR ' + string + ', ' + width + ', ' + str(alt_text) + ']')
 
+def pkg_resources_resource_filename(package_or_requirement, resource_name):
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("error")
+        try:
+            result = pkg_resources.resource_filename(package_or_requirement, resource_name)
+        except:
+            return None
+    return result
+
 def standard_template_filename(the_file):
     try:
-        return(pkg_resources.resource_filename(pkg_resources.Requirement.parse('docassemble.base'), "docassemble/base/data/templates/" + str(the_file)))
+        return(pkg_resources_resource_filename(pkg_resources.Requirement.parse('docassemble.base'), "docassemble/base/data/templates/" + str(the_file)))
     except:
         #logmessage("Error retrieving data file\n")
         return(None)
@@ -3369,14 +3379,13 @@ def package_template_filename(the_file, **kwargs):
         if not re.match(r'data/.*', parts[1]):
             parts[1] = 'data/templates/' + parts[1]
         try:
-            return(pkg_resources.resource_filename(pkg_resources.Requirement.parse(parts[0]), re.sub(r'\.', r'/', parts[0]) + '/' + parts[1]))
+            return(pkg_resources_resource_filename(pkg_resources.Requirement.parse(parts[0]), re.sub(r'\.', r'/', parts[0]) + '/' + parts[1]))
         except:
             return(None)
     return(None)
 
 def standard_question_filename(the_file):
-    return(pkg_resources.resource_filename(pkg_resources.Requirement.parse('docassemble.base'), "docassemble/base/data/questions/" + str(the_file)))
-    return(None)
+    return(pkg_resources_resource_filename(pkg_resources.Requirement.parse('docassemble.base'), "docassemble/base/data/questions/" + str(the_file)))
 
 def package_data_filename(the_file):
     #logmessage("package_data_filename with: " + str(the_file))
@@ -3404,7 +3413,7 @@ def package_data_filename(the_file):
                 return None
             return(abs_file.path)
         try:
-            result = pkg_resources.resource_filename(pkg_resources.Requirement.parse(parts[0]), re.sub(r'\.', r'/', parts[0]) + '/' + parts[1])
+            result = pkg_resources_resource_filename(pkg_resources.Requirement.parse(parts[0]), re.sub(r'\.', r'/', parts[0]) + '/' + parts[1])
         except:
             result = None
     #if result is None or not os.path.isfile(result):
@@ -3417,7 +3426,7 @@ def package_question_filename(the_file):
         if not re.match(r'data/.*', parts[1]):
             parts[1] = 'data/questions/' + parts[1]
         try:
-            return(pkg_resources.resource_filename(pkg_resources.Requirement.parse(parts[0]), re.sub(r'\.', r'/', parts[0]) + '/' + parts[1]))
+            return(pkg_resources_resource_filename(pkg_resources.Requirement.parse(parts[0]), re.sub(r'\.', r'/', parts[0]) + '/' + parts[1]))
         except:
             return(None)
     return(None)
@@ -4169,7 +4178,7 @@ def phone_number_in_e164(number, country=None):
     E.164 format.  Returns None if the number could not be so formatted."""
     ensure_definition(number, country)
     if country is None:
-        country = get_country()
+        country = get_country() or 'US'
     use_whatsapp = False
     if isinstance(number, str):
         m = re.search(r'^whatsapp:(.*)', number)
@@ -4189,7 +4198,7 @@ def phone_number_is_valid(number, country=None):
     """Given a phone number and a country code, returns True if the phone number is valid, otherwise False."""
     ensure_definition(number, country)
     if country is None:
-        country = get_country()
+        country = get_country() or 'US'
     if isinstance(number, str):
         m = re.search(r'^whatsapp:(.*)', number)
         if m:
@@ -4205,7 +4214,7 @@ def phone_number_is_valid(number, country=None):
 def phone_number_part(number, part, country=None):
     ensure_definition(number, part, country)
     if country is None:
-        country = get_country()
+        country = get_country() or 'US'
     if isinstance(number, str):
         m = re.search(r'^whatsapp:(.*)', number)
         if m:
@@ -4229,7 +4238,7 @@ def phone_number_formatted(number, country=None):
     if number.__class__.__name__ == 'DAEmpty':
         return str(number)
     if country is None:
-        country = get_country()
+        country = get_country() or 'US'
     if isinstance(number, str):
         m = re.search(r'^whatsapp:(.*)', number)
         if m:

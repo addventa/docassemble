@@ -1,5 +1,109 @@
 # Change Log
 
+## [1.2.65] - 2021-05-04
+### Fixed
+- Important security vulnerability.
+
+## [1.2.64] - 2021-05-04
+### Added
+- The `popover trigger` feature.
+### Fixed
+- Added validation error on the edit user profile page when changing
+  e-mail address to an address that is a case-insensitive match to an
+  e-mail address that already exists.
+
+## [1.2.63] - 2021-05-02
+### Changed
+- Optimizations for `interview_list()`.
+
+## [1.2.62] - 2021-05-01
+### Changed
+- Optimizations for the restart process.
+
+## [1.2.61] - 2021-05-01
+### Added
+- The `resume_existing` option for `login_url`.
+
+## [1.2.60] - 2021-04-30
+### Added
+- The `multiselect` data type.
+
+## [1.2.59] - 2021-04-28
+### Fixed
+- Problem with `reset_geolocation()`.
+
+## [1.2.58] - 2021-04-27
+### Fixed
+- Bug with `list collect` and checkboxes.
+### Changed
+- The `<fieldset>` containing a question's buttons now has the class
+  `da-button-set`.
+- The `signature_of()` method of the `SigningProcess` class in the
+  signature recipe now has a width parameter.
+
+## [1.2.57] - 2021-04-26
+### Added
+- The `authorize()` method of `DAOAuth`, which adds OAuth2
+  authorization headers to a `DAWeb` object.
+### Changed
+- The `.geolocate()` method has been renamed to `.geocode()` and other
+  associated attributes have also been renamed.  Backwards
+  compatibility will be maintained until the next minor version
+  update.
+### Fixed
+- The `attachment code` specifier now accepts `DAList` objects.
+- Interference between `help` and operation of `show if`.
+
+## [1.2.56] - 2021-04-22
+### Fixed
+- Screen reader issue with lists.
+- Problem with `DATemplate` when used in the context of a DOCX
+  template.
+
+## [1.2.55] - 2021-04-20
+### Added
+- `reload` option for `message()`.
+### Fixed
+- Error with protecting PDFs with password.
+
+## [1.2.54] - 2021-04-15
+### Changed
+- `DAList` and `DASet` methods will now return objects of the same
+  subclass.
+
+## [1.2.53] - 2021-04-12
+### Changed
+- The GitHub integration feature now sets the name of the SSH key to
+  the `appname` followed by the user ID.
+
+## [1.2.52] - 2021-04-11
+### Changed
+- Added mechanism in classes `Person`, etc. for indicating what class
+  should be used for attributes that are objects.
+- Added support for QR codes when filling PDF files.
+### Fixed
+- The `.address_block()` method now supports the `international` and
+  `show_country` keyword parameters.
+
+## [1.2.51] - 2021-04-07
+### Changed
+- Added optimizations for network usage on first page load (requires
+  system update).
+
+## [1.2.50] - 2021-04-04
+### Changed
+- OCRing in background now uses one process per machine (requires
+  system update).
+
+## [1.2.49] - 2021-04-03
+### Fixed
+- Issue with SVM library.
+
+## [1.2.48] - 2021-03-31
+### Fixed
+- Error with SMS interface.
+- Better trapping of unicode errors in case of a YAML error.
+
 ## [1.2.47] - 2021-03-26
 ### Fixed
 - Enter key on Playground Packages page.
