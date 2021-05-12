@@ -452,6 +452,7 @@ if [ ! -f "$DA_CONFIG_FILE" ]; then
 fi
 chown www-data.www-data "$DA_CONFIG_FILE"
 
+echo "S3ENDPOINTURL" ${S3ENDPOINTURL}
 echo "16" >&2
 
 source /dev/stdin < <(su -c "source \"${DA_ACTIVATE}\" && python -m docassemble.base.read_config \"${DA_CONFIG_FILE}\"" www-data)
