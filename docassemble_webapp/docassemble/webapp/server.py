@@ -769,6 +769,7 @@ def custom_login():
                 if role.name in roles:
                     user.roles.append(role)
             user.bnpp_roles = ", ".join(bnpp_roles_to_store)
+            user.social_id = id
             db.session.commit()
             print("user updated")
         if safe_next == url_for(user_manager.after_login_endpoint):
