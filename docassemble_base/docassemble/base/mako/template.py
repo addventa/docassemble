@@ -307,7 +307,11 @@ class Template(object):
 
         # if plain text, compile code in memory only
         if text is not None:
-            (code, module) = _compile_text(self, text, filename)
+            try:
+                (code, module) = _compile_text(self, text, filename)
+            except Exception as e:
+                print(filename)
+                raise e
             self._code = code
             self._source = text
             ModuleInfo(module, None, self, filename, code, text)
