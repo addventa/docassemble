@@ -20,7 +20,9 @@ from bs4 import BeautifulSoup
 import docassemble.base.file_docx
 from pylatex.utils import escape_latex
 from pathlib import Path
+import subprocess
 
+QPDF_PATH = 'qpdf'
 NoneType = type(None)
 
 from docassemble.base.logger import logmessage
@@ -746,6 +748,20 @@ def borderify(string):
     string = re.sub(r'\[BORDER\] *', r'', string)
     return('\\mdframed ' + str(string) + '\\endmdframed')
 
+def safe_pypdf_reader(filename):
+    try:
+        return PyPDF2.PdfFileReader(open(filename, 'rb'))
+    except PyPDF2.utils.PdfReadError:
+        new_filename = tempfile.NamedTemporaryFile(prefix="datemp", mode="wb", suffix=".pdf", delete=False)
+        qpdf_subprocess_arguments = [QPDF_PATH, filename, new_filename.name]
+        try:
+            result = subprocess.run(qpdf_subprocess_arguments, timeout=60).returncode
+        except subprocess.TimeoutExpired:
+            result = 1
+        if result != 0:
+            raise Exception("Call to qpdf failed for template " + str(filename) + " where arguments were " + " ".join(qpdf_subprocess_arguments))
+        return PyPDF2.PdfFileReader(open(new_filename.name, 'rb'))
+
 def image_as_rtf(match, question=None):
     width_supplied = False
     try:
@@ -783,7 +799,7 @@ def image_as_rtf(match, question=None):
                 server.fg_make_pdf_for_word_path(file_info['path'], file_info['extension'])
         if 'pages' not in file_info:
             try:
-                reader = PyPDF2.PdfFileReader(open(file_info['path'] + '.pdf', 'rb'))
+                reader = safe_pypdf_reader(file_info['path'] + '.pdf')
                 file_info['pages'] = reader.getNumPages()
             except:
                 file_info['pages'] = 1
@@ -971,7 +987,7 @@ def image_url(file_reference, alt_text, width, emoji=False, question=None, playg
                     sf.finalize()
             if 'pages' not in file_info:
                 try:
-                    reader = PyPDF2.PdfFileReader(open(file_info['path'] + '.pdf', 'rb'))
+                    reader = safe_pypdf_reader(file_info['path'] + '.pdf')
                     file_info['pages'] = reader.getNumPages()
                 except:
                     file_info['pages'] = 1
@@ -1030,6 +1046,10 @@ def convert_pixels(match):
     pixels = match.group(1)
     return (str(int(pixels)/72.0) + "in")
 
+def convert_percent(match):
+    percentage = match.group(1)
+    return (str(float(percentage)/100.0) + '\\textwidth')
+
 def image_include_string(match, emoji=False, question=None):
     file_reference = match.group(1)
     if question and file_reference in question.interview.images:
@@ -1038,6 +1058,7 @@ def image_include_string(match, emoji=False, question=None):
         width = match.group(2)
         assert width != 'None'
         width = re.sub(r'^(.*)px', convert_pixels, width)
+        width = re.sub(r'^(.*)%', convert_percent, width)
         if width == "full":
             width = '\\textwidth'
     except:

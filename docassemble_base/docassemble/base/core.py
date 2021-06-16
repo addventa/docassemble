@@ -31,6 +31,8 @@ import random
 import pandas
 import subprocess
 from PIL import Image
+from docx import Document
+
 NoneType = type(None)
 
 __all__ = ['DAObject', 'DAList', 'DADict', 'DAOrderedDict', 'DASet', 'DAFile', 'DAFileCollection', 'DAFileList', 'DAStaticFile', 'DAEmail', 'DAEmailRecipient', 'DAEmailRecipientList', 'DATemplate', 'DAEmpty', 'DALink', 'RelationshipTree', 'DAContext']
@@ -39,6 +41,36 @@ __all__ = ['DAObject', 'DAList', 'DADict', 'DAOrderedDict', 'DASet', 'DAFile', '
 
 match_inside_and_outside_brackets = re.compile('(.*)\[([^\]]+)\]$')
 is_number = re.compile(r'^[0-9]+$')
+
+def fix_word_processing(filename, extension):
+    from docassemble.base.pandoc import word_to_markdown
+    result = word_to_markdown(filename, extension)
+    assert result is not None
+
+def fix_docx(filename):
+    document = Document(filename)
+
+def fix_jpg(filename):
+    image = Image.open(filename)
+    assert image.format == 'JPEG'
+    image.close()
+
+def fix_png(filename):
+    image = Image.open(filename)
+    assert image.format == 'PNG'
+    image.close()
+
+def fix_gif(filename):
+    image = Image.open(filename)
+    assert image.format == 'GIF'
+    if image.is_animated:
+        new_filename = tempfile.NamedTemporaryFile(prefix="datemp", mode="wb", suffix=".gif")
+        image.seek(0)
+        image.save(new_filename.name)
+        image.close()
+        shutil.copyfile(new_filename.name, filename)
+    else:
+        image.close()
 
 def noquote(text):
     return re.sub(r'["\']', '', text)
@@ -539,6 +571,8 @@ class DAObject:
         client.initializeAttribute('mother', Individual) initializes client.mother as an
         Individual with instanceName "client.mother"."""
         pargs = [x for x in pargs]
+        if len(pargs) < 2:
+            raise Exception("initializeAttribute requires an attribute name and an object type")
         name = pargs.pop(0)
         objectType = pargs.pop(0)
         new_object_parameters = dict()
@@ -3286,6 +3320,24 @@ class DAFile(DAObject):
         server.SavedFile(input_number).delete()
         self.commit()
         self.retrieve()
+    def fix_up(self):
+        """Makes corrections to the file and changes it in-place if necessary.
+        Raises an exception if the file is corrupt and cannot be fixed."""
+        if not self.ok:
+            raise DAError("Cannot call fix_up on a DAFile object that is just a shell.")
+        if hasattr(self, 'extension'):
+            if self.extension == 'pdf':
+                docassemble.base.pdftk.apply_qpdf(self.path())
+            elif self.extension == 'gif':
+                fix_gif(self.path())
+            elif self.extension == 'png':
+                fix_png(self.path())
+            elif self.extension == 'jpg':
+                fix_jpg(self.path())
+            elif self.extension == 'docx':
+                fix_docx(self.path())
+            elif self.extension in ('odt', 'doc', 'rtf'):
+                fix_word_processing(self.path(), self.extension)
     def set_alt_text(self, alt_text):
         """Sets the alt text for the file."""
         self.alt_text = alt_text
@@ -3582,6 +3634,11 @@ class DAFile(DAObject):
         if status_code >= 400:
             raise Exception("from_url: Error %s" % (status_code,))
         self.retrieve()
+    def uses_acroform(self):
+        """Returns True if the file uses AcroForm, otherwise returns False."""
+        if not hasattr(self, 'file_info'):
+            self.retrieve()
+        return self.file_info.get('acroform', False)
     def is_encrypted(self):
         """Returns True if the file is a PDF file and it is encrypted, otherwise returns False."""
         if not hasattr(self, 'file_info'):
@@ -3853,6 +3910,12 @@ class DAFileCollection(DAObject):
         if hasattr(self, 'info') and 'formats' in self.info:
             return self.info['formats']
         return ['pdf', 'docx', 'rtf']
+    def fix_up(self):
+        """Makes corrections to the files and changes them in-place if necessary.
+        Raises an exception if a file is corrupt and cannot be fixed."""
+        for ext in self._extension_list():
+            if hasattr(self, ext):
+                getattr(self, ext).fix_up()
     def set_alt_text(self, alt_text):
         """Sets the alt text of each of the files in the collection."""
         for ext in self._extension_list():
@@ -3867,6 +3930,11 @@ class DAFileCollection(DAObject):
             if hasattr(self, ext):
                 return getattr(self, ext).get_alt_text()
         return None
+    def uses_acroform(self):
+        """Returns True if there is a PDF file and it uses AcroForm, otherwise returns False."""
+        if hasattr(self, 'pdf'):
+            return self.pdf.uses_acroform()
+        return False
     def is_encrypted(self):
         """Returns True if there is a PDF file and it is encrypted, otherwise returns False."""
         if hasattr(self, 'pdf'):
@@ -3954,6 +4022,11 @@ class DAFileList(DAList):
     """
     def __str__(self):
         return str(self.show())
+    def fix_up(self):
+        """Makes corrections to the files and changes them in-place if necessary.
+        Raises an exception if a file is corrupt and cannot be fixed."""
+        for item in self.elements:
+            item.fix_up()
     def set_alt_text(self, alt_text):
         """Sets the alt text of each of the files in the list."""
         for item in self:
@@ -3973,6 +4046,11 @@ class DAFileList(DAList):
             if element.ok:
                 result += element.num_pages()
         return result
+    def uses_acroform(self):
+        """Returns True if the first file is a PDF file and it uses AcroForm, otherwise returns False."""
+        if len(self.elements) == 0:
+            return None
+        return self.elements[0].uses_acroform()
     def is_encrypted(self):
         """Returns True if the first file is a PDF file and it is encrypted, otherwise returns False."""
         if len(self.elements) == 0:
@@ -4129,6 +4207,10 @@ class DAStaticFile(DAObject):
         file_info['path'] = os.path.splitext(pdf_file.name)[0]
         shutil.copyfile(self.path(), pdf_file.name)
         return docassemble.base.file_docx.pdf_pages(file_info, width)
+    def uses_acroform(self):
+        """Returns True if the file is a PDF file and it uses AcroForm, otherwise returns False."""
+        file_info = server.file_finder(self._get_unqualified_reference())
+        return the_file.get('acroform', False)
     def is_encrypted(self):
         """Returns True if the file is a PDF file and it is encrypted, otherwise returns False."""
         file_info = server.file_finder(self._get_unqualified_reference())
@@ -4162,12 +4244,14 @@ class DAStaticFile(DAObject):
         """Returns a list of fields that exist in the PDF document"""
         results = list()
         import docassemble.base.pdftk
-        for item in docassemble.base.pdftk.read_fields(self.path()):
-            the_type = re.sub(r'[^/A-Za-z]', '', str(item[4]))
-            if the_type == 'None':
-                the_type = None
-            result = (item[0], '' if item[1] == 'something' else item[1], item[2], item[3], the_type, item[5])
-            results.append(result)
+        all_items = docassemble.base.pdftk.read_fields(self.path())
+        if all_items is not None:
+            for item in all_items:
+                the_type = re.sub(r'[^/A-Za-z]', '', str(item[4]))
+                if the_type == 'None':
+                    the_type = None
+                result = (item[0], '' if item[1] == 'something' else item[1], item[2], item[3], the_type, item[5])
+                results.append(result)
         return results
     def url_for(self, **kwargs):
         """Returns a URL to the static file."""

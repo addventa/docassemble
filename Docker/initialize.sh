@@ -2,7 +2,6 @@
 
 export HOME=/root
 export DA_ROOT="${DA_ROOT:-/usr/share/docassemble}"
-export DAPYTHONVERSION="${DAPYTHONVERSION:-3}"
 export DA_DEFAULT_LOCAL="local3.8"
 
 export DA_ACTIVATE="${DA_PYTHON:-${DA_ROOT}/${DA_DEFAULT_LOCAL}}/bin/activate"
@@ -408,6 +407,7 @@ if [ ! -f "$DA_CONFIG_FILE" ]; then
         -e 's/{{DBPORT}}/'"${DBPORT:-null}"'/' \
         -e 's/{{DBTABLEPREFIX}}/'"${DBTABLEPREFIX:-null}"'/' \
         -e 's/{{DBBACKUP}}/'"${DBBACKUP:-true}"'/' \
+        -e 's#{{CONFIGFROM}}#'"${CONFIGFROM:-null}"'#' \
         -e 's/{{S3ENABLE}}/'"${S3ENABLE:-false}"'/' \
         -e 's#{{S3ACCESSKEY}}#'"${S3ACCESSKEY:-null}"'#' \
         -e 's#{{S3SECRETACCESSKEY}}#'"${S3SECRETACCESSKEY:-null}"'#' \
@@ -783,7 +783,7 @@ if [[ $CONTAINERROLE =~ .*:(all|sql):.* ]] && [ "$PGRUNNING" = false ] && [ "$DB
         chown -R postgres.postgres "$PGBACKUPDIR"
         for db in $( ls ); do
             echo "Restoring postgres database $db" >&2
-            pg_restore -F c -C -c $db | su -c psql postgres
+            pg_restore -f - -F c -C -c $db | su -c psql postgres
         done
         if [ "${S3ENABLE:-false}" == "true" ] || [ "${AZUREENABLE:-false}" == "true" ]; then
             cd /
@@ -1248,7 +1248,7 @@ echo "49" >&2
 
 if [ "$CRONRUNNING" = false ]; then
     if ! grep -q '^CONTAINERROLE' /etc/crontab; then
-        bash -c "set | grep -e '^CONTAINERROLE=' -e '^DA_PYTHON=' -e '^DA_CONFIG=' -e '^DA_ROOT=' -e '^DAPYTHONVERSION='; cat /etc/crontab" > /tmp/crontab && cat /tmp/crontab > /etc/crontab && rm -f /tmp/crontab
+        bash -c "set | grep -e '^CONTAINERROLE=' -e '^DA_PYTHON=' -e '^DA_CONFIG=' -e '^DA_ROOT='; cat /etc/crontab" > /tmp/crontab && cat /tmp/crontab > /etc/crontab && rm -f /tmp/crontab
     fi
     supervisorctl --serverurl http://localhost:9001 start cron
 fi

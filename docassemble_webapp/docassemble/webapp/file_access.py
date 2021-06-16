@@ -19,13 +19,16 @@ from docassemble.webapp.files import SavedFile, get_ext_and_mimetype
 from flask import session
 from flask_login import current_user
 from docassemble.webapp.db_object import db
-from sqlalchemy import or_, and_
+from sqlalchemy import or_, and_, select
 import docassemble.base.config
 import sys
 from docassemble.base.generate_key import random_lower_string
+import subprocess
 
 import docassemble.webapp.cloud
 cloud = docassemble.webapp.cloud.get_cloud()
+
+QPDF_PATH = 'qpdf'
 
 def url_if_exists(file_reference, **kwargs):
     attach_parameter = '&attachment=1' if kwargs.get('_attachment', False) else ''
@@ -228,18 +231,46 @@ def get_info_from_file_reference(file_reference, **kwargs):
         sys.stderr.write("File reference " + str(file_reference) + " DID NOT EXIST.\n")
     return(result)
 
+def safe_pypdf_reader(filename):
+    try:
+        return PyPDF2.PdfFileReader(open(filename, 'rb'))
+    except PyPDF2.utils.PdfReadError:
+        new_filename = tempfile.NamedTemporaryFile(prefix="datemp", mode="wb", suffix=".pdf", delete=False)
+        qpdf_subprocess_arguments = [QPDF_PATH, filename, new_filename.name]
+        try:
+            result = subprocess.run(qpdf_subprocess_arguments, timeout=60).returncode
+        except subprocess.TimeoutExpired:
+            result = 1
+        if result != 0:
+            raise Exception("Call to qpdf failed for template " + str(filename) + " where arguments were " + " ".join(qpdf_subprocess_arguments))
+        return PyPDF2.PdfFileReader(open(new_filename.name, 'rb'))
+
 def add_info_about_file(filename, basename, result):
     if result['extension'] == 'pdf':
         try:
-            reader = PyPDF2.PdfFileReader(open(filename, 'rb'))
+            reader = safe_pypdf_reader(filename)
             result['encrypted'] = reader.isEncrypted
+            try:
+                if '/AcroForm' in reader.trailer['/Root']:
+                    result['acroform'] = True
+                else:
+                    result['acroform'] = False
+            except:
+                result['acroform'] = False
             result['pages'] = reader.getNumPages()
         except:
             result['pages'] = 1
     elif os.path.isfile(basename + '.pdf'):
         try:
-            reader = PyPDF2.PdfFileReader(open(basename + '.pdf', 'rb'))
+            reader = safe_pypdf_reader(basename + '.pdf')
             result['encrypted'] = reader.isEncrypted
+            try:
+                if '/AcroForm' in reader.trailer['/Root']:
+                    result['acroform'] = True
+                else:
+                    result['acroform'] = False
+            except:
+                result['acroform'] = False
             result['pages'] = reader.getNumPages()
         except:
             result['pages'] = 1
@@ -271,15 +302,15 @@ def get_info_from_file_number(file_number, privileged=False, filename=None, uids
         else:
             uids = []
     result = dict()
-    upload = Uploads.query.filter_by(indexno=file_number).first()
+    upload = db.session.execute(select(Uploads).filter_by(indexno=file_number)).scalar()
     if not privileged and upload is not None and upload.private and upload.key not in uids:
         has_access = False
         if current_user and current_user.is_authenticated:
-            if UserDictKeys.query.filter_by(key=upload.key, user_id=current_user.id).first() or UploadsUserAuth.query.filter_by(uploads_indexno=file_number, user_id=current_user.id).first() or db.session.query(UploadsRoleAuth.id).join(UserRoles, and_(UserRoles.user_id == current_user.id, UploadsRoleAuth.role_id == UserRoles.role_id)).filter(UploadsRoleAuth.uploads_indexno == file_number).first():
+            if db.session.execute(select(UserDictKeys).filter_by(key=upload.key, user_id=current_user.id)).first() or db.session.execute(select(UploadsUserAuth).filter_by(uploads_indexno=file_number, user_id=current_user.id)).first() or db.session.execute(select(UploadsRoleAuth.id).join(UserRoles, and_(UserRoles.user_id == current_user.id, UploadsRoleAuth.role_id == UserRoles.role_id)).where(UploadsRoleAuth.uploads_indexno == file_number)).first():
                 has_access = True
         elif session and 'tempuser' in session:
             temp_user_id = int(session['tempuser'])
-            if UserDictKeys.query.filter_by(key=upload.key, temp_user_id=temp_user_id).first() or UploadsUserAuth.query.filter_by(uploads_indexno=file_number, temp_user_id=temp_user_id).first():
+            if db.session.execute(select(UserDictKeys).filter_by(key=upload.key, temp_user_id=temp_user_id)).first() or db.session.execute(select(UploadsUserAuth).filter_by(uploads_indexno=file_number, temp_user_id=temp_user_id)).first():
                 has_access = True
         if not has_access:
             upload = None

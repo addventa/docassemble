@@ -1,12 +1,130 @@
 # Change Log
 
+## [1.2.82] - 2021-06-13
+### Added
+- Support for login using Keycloak.
+### Fixed
+- API sessions could not follow action paths.
+
+## [1.2.81] - 2021-06-07
+### Added
+- Support for additional file types in `fix_up()`.
+
+## [1.2.80] - 2021-06-02
+### Added
+- The methods `fix_up()` and `uses_acroform()` of `DAFile` and related
+  classes.
+### Changed
+- If a PDF file cannot be opened by `PyPDF2`, an attempt will be made
+  to convert the file with `qpdf`.
+
+## [1.2.79] - 2021-06-01
+### Added
+- The methods `disable()`, `enable()`, and `enabled()` of the `nav`
+  object.
+### Fixed
+- Adjusted `.get_pdf_fields()` so that it works with PDF files in
+  which the dimensions of a form field are object references.
+
+## [1.2.78] - 2021-05-27
+### Fixed
+- Error with `depends on` and `generic object` variables.
+- Error with websockets.
+
+## [1.2.77] - 2021-05-27
+### Added
+- The `current_package` and `current_filename` attributes of
+  `user_info()`.
+- The `progress can go backward` setting under `features`.
+
+## [1.2.76] - 2021-05-24
+### Added
+- Support for using Azure Key Vault References in the Configuration.
+### Fixed
+- Internet Explorer issue with Word sidebar.
+- Issue with Wizard and global variables.
+
+## [1.2.75] - 2021-05-21
+### Changed
+- When specifying multiple choices using code containing dictionary
+  items, you can use the keys `label` and `value` in a dictionary to
+  represent the label that appears on the screen and the value to
+  which the variable should be set.
+- Widths in percentage format (e.g., `50%`) are now valid when
+  inserting images into PDF files assembled from Markdown.
+
+## [1.2.74] - 2021-05-17
+### Added
+- Support for using AWS Secrets Manager ARNs in the Configuration.
+- The `config from` Configuration directive.
+### Fixed
+- Issues with the Active checkbox and the Roles multiselect on the edit
+  user profile page.
+- Issue with SQL query for finding a user.
+
+## [1.2.73] - 2021-05-15
+### Fixed
+- Issue with the "none of the above" option when `uncheck others`
+  refers to a list.
+- Issue with `validate` and `list collect`.
+- Issue with `pg_restore`.
+
+## [1.2.72] - 2021-05-15
+### Fixed
+- Upgraded dependencies.
+
+## [1.2.71] - 2021-05-14
+### Changed
+- The Docker image now uses Debian `testing` and Python 3.8.10 rather
+  than `buster` and 3.8.6.
+### Fixed
+- Issue with validation of Playground Packages form.
+
+## [1.2.70] - 2021-05-13
+### Fixed
+- Trap potential error in SQL statement when querying admin users for
+  purposes of processing Modules in the Playground.
+
+## [1.2.69] - 2021-05-13
+### Fixed
+- Issue with package system where duplicate entries in the package
+  list cause the upgrade process to raise an exception.
+
+## [1.2.68] - 2021-05-13
+### Changed
+- Upgraded various dependencies, including `docxtpl`,
+  the new version of which allows images to be inserted into headers
+  and footers of DOCX files.
+- DO NOT ATTEMPT TO INSTALL 1.2.68 WITHOUT DOWNGRADING PIP FIRST.  The
+  latest versions of `pip` will stall indefinitely or use up all of
+  the memory in your system because of the way that `pip`'s new
+  dependency resolution system works.  To downgrade `pip`, go to
+  Package Management, enter `pip==20.1.1` into the "Package on PyPI"
+  field, then click "Update."  Only then should you attempt to click
+  "Upgrade" to upgrade docassemble to 1.2.68.
+### Fixed
+- Issue with `interview_url()` and related functions when `style` is
+  used.
+
+## [1.2.67] - 2021-05-08
+### Fixed
+- Possible fix to issue with `/interviews` page and `interview_list()`
+  (this turned out to have been caused by a third-party package that
+  some people were using).
+
 ## [1.2.66] - 2021-05-04
 ### Fixed
 - Suppress Markdown deprecation warning.
 
 ## [1.2.65] - 2021-05-04
 ### Fixed
-- Important security vulnerability.
+- A very serious security vulnerability was patched. Everyone should
+  upgrade to this version AS SOON AS POSSIBLE (upgrade to 1.2.66,
+  actually).  Upgrade by going to Package Management and clicking
+  Upgrade.  If you are on the 1.1.x series, you can upgrade to 1.1.113
+  with the Upgrade button or by entering `docassemble.webapp==1.1.113`
+  into the PyPI field.  If you are using the `stable` branch, you can
+  upgrade to 1.0.15.
 
 ## [1.2.64] - 2021-05-04
 ### Added
@@ -411,6 +529,12 @@
   Bootstrap theme.
 ### Fixed
 - Issue with user privileges.
+
+## [1.1.113] - 2021-05-05
+### Changed
+- The Upgrade button has been restored but it is non-functional.
+### Fixed
+- Important security vulnerability.
 
 ## [1.1.112] - 2020-11-26
 ### Changed
@@ -1183,6 +1307,18 @@
 - The `_attachment` keyword parameter for `url_of()`.
 ### Changed
 - Securing of uploaded filenames less strict.
+
+## [1.0.14] - 2021-05-05
+### Fixed
+- Missing file in setup.py.
+
+## [1.0.13] - 2021-05-04
+### Fixed
+- Suppress Markdown deprecation warning.
+
+## [1.0.12] - 2021-05-04
+### Fixed
+- Important security vulnerability.
 
 ## [1.0.11] - 2020-04-15
 ### Fixed

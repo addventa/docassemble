@@ -691,6 +691,7 @@ def user_info():
         user.id = this_thread.current_info['user']['the_user_id']
         user.social_id = this_thread.current_info['user']['social_id']
         user.last_name = this_thread.current_info['user']['lastname']
+        user.id = this_thread.current_info['user']['theid']
         user.email = this_thread.current_info['user']['email']
         user.country = this_thread.current_info['user']['country']
         user.subdivision_first = this_thread.current_info['user']['subdivisionfirst']
@@ -714,6 +715,14 @@ def user_info():
         user.variable = this_thread.current_variable[-1]
     except:
         user.variable = None
+    try:
+        user.current_package = this_thread.current_question.from_source.package
+    except:
+        user.current_package = None
+    try:
+        user.current_filename = this_thread.current_question.from_source.path
+    except:
+        user.current_filename = None
     return user
 
 def action_arguments():
@@ -840,13 +849,13 @@ def interview_url(**kwargs):
     if 'style' in args and args['style'] in ('short', 'short_package'):
         the_style = args['style']
         del args['style']
-        url = None
         try:
             if int(args['new_session']):
                 is_new = True
                 del args['new_session']
         except:
             is_new = False
+        url = None
         if the_style == 'short':
             for k, v in server.daconfig.get('dispatch').items():
                 if v == args['i']:
@@ -856,6 +865,7 @@ def interview_url(**kwargs):
                         url = url_of('run_new_dispatch', **args)
                     else:
                         url = url_of('run_dispatch', **args)
+                    break
         if url is None:
             package, filename = re.split(r':', args['i'])
             package = re.sub(r'^docassemble\.', '', package)
@@ -1091,6 +1101,7 @@ def interview_url_action(action, **kwargs):
                         url = url_of('run_new_dispatch', **args)
                     else:
                         url = url_of('run_dispatch', **args)
+                    break
         if url is None:
             package, filename = re.split(r':', args['i'])
             package = re.sub(r'^docassemble\.', '', package)
@@ -1226,6 +1237,7 @@ class DANav:
         self.current = None
         self.progressive = True
         self.hidden = False
+        self.disabled = False
 
     def __str__(self):
         return self.show_sections()
@@ -1337,11 +1349,23 @@ class DANav:
         """Unhides the navigation bar if it was hidden."""
         self.hidden = False
 
+    def disable(self):
+        """Disabled clickable links in the navigation bar."""
+        self.disabled = True
+
+    def enable(self):
+        """Enables clickable links in the navigation bar, if links had been disabled."""
+        self.disabled = False
+
     def visible(self, language=None):
         """Returns False if the navigation bar is hidden, and True otherwise."""
         if self.sections is None or len(self.get_sections(language=language)) == 0:
             return False
         return not (hasattr(self, 'hidden') and self.hidden)
+
+    def enabled(self):
+        """Returns False if clickable links in the navigation bar are disabled, and True otherwise."""
+        return not (hasattr(self, 'disabled') and self.disabled)
 
     def set_sections(self, sections, language=None):
         """Sets the sections of the navigation to the given list."""
@@ -1359,8 +1383,13 @@ class DANav:
             language = '*'
         return self.sections.get(language, list())
 
-    def show_sections(self, style='inline', show_links=True):
+    def show_sections(self, style='inline', show_links=None):
         """Returns the sections of the navigation as HTML."""
+        if show_links is None:
+            if hasattr(self, 'disabled') and self.disabled:
+                show_links = False
+            else:
+                show_links = True
         if style == "inline":
             the_class = 'danavlinks dainline'
             interior_class = 'dainlineinside'
@@ -1519,7 +1548,7 @@ def url_of(file_reference, **kwargs):
 
 def server_capabilities():
     """Returns a dictionary with true or false values indicating various capabilities of the server."""
-    result = dict(sms=False, fax=False, google_login=False, facebook_login=False, auth0_login=False, twitter_login=False, azure_login=False, phone_login=False, s3=False, azure=False, github=False, pypi=False, googledrive=False, google_maps=False)
+    result = dict(sms=False, fax=False, google_login=False, facebook_login=False, auth0_login=False, keycloak_login=False, twitter_login=False, azure_login=False, phone_login=False, s3=False, azure=False, github=False, pypi=False, googledrive=False, google_maps=False)
     if 'twilio' in server.daconfig and isinstance(server.daconfig['twilio'], (list, dict)):
         if type(server.daconfig['twilio']) is list:
             tconfigs = server.daconfig['twilio']
@@ -1546,6 +1575,9 @@ def server_capabilities():
         if 'auth0' in server.daconfig['oauth'] and type(server.daconfig['oauth']['auth0']) is dict:
             if not ('enable' in server.daconfig['oauth']['auth0'] and not server.daconfig['oauth']['auth0']['enable']):
                 result['auth0_login'] = True
+        if 'keycloak' in server.daconfig['oauth'] and type(server.daconfig['oauth']['keycloak']) is dict:
+            if not ('enable' in server.daconfig['oauth']['keycloak'] and not server.daconfig['oauth']['keycloak']['enable']):
+                result['keycloak_login'] = True
         if 'twitter' in server.daconfig['oauth'] and type(server.daconfig['oauth']['twitter']) is dict:
             if not ('enable' in server.daconfig['oauth']['twitter'] and not server.daconfig['oauth']['twitter']['enable']):
                 result['twitter_login'] = True
