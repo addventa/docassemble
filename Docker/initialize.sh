@@ -852,7 +852,7 @@ python -m docassemble.webapp.install_certs "${DA_CONFIG_FILE}" || exit 1
 
 echo "30" >&2
 
-if [[ $CONTAINERROLE =~ .*:(all|cron):.* ]]; then
+if [[ $CONTAINERROLE =~ .*:(all|cron|celery):.* ]]; then
     if [ -f /configdata/initial_credentials ]; then
         echo "Found initial credentials" >&2
         source /configdata/initial_credentials
