@@ -687,7 +687,6 @@ def custom_login():
 
     safe_next = _get_safe_next_param('next', user_manager.after_login_endpoint)
     safe_reg_next = _get_safe_next_param('reg_next', user_manager.after_register_endpoint)
-    print(user_manager.after_register_endpoint)
     if safe_next and '/officeaddin' in safe_next:
         g.embed = True
 
@@ -704,12 +703,8 @@ def custom_login():
         if request.method == 'GET' and 'validated_user' in session:
             del session['validated_user']
         roles_map = dict(daconfig.get('roles map', dict()))
-        print("login with headers")
         id = request.headers.get('Bnppuid')
-        print("header Bnppuid : ", id)
         Bnppgroups = request.headers.get('Bnppgroups')
-        print("Bnppgroups : ", Bnppgroups)
-        print("getting bnpp roles from Bnppgroups")
         roles = list()
         bnpp_roles_to_store = list()
         if Bnppgroups is None:
@@ -717,8 +712,6 @@ def custom_login():
         else:
             try:
                 bnpproles = [[y for x, y in (element.split('=') for element in i.split(',')) if x == 'cn'][0] for i in Bnppgroups.split('^')]
-                print("roles from Bnppgroups : ", bnpproles)
-                print("mapping roles with roles map :", roles_map)
                 for role in bnpproles:
                     role_map = roles_map.get(role, None)
                     if role_map is not None:
@@ -727,8 +720,6 @@ def custom_login():
             except:
                 print("error with bnpp roles : ", Bnppgroups)
                 return jsonify_with_status("Access denied.", 403)
-        print("mapped roles : ", roles)
-        print("keeped bnpp roles : ", bnpp_roles_to_store)
         if len(bnpp_roles_to_store) == 0:
             print("user has no roles, connexion refused")
             return jsonify_with_status("Access denied.", 403)
@@ -760,14 +751,11 @@ def custom_login():
             print("user created")
         else:
             print("user already exist")
-            print("replacing roles")
             roles_to_remove = list()
             for role in user.roles:
                 roles_to_remove.append(role)
-            print("old roles :", roles_to_remove)
             for role in roles_to_remove:
                 user.roles.remove(role)
-            print("new roles :", roles)
             for role in Role.query.order_by('id'):
                 if role.name in roles:
                     user.roles.append(role)
@@ -783,9 +771,6 @@ def custom_login():
                 if default_yaml_filename is not None:
                     safe_next = default_yaml_filename
                 else:
-                    print("url next :", safe_next)
-                    print(safe_reg_next)
-                    print("parsing url next")
                     url_parts = list(urlparse(safe_next))
                     query = dict(parse_qsl(url_parts[4]))
                     query.update(dict(from_login=1))
