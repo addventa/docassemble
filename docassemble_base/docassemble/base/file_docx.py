@@ -142,6 +142,7 @@ def fix_subdoc(masterdoc, subdoc_info):
 
 def include_docx_template(template_file, **kwargs):
     """Include the contents of one docx file inside another docx file."""
+    use_jinja = kwargs.get('_use_jinja2', True)
     if this_thread.evaluation_context is None:
         return 'ERROR: not in a docx file'
     if template_file.__class__.__name__ in ('DAFile', 'DAFileList', 'DAFileCollection', 'DALocalFile', 'DAStaticFile'):
@@ -150,6 +151,8 @@ def include_docx_template(template_file, **kwargs):
         template_path = package_template_filename(template_file, package=this_thread.current_package)
     sd = this_thread.misc['docx_template'].new_subdoc()
     sd.subdocx = Document(template_path)
+    if not use_jinja:
+        return sanitize_xml(str(sd))
     if '_inline' in kwargs:
         single_paragraph = True
         del kwargs['_inline']
@@ -561,7 +564,7 @@ def markdown_to_docx(text, question, tpl):
 
 def safe_pypdf_reader(filename):
     try:
-        return PyPDF2.PdfFileReader(open(filename, 'rb'))
+        return PyPDF2.PdfFileReader(open(filename, 'rb'), overwriteWarnings=False)
     except PyPDF2.utils.PdfReadError:
         new_filename = tempfile.NamedTemporaryFile(prefix="datemp", mode="wb", suffix=".pdf", delete=False)
         qpdf_subprocess_arguments = [QPDF_PATH, filename, new_filename.name]
@@ -571,7 +574,7 @@ def safe_pypdf_reader(filename):
             result = 1
         if result != 0:
             raise Exception("Call to qpdf failed for template " + str(filename) + " where arguments were " + " ".join(qpdf_subprocess_arguments))
-        return PyPDF2.PdfFileReader(open(new_filename.name, 'rb'))
+        return PyPDF2.PdfFileReader(open(new_filename.name, 'rb'), overwriteWarnings=False)
 
 def pdf_pages(file_info, width):
     output = ''

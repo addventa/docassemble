@@ -60,7 +60,7 @@ RangeType = type(range(1,2))
 NoneType = type(None)
 
 debug = True
-import_core = compile("import docassemble.base.core", '<code block>', 'exec')
+import_core = compile("from docassemble.base.core import objects_from_file, objects_from_structure", '<code block>', 'exec')
 import_util = compile('from docassemble.base.util import *', '<code block>', 'exec')
 import_process_action = compile('from docassemble.base.util import process_action', '<code block>', 'exec')
 run_process_action = compile('process_action()', '<code block>', 'exec')
@@ -565,12 +565,12 @@ class InterviewStatus:
                     the_field = copy.deepcopy(field)
                     the_field.number = str(list_indexno) + '_' + str(the_field.number)
                     if hasattr(the_field, 'saveas'):
-                        the_field.saveas = safeid(re.sub(iterator_re, '[' + str(list_indexno) +']', from_safeid(the_field.saveas)))
+                        the_field.saveas = safeid(re.sub(iterator_re, '[' + str(list_indexno) + ']', from_safeid(the_field.saveas)))
                         if hasattr(the_field, 'disableothers') and the_field.disableothers:
                             list_of_other_fields = list()
                             if isinstance(the_field.disableothers, list):
                                 for other_saveas in the_field.disableothers:
-                                    list_of_other_fields.append(re.sub(iterator_re, '[' + str(list_indexno) +']', other_saveas))
+                                    list_of_other_fields.append(re.sub(iterator_re, '[' + str(list_indexno) + ']', other_saveas))
                             else:
                                 for other_field in field_list:
                                     if not hasattr(other_field, 'saveas'):
@@ -3935,7 +3935,7 @@ class Question:
                                 additional_parameters += ", help_generator=_DAHELPGENERATOR"
                             if 'image_generator' in field_info:
                                 additional_parameters += ", image_generator=_DAIMAGEGENERATOR"
-                            source_code = "docassemble.base.core.selections(" + ", ".join(select_list) + additional_parameters + ")"
+                            source_code = "docassemble_base_core_selections(" + ", ".join(select_list) + additional_parameters + ")"
                             #logmessage("source_code is " + source_code)
                             field_info['selections'] = {'compute': compile(source_code, '<expression>', 'eval'), 'sourcecode': source_code}
                         if 'saveas' in field_info:
@@ -4305,8 +4305,9 @@ class Question:
         for field_name in self.fields_for_invalidation:
             try:
                 old_values[field_name] = eval(field_name, user_dict)
-            except:
-                pass
+            except Exception as err:
+                if field_name in user_dict['_internal']['dirty']:
+                    old_values[field_name] = user_dict['_internal']['dirty'][field_name]
         return old_values
     def invalidate_dependencies_of_variable(self, the_user_dict, field_name, old_value):
         if field_name in self.interview.invalidation_todo or field_name in self.interview.onchange_todo:
@@ -4661,6 +4662,29 @@ class Question:
                         for key in jinja2meta.find_undeclared_variables(parsed_content):
                             if not key.startswith('_'):
                                 self.mako_names.add(key)
+                    for key in ('field code', 'fields'):
+                        if key in target:
+                            if isinstance(target[key], list):
+                                for item in target[key]:
+                                    for field_name in item.keys():
+                                        try:
+                                            self.names_used.remove(field_name)
+                                        except:
+                                            pass
+                                        try:
+                                            self.mako_names.remove(field_name)
+                                        except:
+                                            pass
+                            elif isinstance(target[key], dict):
+                                for field_name in target[key].keys():
+                                    try:
+                                        self.names_used.remove(field_name)
+                                    except:
+                                        pass
+                                    try:
+                                        self.mako_names.remove(field_name)
+                                    except:
+                                        pass
                 else:
                     options[template_type + '_template_file'] = FileInPackage(target[template_type + ' template file'], 'template', package=self.package)
                 if field_mode == 'manual':
@@ -4698,7 +4722,7 @@ class Question:
                             if not isinstance(item, dict):
                                 raise DAError('The field code must be expressed in the form of a dictionary' + self.idebug(target))
                             for key, val in item.items():
-                                options['code dict'][key] = compile(val, '<expression>', 'eval')
+                                options['code dict'][key] = compile(str(val), '<expression>', 'eval')
                                 self.find_fields_in(val)
             if 'valid formats' in target:
                 if isinstance(target['valid formats'], str):
@@ -5421,7 +5445,7 @@ class Question:
                     elif hasattr(field, 'choicetype') and field.choicetype == 'compute':
                         # multiple choice field in choices
                         if hasattr(field, 'datatype') and field.datatype in ('object', 'object_radio', 'object_multiselect', 'object_checkboxes', 'multiselect', 'checkboxes'):
-                            exec("import docassemble.base.core", user_dict)
+                            exec("from docassemble.base.core import selections as docassemble_base_core_selections", user_dict)
                         if hasattr(field, 'object_labeler'):
                             labeler_func = eval(field.object_labeler['compute'], user_dict)
                             if not isinstance(labeler_func, types.FunctionType):
@@ -6151,7 +6175,7 @@ class Question:
                 elif doc_format in ['html']:
                     result['content'][doc_format] = docassemble.base.filter.markdown_to_html(result['markdown'][doc_format], use_pandoc=True, question=self)
             if attachment['variable_name']:
-                string = "import docassemble.base.core"
+                string = "from docassemble.base.core import DAFile, DAFileCollection"
                 exec(string, the_user_dict)
                 variable_name = attachment['variable_name']
                 m = re.search(r'^(.*)\.([A-Za-z0-9\_]+)$', attachment['variable_name'])
@@ -6161,7 +6185,7 @@ class Question:
                     the_var = eval(base_var, the_user_dict)
                     if hasattr(the_var, 'instanceName'):
                         variable_name = the_var.instanceName + '.' + attrib
-                string = variable_name + " = docassemble.base.core.DAFileCollection(" + repr(variable_name) + ")"
+                string = variable_name + " = DAFileCollection(" + repr(variable_name) + ")"
                 # logmessage("Executing " + string + "\n")
                 exec(string, the_user_dict)
                 the_name = attachment['name'].text(the_user_dict).strip()
@@ -6192,7 +6216,7 @@ class Question:
                         the_ext = result['raw']
                     else:
                         the_ext = '.' + extension_of_doc_format[doc_format]
-                    string = variable_string + " = docassemble.base.core.DAFile(" + repr(variable_string) + ", filename=" + repr(str(result['filename']) + the_ext) + ", number=" + str(result['file'][doc_format]) + ", mimetype='" + str(result['mimetype'][doc_format]) + "', extension='" + str(result['extension'][doc_format]) + "'" + content_string + markdown_string + ")"
+                    string = variable_string + " = DAFile(" + repr(variable_string) + ", filename=" + repr(str(result['filename']) + the_ext) + ", number=" + str(result['file'][doc_format]) + ", mimetype='" + str(result['mimetype'][doc_format]) + "', extension='" + str(result['extension'][doc_format]) + "'" + content_string + markdown_string + ")"
                     #logmessage("Executing " + string + "\n")
                     exec(string, the_user_dict)
                 for doc_format in result['content']:
@@ -6200,7 +6224,7 @@ class Question:
                     if doc_format not in result['file']:
                         variable_string = variable_name + '.' + extension_of_doc_format[doc_format]
                         # logmessage("Setting " + variable_string)
-                        string = variable_string + " = docassemble.base.core.DAFile(" + repr(variable_string) + ', markdown=' + repr(result['markdown'][doc_format]) + ', content=' + repr(result['content'][doc_format]) + ")"
+                        string = variable_string + " = DAFile(" + repr(variable_string) + ', markdown=' + repr(result['markdown'][doc_format]) + ', content=' + repr(result['content'][doc_format]) + ")"
                         exec(string, the_user_dict)
                 if 'permissions' in result:
                     if result['permissions']['private'] is not None or result['permissions']['persistent'] is not None:
@@ -6415,7 +6439,11 @@ class Question:
                                         if isinstance(item, dict):
                                             new_field_data.update(item)
                                     the_field_data = new_field_data
-                                result['field_data'] = the_field_data
+                                result['field_data'] = copy.deepcopy(pickleable_objects(the_user_dict))
+                                self.interview.populate_non_pickleable(result['field_data'])
+                                if 'alpha' not in result['field_data']:
+                                    raise Exception("fuck this")
+                                result['field_data'].update(the_field_data)
                             result['field_data']['_codecs'] = codecs
                             result['field_data']['_array'] = array
                             if 'code' in attachment['options']:
@@ -6772,6 +6800,17 @@ def make_backup_vars(the_user_dict):
 def restore_backup_vars(the_user_dict, backups):
     for var, val in backups.items():
         the_user_dict[var] = val
+
+def illegal_variable_name(var):
+    if re.search(r'[\n\r]', var):
+        return True
+    try:
+        t = ast.parse(var)
+    except:
+        return True
+    detector = docassemble.base.astparser.detectIllegal()
+    detector.visit(t)
+    return detector.illegal
 
 class Interview:
     def __init__(self, **kwargs):
@@ -7330,6 +7369,22 @@ class Interview:
                 help_item['content'] = source['content'].text(the_user_dict)
                 result.append(help_item)
         return result
+    def populate_non_pickleable(self, user_dict_copy):
+        if not self.imports_util and not self.consolidated_metadata.get('suppress loading util', False):
+            exec(import_util, user_dict_copy)
+        for question in self.questions_list:
+            if question.question_type == 'imports':
+                for module_name in question.module_list:
+                    if module_name.startswith('.'):
+                        exec('import ' + str(question.package) + module_name, user_dict_copy)
+                    else:
+                        exec('import ' + module_name, user_dict_copy)
+            if question.question_type == 'modules':
+                for module_name in question.module_list:
+                    if module_name.startswith('.'):
+                        exec('from ' + str(question.package) + module_name + ' import *', user_dict_copy)
+                    else:
+                        exec('from ' + module_name + ' import *', user_dict_copy)
     def assemble(self, user_dict, interview_status=None, old_user_dict=None, force_question=None):
         #sys.stderr.write("assemble\n")
         user_dict['_internal']['tracker'] += 1
@@ -7396,13 +7451,13 @@ class Interview:
             user_dict['_internal']['device_local'] = dict()
             user_dict['_internal']['user_local'] = dict()
         if session_uid not in user_dict['_internal']['session_local'] or device_id not in user_dict['_internal']['device_local'] or user_id not in user_dict['_internal']['user_local']:
-            exec('import docassemble.base.core')
+            exec('from docassemble.base.core import DASessionLocal, DADeviceLocal, DAUserLocal')
             if session_uid not in user_dict['_internal']['session_local']:
-                user_dict['_internal']['session_local'][session_uid] = eval("docassemble.base.core.DASessionLocal()")
+                user_dict['_internal']['session_local'][session_uid] = eval("DASessionLocal()")
             if device_id not in user_dict['_internal']['device_local']:
-                user_dict['_internal']['device_local'][device_id] = eval("docassemble.base.core.DADeviceLocal()")
+                user_dict['_internal']['device_local'][device_id] = eval("DADeviceLocal()")
             if user_id not in user_dict['_internal']['user_local']:
-                user_dict['_internal']['user_local'][user_id] = eval("docassemble.base.core.DAUserLocal()")
+                user_dict['_internal']['user_local'][user_id] = eval("DAUserLocal()")
         user_dict['session_local'] = user_dict['_internal']['session_local'][session_uid]
         user_dict['device_local'] = user_dict['_internal']['device_local'][device_id]
         user_dict['user_local'] = user_dict['_internal']['user_local'][user_id]
@@ -7420,10 +7475,14 @@ class Interview:
                     if interview_status.current_info['action'] in ('_da_list_remove', '_da_list_add', '_da_list_complete'):
                         for the_key in ('list', 'item', 'items'):
                             if the_key in interview_status.current_info['arguments']:
+                                if illegal_variable_name(interview_status.current_info['arguments'][the_key]):
+                                    raise DAError("Invalid name " + interview_status.current_info['arguments'][the_key])
                                 interview_status.current_info['action_' + the_key] = eval(interview_status.current_info['arguments'][the_key], user_dict)
                     if interview_status.current_info['action'] in ('_da_dict_remove', '_da_dict_add', '_da_dict_complete'):
                         for the_key in ('dict', 'item', 'items'):
                             if the_key in interview_status.current_info['arguments']:
+                                if illegal_variable_name(interview_status.current_info['arguments'][the_key]):
+                                    raise DAError("Invalid name " + interview_status.current_info['arguments'][the_key])
                                 interview_status.current_info['action_' + the_key] = eval(interview_status.current_info['arguments'][the_key], user_dict)
                 #else:
                 #    logmessage("assemble: there is no action in the current_info")
@@ -7462,7 +7521,7 @@ class Interview:
                             for keyvalue in question.objects_from_file:
                                 for variable, the_file in keyvalue.items():
                                     exec(import_core, user_dict)
-                                    command = variable + ' = docassemble.base.core.objects_from_file("' + str(the_file) + '", name=' + repr(variable) + ', use_objects=' + repr(use_objects) + ', package=' + repr(question.package) + ')'
+                                    command = variable + ' = objects_from_file("' + str(the_file) + '", name=' + repr(variable) + ', use_objects=' + repr(use_objects) + ', package=' + repr(question.package) + ')'
                                     #logmessage("Running " + command)
                                     exec(command, user_dict)
                             question.mark_as_answered(user_dict)
@@ -7477,7 +7536,7 @@ class Interview:
                                 if self.debug:
                                     interview_status.seeking.append({'question': question, 'reason': 'data', 'time': time.time()})
                                 exec(import_core, user_dict)
-                                string = from_safeid(question.fields[0].saveas) + ' = docassemble.base.core.objects_from_structure(' + repr(recursive_eval_dataobject(question.fields[0].data, user_dict)) + ', root=' + repr(from_safeid(question.fields[0].saveas)) + ')'
+                                string = from_safeid(question.fields[0].saveas) + ' = objects_from_structure(' + repr(recursive_eval_dataobject(question.fields[0].data, user_dict)) + ', root=' + repr(from_safeid(question.fields[0].saveas)) + ')'
                                 exec(string, user_dict)
                                 question.mark_as_answered(user_dict)
                             if question.question_type == "data_from_code":
@@ -7490,7 +7549,7 @@ class Interview:
                                 if self.debug:
                                     interview_status.seeking.append({'question': question, 'reason': 'data', 'time': time.time()})
                                 exec(import_core, user_dict)
-                                string = from_safeid(question.fields[0].saveas) + ' = docassemble.base.core.objects_from_structure(' + repr(recursive_eval_data_from_code(question.fields[0].data, user_dict)) + ', root=' + repr(from_safeid(question.fields[0].saveas)) + ')'
+                                string = from_safeid(question.fields[0].saveas) + ' = objects_from_structure(' + repr(recursive_eval_data_from_code(question.fields[0].data, user_dict)) + ', root=' + repr(from_safeid(question.fields[0].saveas)) + ')'
                                 exec(string, user_dict)
                                 question.mark_as_answered(user_dict)
                             if question.question_type == "objects":
@@ -7982,7 +8041,7 @@ class Interview:
                         question.exec_setup(is_generic, the_x, iterators, user_dict)
                         old_values = question.get_old_values(user_dict)
                         exec(import_core, user_dict)
-                        string = from_safeid(question.fields[0].saveas) + ' = docassemble.base.core.objects_from_structure(' + repr(recursive_eval_dataobject(question.fields[0].data, user_dict)) + ', root=' + repr(from_safeid(question.fields[0].saveas)) + ')'
+                        string = from_safeid(question.fields[0].saveas) + ' = objects_from_structure(' + repr(recursive_eval_dataobject(question.fields[0].data, user_dict)) + ', root=' + repr(from_safeid(question.fields[0].saveas)) + ')'
                         exec(string, user_dict)
                         question.post_exec(user_dict)
                         docassemble.base.functions.pop_current_variable()
@@ -8001,7 +8060,7 @@ class Interview:
                         question.exec_setup(is_generic, the_x, iterators, user_dict)
                         old_values = question.get_old_values(user_dict)
                         exec(import_core, user_dict)
-                        string = from_safeid(question.fields[0].saveas) + ' = docassemble.base.core.objects_from_structure(' + repr(recursive_eval_data_from_code(question.fields[0].data, user_dict)) + ', root=' + repr(from_safeid(question.fields[0].saveas)) + ')'
+                        string = from_safeid(question.fields[0].saveas) + ' = objects_from_structure(' + repr(recursive_eval_data_from_code(question.fields[0].data, user_dict)) + ', root=' + repr(from_safeid(question.fields[0].saveas)) + ')'
                         exec(string, user_dict)
                         question.post_exec(user_dict)
                         docassemble.base.functions.pop_current_variable()
@@ -8100,9 +8159,9 @@ class Interview:
                         except:
                             pass
                         if not found_object:
-                            string = "import docassemble.base.core"
+                            string = "from docassemble.base.core import DALazyTemplate"
                             exec(string, user_dict)
-                            string = from_safeid(question.fields[0].saveas) + ' = docassemble.base.core.DALazyTemplate(' + repr(actual_saveas) + ')'
+                            string = from_safeid(question.fields[0].saveas) + ' = DALazyTemplate(' + repr(actual_saveas) + ')'
                             exec(string, user_dict)
                             the_object = eval(actual_saveas, user_dict)
                             if the_object.__class__.__name__ != 'DALazyTemplate':
@@ -8164,9 +8223,9 @@ class Interview:
                         except:
                             pass
                         if not found_object:
-                            string = "import docassemble.base.core"
+                            string = "from docassemble.base.core import DALazyTemplate"
                             exec(string, user_dict)
-                            string = from_safeid(question.fields[0].saveas) + ' = docassemble.base.core.DALazyTemplate(' + repr(actual_saveas) + ')'
+                            string = from_safeid(question.fields[0].saveas) + ' = DALazyTemplate(' + repr(actual_saveas) + ')'
                             exec(string, user_dict)
                             the_object = eval(actual_saveas, user_dict)
                             if the_object.__class__.__name__ != 'DALazyTemplate':
@@ -8202,7 +8261,7 @@ class Interview:
                         table_info.saveas = from_safeid(question.fields[0].saveas)
                         actual_saveas = substitute_vars(table_info.saveas, is_generic, the_x, iterators)
                         #docassemble.base.functions.this_thread.template_vars.append(actual_saveas)
-                        string = "import docassemble.base.core"
+                        string = "from docassemble.base.core import DALazyTableTemplate"
                         exec(string, user_dict)
                         found_object = False
                         try:
@@ -8212,7 +8271,7 @@ class Interview:
                         except:
                             pass
                         if not found_object:
-                            string = from_safeid(question.fields[0].saveas) + ' = docassemble.base.core.DALazyTableTemplate(' + repr(actual_saveas) + ')'
+                            string = from_safeid(question.fields[0].saveas) + ' = DALazyTableTemplate(' + repr(actual_saveas) + ')'
                             exec(string, user_dict)
                             the_object = eval(actual_saveas, user_dict)
                             if the_object.__class__.__name__ != 'DALazyTableTemplate':
@@ -8302,9 +8361,9 @@ class Interview:
                         del docassemble.base.functions.this_thread.current_info['action']
                     return({'type': 'continue', 'sought': origMissingVariable, 'orig_sought': origMissingVariable})
                 if self.options.get('use catchall', False) and not origMissingVariable.endswith('.value'):
-                    string = "import docassemble.base.core"
+                    string = "from docassemble.base.core import DACatchAll"
                     exec(string, user_dict)
-                    string = origMissingVariable + ' = docassemble.base.core.DACatchAll(' + repr(origMissingVariable) + ')'
+                    string = origMissingVariable + ' = DACatchAll(' + repr(origMissingVariable) + ')'
                     exec(string, user_dict)
                     docassemble.base.functions.pop_current_variable()
                     docassemble.base.functions.pop_event_stack(origMissingVariable)
@@ -8369,8 +8428,22 @@ class Interview:
                     variable_stack.add(missingVariable)
                 if current_question.question_type != 'objects':
                     questions_tried[newMissingVariable].add(current_question)
+                try:
+                    eval(origMissingVariable, user_dict)
+                    was_defined = True
+                except:
+                    was_defined = False
                 question_result = self.askfor(newMissingVariable, user_dict, old_user_dict, interview_status, variable_stack=variable_stack, questions_tried=questions_tried, seeking=seeking, follow_mc=follow_mc, recursion_depth=recursion_depth, seeking_question=seeking_question)
                 if question_result['type'] == 'continue' and missing_var != newMissingVariable:
+                    if not was_defined:
+                        try:
+                            eval(origMissingVariable, user_dict)
+                            now_defined = True
+                        except:
+                            now_defined = False
+                        if now_defined:
+                            docassemble.base.functions.pop_current_variable()
+                            return({'type': 'continue', 'sought': missing_var, 'orig_sought': origMissingVariable})
                     # logmessage("Continuing after asking for newMissingVariable " + str(newMissingVariable))
                     continue
                 docassemble.base.functions.pop_current_variable()
@@ -8819,25 +8892,25 @@ def ensure_object_exists(saveas, datatype, the_user_dict, commands=None):
                     method = 'index'
             except:
                 pass
-    if "import docassemble.base.core" not in commands:
-        commands.append("import docassemble.base.core")
+    if "from docassemble.base.core import DADict, DAList" not in commands:
+        commands.append("from docassemble.base.core import DADict, DAList")
     if method == 'attribute':
         attribute_name = parse_result['final_parts'][1][1:]
         if datatype in ('multiselect', 'checkboxes'):
-            commands.append(parse_result['final_parts'][0] + ".initializeAttribute(" + repr(attribute_name) + ", docassemble.base.core.DADict, auto_gather=False)")
+            commands.append(parse_result['final_parts'][0] + ".initializeAttribute(" + repr(attribute_name) + ", DADict, auto_gather=False)")
         elif datatype in ('object_multiselect', 'object_checkboxes'):
-            commands.append(parse_result['final_parts'][0] + ".initializeAttribute(" + repr(attribute_name) + ", docassemble.base.core.DAList, auto_gather=False)")
+            commands.append(parse_result['final_parts'][0] + ".initializeAttribute(" + repr(attribute_name) + ", DAList, auto_gather=False)")
     elif method == 'index':
         index_name = parse_result['final_parts'][1][1:-1]
         if datatype in ('multiselect', 'checkboxes'):
-            commands.append(parse_result['final_parts'][0] + ".initializeObject(" + repr(index_name) + ", docassemble.base.core.DADict, auto_gather=False)")
+            commands.append(parse_result['final_parts'][0] + ".initializeObject(" + repr(index_name) + ", DADict, auto_gather=False)")
         elif datatype in ('object_multiselect', 'object_checkboxes'):
-            commands.append(parse_result['final_parts'][0] + ".initializeObject(" + repr(index_name) + ", docassemble.base.core.DAList, auto_gather=False)")
+            commands.append(parse_result['final_parts'][0] + ".initializeObject(" + repr(index_name) + ", DAList, auto_gather=False)")
     else:
         if datatype in ('multiselect', 'checkboxes'):
-            commands.append(saveas + ' = docassemble.base.core.DADict(' + repr(saveas) + ', auto_gather=False)')
+            commands.append(saveas + ' = DADict(' + repr(saveas) + ', auto_gather=False)')
         elif datatype in ('object_multiselect', 'object_checkboxes'):
-            commands.append(saveas + ' = docassemble.base.core.DAList(' + repr(saveas) + ', auto_gather=False)')
+            commands.append(saveas + ' = DAList(' + repr(saveas) + ', auto_gather=False)')
     if execute:
         for command in commands:
             #logmessage("Doing " + command)
@@ -9071,49 +9144,6 @@ class DAStrictUndefined(StrictUndefined):
         __rsub__= __iter__ = __str__ = __len__ = __nonzero__ = __eq__ = \
         __ne__ = __bool__ = __hash__ = _fail_with_undefined_error
 
-def custom_jinja_env():
-    env = DAEnvironment(undefined=DAStrictUndefined, extensions=[DAExtension])
-    env.filters['ampersand_filter'] = ampersand_filter
-    env.filters['markdown'] = markdown_filter
-    env.filters['add_separators'] = docassemble.base.functions.add_separators
-    env.filters['inline_markdown'] = inline_markdown_filter
-    env.filters['paragraphs'] = docassemble.base.functions.single_to_double_newlines
-    env.filters['manual_line_breaks'] = docassemble.base.functions.manual_line_breaks
-    env.filters['RichText'] = docassemble.base.file_docx.RichText
-    env.filters['groupby'] = groupby_filter
-    env.filters['max'] = max_filter
-    env.filters['min'] = min_filter
-    env.filters['sum'] = sum_filter
-    env.filters['unique'] = unique_filter
-    env.filters['join'] = join_filter
-    env.filters['attr'] = attr_filter
-    env.filters['selectattr'] = selectattr_filter
-    env.filters['rejectattr'] = rejectattr_filter
-    env.filters['sort'] = sort_filter
-    env.filters['dictsort'] = dictsort_filter
-    env.filters['nice_number'] = docassemble.base.functions.nice_number
-    env.filters['ordinal'] = docassemble.base.functions.ordinal
-    env.filters['ordinal_number'] = docassemble.base.functions.ordinal_number
-    env.filters['currency'] = docassemble.base.functions.currency
-    env.filters['comma_list'] = docassemble.base.functions.comma_list
-    env.filters['comma_and_list'] = docassemble.base.functions.comma_and_list
-    env.filters['capitalize'] = docassemble.base.functions.capitalize
-    env.filters['salutation'] = docassemble.base.functions.salutation
-    env.filters['alpha'] = docassemble.base.functions.alpha
-    env.filters['roman'] = docassemble.base.functions.roman
-    env.filters['word'] = docassemble.base.functions.word
-    env.filters['bold'] = docassemble.base.functions.bold
-    env.filters['italic'] = docassemble.base.functions.italic
-    env.filters['title_case'] = docassemble.base.functions.title_case
-    env.filters['single_paragraph'] = docassemble.base.functions.single_paragraph
-    env.filters['phone_number_formatted'] = docassemble.base.functions.phone_number_formatted
-    env.filters['phone_number_in_e164'] = docassemble.base.functions.phone_number_in_e164
-    env.filters['country_name'] = docassemble.base.functions.country_name
-    env.filters['fix_punctuation'] = docassemble.base.functions.fix_punctuation
-    env.filters['redact'] = docassemble.base.functions.redact
-    env.filters['verbatim'] = docassemble.base.functions.verbatim
-    env.filters['map'] = map_filter
-    return env
 
 def mygetattr(y, attr):
     for attribute in attr.split('.'):
@@ -9294,6 +9324,62 @@ def markdown_filter(text):
 
 def inline_markdown_filter(text):
     return docassemble.base.file_docx.inline_markdown_to_docx(str(text), docassemble.base.functions.this_thread.current_question, docassemble.base.functions.this_thread.misc.get('docx_template', None))
+
+builtin_jinja_filters = {
+    'ampersand_filter': ampersand_filter,
+    'markdown': markdown_filter,
+    'add_separators': docassemble.base.functions.add_separators,
+    'inline_markdown': inline_markdown_filter,
+    'paragraphs': docassemble.base.functions.single_to_double_newlines,
+    'manual_line_breaks': docassemble.base.functions.manual_line_breaks,
+    'RichText': docassemble.base.file_docx.RichText,
+    'groupby': groupby_filter,
+    'max': max_filter,
+    'min': min_filter,
+    'sum': sum_filter,
+    'unique': unique_filter,
+    'join': join_filter,
+    'attr': attr_filter,
+    'selectattr': selectattr_filter,
+    'rejectattr': rejectattr_filter,
+    'sort': sort_filter,
+    'dictsort': dictsort_filter,
+    'nice_number': docassemble.base.functions.nice_number,
+    'ordinal': docassemble.base.functions.ordinal,
+    'ordinal_number': docassemble.base.functions.ordinal_number,
+    'currency': docassemble.base.functions.currency,
+    'comma_list': docassemble.base.functions.comma_list,
+    'comma_and_list': docassemble.base.functions.comma_and_list,
+    'capitalize': docassemble.base.functions.capitalize,
+    'salutation': docassemble.base.functions.salutation,
+    'alpha': docassemble.base.functions.alpha,
+    'roman': docassemble.base.functions.roman,
+    'word': docassemble.base.functions.word,
+    'bold': docassemble.base.functions.bold,
+    'italic': docassemble.base.functions.italic,
+    'title_case': docassemble.base.functions.title_case,
+    'single_paragraph': docassemble.base.functions.single_paragraph,
+    'phone_number_formatted': docassemble.base.functions.phone_number_formatted,
+    'phone_number_in_e164': docassemble.base.functions.phone_number_in_e164,
+    'country_name': docassemble.base.functions.country_name,
+    'fix_punctuation': docassemble.base.functions.fix_punctuation,
+    'redact': docassemble.base.functions.redact,
+    'verbatim': docassemble.base.functions.verbatim,
+    'map': map_filter
+}
+
+registered_jinja_filters = {}
+
+def custom_jinja_env():
+    env = DAEnvironment(undefined=DAStrictUndefined, extensions=[DAExtension])
+    env.filters.update(registered_jinja_filters)
+    env.filters.update(builtin_jinja_filters)
+    return env
+
+def register_jinja_filter(filter_name, func):
+    if filter_name in builtin_jinja_filters:
+        raise DAError("Cannot register filter with same name as built-in filter %s" % filter_name)
+    registered_jinja_filters[filter_name] = func
 
 def get_docx_variables(the_path):
     import docassemble.base.legal

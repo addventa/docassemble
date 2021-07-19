@@ -1261,6 +1261,16 @@ class DAList(DAObject):
             the_list.set_random_instance_name()
             return the_list
         return self.elements + other
+    def __radd__(self, other):
+        self._trigger_gather()
+        if isinstance(other, DAEmpty):
+            return self
+        if isinstance(other, DAList):
+            other._trigger_gather()
+            the_list = self.__class__(elements=other.elements + self.elements, gathered=True, auto_gather=False)
+            the_list.set_random_instance_name()
+            return the_list
+        return other + self.elements
     def index(self, *pargs, **kwargs):
         """Returns the first index at which a given item may be found."""
         self._trigger_gather()
@@ -1826,6 +1836,7 @@ class DAList(DAObject):
         for item in pargs:
             if item[0] < maximum and item[1] < maximum:
                 self.elements[item[1]] = old_elements[item[0]]
+        self._reset_instance_names()
     def item_actions(self, *pargs, **kwargs):
         """Returns HTML for editing the items in a list"""
         the_args = list(pargs)
@@ -3798,7 +3809,7 @@ class DAFile(DAObject):
             return the_content
         if docassemble.base.functions.this_thread.evaluation_context == 'docx':
             if self.mimetype == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
-                return docassemble.base.file_docx.include_docx_template(self)
+                return docassemble.base.file_docx.include_docx_template(self, _use_jinja2=False)
             else:
                 if self.mimetype in ('application/pdf', 'application/rtf', 'application/vnd.oasis.opendocument.text', 'application/msword'):
                     return self._pdf_pages(width)

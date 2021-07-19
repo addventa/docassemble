@@ -1,5 +1,71 @@
 # Change Log
 
+## [1.2.90] - 2021-07-12
+### Fixed
+- Security improvements.
+
+## [1.2.89] - 2021-07-11
+### Added
+- The `azure maps` and `geocoder service` Configuration directives.
+### Changed
+- Removed wait times and explicit application exit in LibreOffice PDF
+  conversion macro.
+### Fixed
+- PyPDF2 raised exception when another package tried to issue a
+  warning.
+- Nested `show if` conditions did not always show the correct showing
+  and hiding when the screen first loaded.
+- Security issue with `next` parameters in URLs.
+
+## [1.2.88] - 2021-07-04
+### Changed
+- If `behind https load balancer` is set, the IP address will be
+  obtained from `X-Real-Ip` or `X-Forwarded-For` rather than from the
+  remote IP address.
+### Fixed
+- The `DELETE` endpoint of `/api/interviews` did not delete sessions
+  owned by non-logged-in users.
+- The `refresh` button generated a spurious warning in some
+  circumstances.
+
+## [1.2.87] - 2021-06-27
+### Added
+- The `register_jinja_filter()` function.
+- The `sv-words.yml` file in the `data/sources` folder of
+  `docassemble.base` with system phrases in Swedish.
+
+## [1.2.86] - 2021-06-24
+### Fixed
+- Missing `.delta` attribute of the output of `date_difference()`.
+- Syntax error introduced in 1.2.85.
+
+## [1.2.85] - 2021-06-24
+### Added
+- The `backup file storage` Configuration directive (requires system
+  upgrade).
+### Changed
+- When using `docx template file` in combination with `fields` or
+  `field code`, the interview answers will be used for any variables
+  not defined in the `fields` or `field code`.
+### Fixed
+- Issue with exceptions being triggered because keycloak OAuth
+  information not defined in the Configuration.
+- Non-string values in `field code` raised exceptions.
+
+## [1.2.84] - 2021-06-20
+### Fixed
+- Variable not marked as defined if defined by `code` block triggered
+  by a different missing variable name.
+- Instance names not reset after reordering.
+
+## [1.2.83] - 2021-06-16
+### Changed
+- The `depends on` invalidation will now be triggered when a variable
+  is defined while invalidated.
+### Fixed
+- Misplacement of buttons on desktop `signature` page when
+  `subquestion` is lengthy.
+
 ## [1.2.82] - 2021-06-13
 ### Added
 - Support for login using Keycloak.

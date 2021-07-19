@@ -6,9 +6,9 @@ def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
 install_requires = [
-    'docassemble==1.2.82',
-    'docassemble.base==1.2.82',
-    'docassemble.demo==1.2.82',
+    'docassemble==1.2.90',
+    'docassemble.base==1.2.90',
+    'docassemble.demo==1.2.90',
     "3to2==1.1.1",
     "airtable-python-wrapper==0.15.2",
     "alembic==1.6.2",
@@ -180,6 +180,7 @@ install_requires = [
     "python-socketio==5.2.1",
     "pytz==2021.1",
     "pyu2f==0.1.5",
+    "PyNaCl==1.4.0",
     "PyYAML==5.4.1",
     "pyzbar==0.1.8",
     "qrcode==6.1",
@@ -214,6 +215,7 @@ install_requires = [
     "SQLAlchemy==1.4.15",
     "starkbank-ecdsa==1.1.0",
     "tailer==0.4.1",
+    "telnyx==1.4.0",
     "threadpoolctl==2.1.0",
     "titlecase==2.0.0",
     "toml==0.10.2",
@@ -243,7 +245,7 @@ install_requires = [
 ]
 
 setup(name='docassemble.webapp',
-      version='1.2.82',
+      version='1.2.90',
       python_requires='>=3.8',
       description=('The web application components of the docassemble system.'),
       long_description=read("README.md"),
