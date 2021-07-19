@@ -398,6 +398,7 @@ if [ ! -f "$DA_CONFIG_FILE" ]; then
         -e 's@{{ALLOWANONYMOUSACCESS}}@'"${ALLOWANONYMOUSACCESS:-false}"'@' \
         -e 's@{{ROOTREDIRECTURL}}@'"${ROOTREDIRECTURL:-null}"'@' \
         -e 's/{{ROLESMAP}}/'"${ROLESMAP:-null}"'/' \
+        -e 's/{{DEFAULTPLAYGROUNDYAML}}/'"${DEFAULTPLAYGROUNDYAML:-true}"'/' \
         -e 's/{{ALLOWDEMO}}/'"${ALLOWDEMO:-true}"'/' \
         -e 's@{{DBPREFIX}}@'"${DBPREFIX:-postgresql+psycopg2:\/\/}"'@' \
         -e 's/{{DBNAME}}/'"${DBNAME:-docassemble}"'/' \

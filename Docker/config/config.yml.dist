@@ -6,6 +6,7 @@ allow demo: {{ALLOWDEMO}}
 allow anonymous access: {{ALLOWANONYMOUSACCESS}}
 root redirect url: {{ROOTREDIRECTURL}}
 roles_map: {{ROLESMAP}}
+default playground yaml: {{DEFAULTPLAYGROUNDYAML}}
 exitpage: https://docassemble.org
 db:
   prefix: {{DBPREFIX}}
