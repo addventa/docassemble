@@ -98,7 +98,8 @@ bash -c \
 && chown -R www-data.www-data \
    /usr/share/docassemble/local3.8 \
    /usr/share/docassemble/log \
-   /usr/share/docassemble/files"
+   /usr/share/docassemble/files \
+&& usermod --shell /bin/bash www-data"
 
 USER root
 RUN \
