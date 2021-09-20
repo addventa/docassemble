@@ -6,9 +6,9 @@ def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
 install_requires = [
-    'docassemble==1.2.90',
-    'docassemble.base==1.2.90',
-    'docassemble.demo==1.2.90',
+    'docassemble==1.2.100',
+    'docassemble.base==1.2.100',
+    'docassemble.demo==1.2.100',
     "3to2==1.1.1",
     "airtable-python-wrapper==0.15.2",
     "alembic==1.6.2",
@@ -77,7 +77,7 @@ install_requires = [
     "geopy==2.1.0",
     "gherkin-official==4.1.3",
     "google-api-core==1.26.3",
-    "google-api-python-client==2.3.0",
+    "google-api-python-client==2.15.0",
     "google-auth-httplib2==0.1.0",
     "google-auth-oauthlib==0.4.4",
     "google-auth==1.30.0",
@@ -140,7 +140,7 @@ install_requires = [
     "pathlib==1.0.1",
     "pdfminer.six==20201018",
     "phonenumbers==8.12.22",
-    "Pillow==8.2.0",
+    "Pillow==8.3.2",
     "pip==20.1.1",
     "pkginfo==1.7.0",
     "pluggy==0.13.1",
@@ -245,7 +245,7 @@ install_requires = [
 ]
 
 setup(name='docassemble.webapp',
-      version='1.2.90',
+      version='1.2.100',
       python_requires='>=3.8',
       description=('The web application components of the docassemble system.'),
       long_description=read("README.md"),

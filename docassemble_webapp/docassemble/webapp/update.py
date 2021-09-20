@@ -66,6 +66,7 @@ def remove_inactive_hosts(start_time=None):
                 to_delete.add(host.id)
         for id_to_delete in to_delete:
             db.session.execute(delete(Supervisors).filter_by(id=id_to_delete))
+            db.session.commit()
     sys.stderr.write("remove_inactive_hosts: ended after " + str(time.time() - start_time) + " seconds\n")
 
 class DummyPackage(object):
@@ -307,7 +308,7 @@ def check_for_updates(doing_startup=False, start_time=None, invalidate_cache=Tru
                 install.version = package.version
             else:
                 install = Install(hostname=hostname, packageversion=package.packageversion, version=package.version, package_id=package.id)
-            db.session.add(install)
+                db.session.add(install)
             db.session.commit()
     if did_something:
         update_versions(start_time=start_time)
