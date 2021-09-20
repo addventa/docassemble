@@ -395,6 +395,12 @@ if [ ! -f "$DA_CONFIG_FILE" ]; then
         -e 's@{{ALLOWANONYMOUSACCESS}}@'"${ALLOWANONYMOUSACCESS:-false}"'@' \
         -e 's@{{ROOTREDIRECTURL}}@'"${ROOTREDIRECTURL:-null}"'@' \
         -e 's/{{ROLESMAP}}/'"${ROLESMAP:-null}"'/' \
+        -e 's/{{MAILUSERNAME}}/'"${MAILUSERNAME:-null}"'/' \
+        -e 's/{{MAILPASSWORD}}/'"${MAILPASSWORD:-null}"'/' \
+        -e 's/{{MAILSERVER}}/'"${MAILSERVER:-localhost}"'/' \
+        -e 's/{{MAILDEFAULTSENDER}}/'"${MAILDEFAULTSENDER:-'"Administrator" <no-reply@example.com>'}"'/' \
+        -e 's/{{MAILUSESSL}}/'"${MAILUSESSL:-false}"'/' \
+        -e 's/{{MAILUSETLS}}/'"${MAILUSETLS:-true}"'/' \
         -e 's/{{DEFAULTPLAYGROUNDYAML}}/'"${DEFAULTPLAYGROUNDYAML:-true}"'/' \
         -e 's/{{ALLOWDEMO}}/'"${ALLOWDEMO:-true}"'/' \
         -e 's@{{DBPREFIX}}@'"${DBPREFIX:-postgresql+psycopg2:\/\/}"'@' \

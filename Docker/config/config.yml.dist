@@ -54,10 +54,12 @@ backup days: {{DABACKUPDAYS}}
 default title: docassemble
 default short title: doc
 mail:
-  username: null
-  password: null
-  server: localhost
-  default sender: '"Administrator" <no-reply@example.com>'
+  username: {{MAILUSERNAME}}
+  password: {{MAILPASSWORD}}
+  server: {{MAILSERVER}}
+  default sender: {{MAILDEFAULTSENDER}}
+  use ssl: {{MAILUSESSL}}
+  use tls: {{MAILUSETLS}}
 server administrator email: {{SERVERADMIN}}
 default interview: docassemble.base:data/questions/default-interview.yml
 language: en
