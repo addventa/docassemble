@@ -2,7 +2,7 @@ import os
 import mimetypes
 import datetime
 import pytz
-from botocore.errorfactory import ClientError
+from botocore.exceptions import ClientError
 import botocore
 import boto3
 
