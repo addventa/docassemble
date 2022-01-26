@@ -64,7 +64,7 @@ install_requires = [
     "blinker==1.4",
     "boto3==1.17.71",
     "boto==2.49.0",
-    "botocore==1.20.71",
+    "botocore==1.4.93",
     "cairocffi==1.3.0",
     "cairosvg==2.5.2",
     "cachetools==4.2.2",
@@ -196,10 +196,10 @@ install_requires = [
     "xlwt==1.3.0",
     "zipp==3.4.1",
     "zc.lockfile==2.0",
-    "billiard==3.6.3.0",
+    "billiard==3.6.4.0",
     "click-didyoumean==0.0.3",
-    "click-repl==0.1.6",
-    "kombu==5.0.2",
+    "click-repl==0.2.0",
+    "kombu==5.2.2",
     "vine==5.0.0"
 ]
 
