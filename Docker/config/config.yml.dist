@@ -4,6 +4,7 @@ checkin interval: {{CHECKININTERVAL}}
 maximum content length: {{DAMAXCONTENTLENGTH}}
 allow demo: {{ALLOWDEMO}}
 allow anonymous access: {{ALLOWANONYMOUSACCESS}}
+allow vars route access: {{ALLOWVARSROUTEACCESS}}
 root redirect url: {{ROOTREDIRECTURL}}
 roles map: {{ROLESMAP}}
 default playground yaml: {{DEFAULTPLAYGROUNDYAML}}

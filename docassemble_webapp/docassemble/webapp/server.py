@@ -5863,6 +5863,8 @@ def apply_security_headers(response):
 
 @app.route("/vars", methods=['POST', 'GET'])
 def get_variables():
+    if not daconfig.get('allow vars route access', True):
+        return jsonify_with_status("Access denied.", 403)
     yaml_filename = request.args.get('i', None)
     if yaml_filename is None:
         return ("Invalid request", 400)

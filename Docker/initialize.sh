@@ -394,6 +394,7 @@ if [ ! -f "$DA_CONFIG_FILE" ]; then
         -e 's/{{CHECKININTERVAL}}/'"${CHECKININTERVAL:-6000}"'/' \
         -e 's@{{DAMAXCONTENTLENGTH}}@'"${DAMAXCONTENTLENGTH}"'@' \
         -e 's@{{ALLOWANONYMOUSACCESS}}@'"${ALLOWANONYMOUSACCESS:-false}"'@' \
+        -e 's@{{ALLOWVARSROUTEACCESS}}@'"${ALLOWVARSROUTEACCESS:-true}"'@' \
         -e 's@{{ROOTREDIRECTURL}}@'"${ROOTREDIRECTURL:-null}"'@' \
         -e 's/{{ROLESMAP}}/'"${ROLESMAP:-null}"'/' \
         -e 's/{{MAILUSERNAME}}/'"${MAILUSERNAME:-null}"'/' \
