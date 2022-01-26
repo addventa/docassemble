@@ -136,6 +136,7 @@ if [ "${S3ENABLE:-null}" == "true" ] && [ "${S3BUCKET:-null}" != "null" ] && [ "
     export S3_SECRET_KEY="$S3SECRETACCESSKEY"
     export AWS_ACCESS_KEY_ID="$S3ACCESSKEY"
     export AWS_SECRET_ACCESS_KEY="$S3SECRETACCESSKEY"
+    export AWS_DEFAULT_REGION="$S3REGION"
 fi
 
 if [ "${S3ENDPOINTURL:-null}" != "null" ]; then
@@ -452,6 +453,7 @@ if [ ! -f "$DA_CONFIG_FILE" ]; then
         -e 's/{{DAWEBSERVER}}/'"${DAWEBSERVER:-nginx}"'/' \
         -e 's/{{DASTABLEVERSION}}/'"${DASTABLEVERSION:-false}"'/' \
         -e 's/{{DASQLPING}}/'"${DASQLPING:-false}"'/' \
+        -e 's/{{ENABLEUNOCONV}}/'"${ENABLEUNOCONV:-true}"'/' \
         "$DA_CONFIG_FILE_DIST" > "$DA_CONFIG_FILE" || exit 1
 fi
 chown www-data.www-data "$DA_CONFIG_FILE"
@@ -1212,6 +1214,13 @@ if [[ $CONTAINERROLE =~ .*:(all|web):.* ]]; then
     fi
 fi
 
+echo "initialize: Checking to see if unoconv should be started" >&2
+
+if [ "$ENABLEUNOCONV" == "true" ] && [[ -x /usr/bin/unoconv ]]; then
+    echo "initialize: Starting unoconv" >&2
+    supervisorctl --serverurl http://localhost:9001 start unoconv
+fi
+
 echo "initialize: Registering this server" >&2
 
 su -c "source \"${DA_ACTIVATE}\" && python -m docassemble.webapp.register \"${DA_CONFIG_FILE}\"" www-data
@@ -1351,6 +1360,15 @@ function deregister {
             fi
         fi
     else
+        if [[ $CONTAINERROLE =~ .*:(all|cron):.* ]]; then
+	    echo "initialize: Saving Configuration" >&2
+            rm -f "${DA_ROOT}/backup/config.yml"
+            cp "${DA_CONFIG_FILE}" "${DA_ROOT}/backup/config.yml"
+	    echo "initialize: Saving files" >&2
+            rm -rf "${DA_ROOT}/backup/files"
+            rsync -auq "${DA_ROOT}/files" "${DA_ROOT}/backup/"
+	    echo "initialize: Done saving files" >&2
+        fi
         if [[ $CONTAINERROLE =~ .*:(all):.* ]]; then
             if [ "${DAWEBSERVER:-nginx}" = "apache" ]; then
 		echo "initialize: Saving Apache log files" >&2
@@ -1369,15 +1387,6 @@ function deregister {
 	    echo "initialize: Saving log files" >&2
             rm -rf "${DA_ROOT}/backup/log"
             rsync -auq "${LOGDIRECTORY}/" "${DA_ROOT}/backup/log/"
-        fi
-        if [[ $CONTAINERROLE =~ .*:(all|cron):.* ]]; then
-	    echo "initialize: Saving Configuration" >&2
-            rm -f "${DA_ROOT}/backup/config.yml"
-            cp "${DA_CONFIG_FILE}" "${DA_ROOT}/backup/config.yml"
-	    echo "initialize: Saving files" >&2
-            rm -rf "${DA_ROOT}/backup/files"
-            rsync -auq "${DA_ROOT}/files" "${DA_ROOT}/backup/"
-	    echo "initialize: Done saving files" >&2
         fi
     fi
     rm -f /etc/da_running

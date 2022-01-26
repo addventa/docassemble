@@ -35,6 +35,8 @@ bash -c \
 && cp /tmp/docassemble/Docker/config/exim4-acl /etc/exim4/conf.d/acl/29_docassemble \
 && cp /tmp/docassemble/Docker/config/exim4-update /etc/exim4/update-exim4.conf.conf \
 && cp /tmp/docassemble/Docker/nascent.html /var/www/nascent/index.html \
+&& cp /tmp/docassemble/Docker/daunoconv /usr/bin/daunoconv \
+&& chmod ogu+rx /usr/bin/daunoconv \
 && update-exim4.conf \
 && chown www-data.www-data /usr/share/docassemble/config \
 && chown www-data.www-data \
@@ -61,7 +63,7 @@ bash -c \
 "cd /tmp \
 && /usr/bin/python3.8 -m venv --copies /usr/share/docassemble/local3.8 \
 && source /usr/share/docassemble/local3.8/bin/activate \
-&& pip3 install --upgrade pip==20.1.1 \
+&& pip3 install --upgrade pip==21.1 \
 && pip3 install --upgrade mod_wsgi==4.7.1 \
 && pip3 install --upgrade \
    3to2==1.1.1 \

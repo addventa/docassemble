@@ -1,18 +1,5 @@
 import re
 import os
-from copy import deepcopy
-from docxtpl import DocxTemplate, R, InlineImage, RichText, Listing, Document, Subdoc
-from docx.shared import Mm, Inches, Pt, Cm, Twips
-import docx.opc.constants
-from docxcompose.composer import Composer # For fixing up images, etc when including docx files within templates
-from docx.oxml.section import CT_SectPr # For figuring out if an element is a section or not
-from docassemble.base.functions import server, this_thread, package_template_filename, get_config, roman
-import docassemble.base.filter
-from xml.sax.saxutils import escape as html_escape
-from docassemble.base.logger import logmessage
-from bs4 import BeautifulSoup, NavigableString, Tag
-from collections import deque
-import PyPDF2
 import codecs
 import time
 import stat
@@ -20,7 +7,22 @@ import mimetypes
 import tempfile
 import string
 import subprocess
+from collections import deque
+from copy import deepcopy
+from xml.sax.saxutils import escape as html_escape
+from docxtpl import InlineImage, RichText, Document, DocxTemplate
+from docx.shared import Mm, Inches, Pt, Cm, Twips
+import docx.opc.constants
+from docx.oxml.section import CT_SectPr # For figuring out if an element is a section or not
+import docx
+from docxcompose.composer import Composer # For fixing up images, etc when including docx files within templates
+from docassemble.base.functions import server, this_thread, package_template_filename, get_config, roman
 from docassemble.base.error import DAError
+import docassemble.base.filter
+import docassemble.base.pandoc
+from docassemble.base.logger import logmessage
+from bs4 import BeautifulSoup, NavigableString, Tag
+import PyPDF2
 
 zerowidth = '\u200B'
 
@@ -35,7 +37,9 @@ def image_for_docx(fileref, question, tpl, width=None):
     if fileref.__class__.__name__ in ('DAFile', 'DAFileList', 'DAFileCollection', 'DALocalFile', 'DAStaticFile'):
         file_info = dict(fullpath=fileref.path())
     else:
-        file_info = server.file_finder(fileref, convert={'svg': 'png'}, question=question)
+        file_info = server.file_finder(fileref, question=question)
+    if 'path' in file_info and 'extension' in file_info:
+        docassemble.base.filter.convert_svg_to_png(file_info)
     if 'fullpath' not in file_info:
         return '[FILE NOT FOUND]'
     if width is not None:
@@ -61,43 +65,16 @@ def image_for_docx(fileref, question, tpl, width=None):
         the_width = Inches(2)
     return InlineImage(tpl, file_info['fullpath'], the_width)
 
-def transform_for_docx(text, question, tpl, width=None):
+def transform_for_docx(text):
     if type(text) in (int, float, bool, NoneType):
         return text
     text = str(text)
-    # m = re.search(r'\[FILE ([^,\]]+), *([0-9\.]) *([A-Za-z]+) *\]', text)
-    # if m:
-    #     amount = m.group(2)
-    #     units = m.group(3).lower()
-    #     if units in ['in', 'inches', 'inch']:
-    #         the_width = Inches(amount)
-    #     elif units in ['pt', 'pts', 'point', 'points']:
-    #         the_width = Pt(amount)
-    #     elif units in ['mm', 'millimeter', 'millimeters']:
-    #         the_width = Mm(amount)
-    #     elif units in ['cm', 'centimeter', 'centimeters']:
-    #         the_width = Cm(amount)
-    #     elif units in ['twp', 'twip', 'twips']:
-    #         the_width = Twips(amount)
-    #     else:
-    #         the_width = Pt(amount)
-    #     file_info = server.file_finder(m.group(1), convert={'svg': 'png'}, question=question)
-    #     if 'fullpath' not in file_info:
-    #         return '[FILE NOT FOUND]'
-    #     return InlineImage(tpl, file_info['fullpath'], the_width)
-    # m = re.search(r'\[FILE ([^,\]]+)\]', text)
-    # if m:
-    #     file_info = server.file_finder(m.group(1), convert={'svg': 'png'}, question=question)
-    #     if 'fullpath' not in file_info:
-    #         return '[FILE NOT FOUND]'
-    #     return InlineImage(tpl, file_info['fullpath'], Inches(2))
-    #return docassemble.base.filter.docx_template_filter(text, question=question)
     return text
 
 def create_hyperlink(url, anchor_text, tpl):
     return InlineHyperlink(tpl, url, sanitize_xml(anchor_text))
 
-class InlineHyperlink(object):
+class InlineHyperlink:
     def __init__(self, tpl, url, anchor_text):
         self.tpl = tpl
         self.url = url
@@ -159,7 +136,7 @@ def include_docx_template(template_file, **kwargs):
     else:
         single_paragraph = False
     if 'change_numbering' in kwargs:
-        change_numbering = True if kwargs['change_numbering'] else False
+        change_numbering = bool(kwargs['change_numbering'])
         del kwargs['change_numbering']
     else:
         change_numbering = True
@@ -193,17 +170,17 @@ def get_children(descendants, parsed):
     descendants_buff = deque()
     if descendants is None:
         return descendants_buff
-    if (isinstance(descendants, NavigableString)):
+    if isinstance(descendants, NavigableString):
         parsed.append(descendants)
     else:
         for child in descendants.children:
-            if (child.name == None):
-                if (subelement == False):
+            if child.name is None:
+                if subelement is False:
                     parsed.append(child)
                 else:
                     descendants_buff.append(child)
             else:
-                if (subelement == False):
+                if subelement is False:
                     subelement = True
                     descendants_buff.append(child)
                 else:
@@ -216,7 +193,7 @@ def html_linear_parse(soup):
     descendants = deque()
     descendants.appendleft(html_tag)
     parsed = deque()
-    while (len(list(descendants)) > 0):
+    while len(list(descendants)) > 0:
         child = descendants.popleft()
         from_children = get_children(child, parsed)
         descendants.extendleft(from_children)
@@ -238,12 +215,13 @@ def Roman_Numeral(number):
 def roman_numeral(number):
     return roman((number - 1) % 4000, case='lower')
 
-class SoupParser(object):
+class SoupParser:
     def __init__(self, tpl):
         self.paragraphs = [dict(params=dict(style='p', indentation=0, list_number=1), runs=[RichText('')])]
         self.current_paragraph = self.paragraphs[-1]
         self.run = self.current_paragraph['runs'][-1]
         self.bold = False
+        self.center = False
         self.list_number = 1
         self.list_type = list_types[-1]
         self.italic = False
@@ -256,26 +234,93 @@ class SoupParser(object):
         self.charstyle = None
         self.color = None
         self.tpl = tpl
-    def new_paragraph(self):
+    def new_paragraph(self, classes, styles):
         if self.still_new:
             # logmessage("new_paragraph is still new and style is " + self.style + " and indentation is " + str(self.indentation))
             self.current_paragraph['params']['style'] = self.style
             self.current_paragraph['params']['indentation'] = self.indentation
+            self.set_attribs(classes, styles)
             self.list_number += 1
             return
         # logmessage("new_paragraph where style is " + self.style + " and indentation is " + str(self.indentation))
         self.current_paragraph = dict(params=dict(style=self.style, indentation=self.indentation, list_number=self.list_number), runs=[RichText('')])
+        self.set_attribs(classes, styles)
         self.list_number += 1
         self.paragraphs.append(self.current_paragraph)
         self.run = self.current_paragraph['runs'][-1]
         self.still_new = True
+    def set_attribs(self, classes, styles):
+        if 'dacenter' in classes:
+            self.current_paragraph['params']['align'] = 'center'
+        elif 'daflushright' in classes:
+            self.current_paragraph['params']['align'] = 'end'
+        else:
+            self.current_paragraph['params']['align'] = 'start'
+        if len(classes):
+            if 'daspacingtight' in classes:
+                self.current_paragraph['params']['spacing'] = 240
+                self.current_paragraph['params']['after'] = 0
+            elif 'daspacingsingle' in classes:
+                self.current_paragraph['params']['spacing'] = 240
+                self.current_paragraph['params']['after'] = 240
+            elif 'daspacingdouble' in classes:
+                self.current_paragraph['params']['spacing'] = 480
+                self.current_paragraph['params']['after'] = 0
+            elif 'daspacingoneandahalf' in classes:
+                self.current_paragraph['params']['spacing'] = 260
+                self.current_paragraph['params']['after'] = 0
+            elif 'daspacingtriple' in classes:
+                self.current_paragraph['params']['spacing'] = 700
+                self.current_paragraph['params']['after'] = 0
+        if styles:
+            m = re.search(r'margin-left:([0-9\.]+)px', styles)
+            if m:
+                self.current_paragraph['params']['leftindent'] = 20 * int(m.group(1))
+            m = re.search(r'margin-right:([0-9\.]+)px', styles)
+            if m:
+                self.current_paragraph['params']['rightindent'] = 20 * int(m.group(1))
+            m = re.search(r'text-indent:([0-9\.]+)px', styles)
+            if m:
+                self.current_paragraph['params']['firstline'] = 20 * int(m.group(1))
     def __str__(self):
         output = ''
         for para in self.paragraphs:
             # logmessage("Got a paragraph where style is " + para['params']['style'] + " and indentation is " + str(para['params']['indentation']))
             output += '<w:p><w:pPr><w:pStyle w:val="Normal"/>'
-            if para['params']['style'] in ('ul', 'blockquote') or para['params']['style'].startswith('ol'):
-                output += '<w:ind w:left="' + str(36*para['params']['indentation']) + '" w:right="0" w:hanging="0"/>'
+            if para['params']['align'] == 'center':
+                output += '<w:jc w:val="center"/>'
+            elif para['params']['align'] == 'end':
+                output += '<w:jc w:val="end"/>'
+            if 'spacing' in para['params']:
+                output += '<w:spacing w:before="0" w:after="' + str(para['params']['after']) + '" w:line="' + str(para['params']['spacing']) + '" w:lineRule="auto" w:beforeAutospacing="0" w:afterAutospacing="0"/>'
+            if para['params']['style'] == 'ul' or para['params']['style'].startswith('ol'):
+                if 'leftindent' in para['params']:
+                    left_indent = para['params']['leftindent']
+                else:
+                    left_indent = 36*para['params']['indentation']
+                if 'rightindent' in para['params']:
+                    right_indent = para['params']['rightindent']
+                else:
+                    right_indent = 0
+                output += '<w:ind w:left="' + str(left_indent) + '" w:right="' + str(right_indent) + '" w:hanging="0"/>'
+            elif para['params']['style'] == 'blockquote':
+                if 'spacing' not in para['params']:
+                    output += '<w:spacing w:before="0" w:after="240" w:line="240" w:lineRule="auto" w:beforeAutospacing="0" w:afterAutospacing="0"/>'
+                output += '<w:ind w:left="' + str(36*para['params']['indentation']) + '" w:right="' + str(36*para['params']['indentation']) + '" w:hanging="0"/>'
+            elif 'leftindent' in para['params'] or 'rightindent' in para['params'] or 'firstline' in para['params']:
+                if 'leftindent' in para['params']:
+                    left_indent = para['params']['leftindent']
+                else:
+                    left_indent = 0
+                if 'rightindent' in para['params']:
+                    right_indent = para['params']['rightindent']
+                else:
+                    right_indent = 0
+                if 'firstline' in para['params']:
+                    first_line = para['params']['firstline']
+                else:
+                    first_line = 0
+                output += '<w:ind w:left="' + str(left_indent) + '" w:right="' + str(right_indent) + '" w:hanging="0" w:firstLine="' + str(first_line) + '"/>'
             output += '<w:rPr></w:rPr></w:pPr>'
             if para['params']['style'] == 'ul':
                 output += str(RichText("•\t"))
@@ -313,10 +358,30 @@ class SoupParser(object):
             elif isinstance(part, Tag):
                 # logmessage("Part name is " + str(part.name))
                 if part.name == 'p':
-                    self.new_paragraph()
+                    if 'class' in part.attrs:
+                        classes = part.attrs['class']
+                    else:
+                        classes = []
+                    if 'style' in part.attrs:
+                        styles = part.attrs['style']
+                    else:
+                        styles = ""
+                    self.new_paragraph(classes, styles)
+                    if 'dabold' in classes:
+                        self.bold = True
                     self.traverse(part)
+                    if 'dabold' in classes:
+                        self.bold = False
                 elif part.name == 'li':
-                    self.new_paragraph()
+                    if 'class' in part.attrs:
+                        classes = part.attrs['class']
+                    else:
+                        classes = []
+                    if 'style' in part.attrs:
+                        styles = part.attrs['style']
+                    else:
+                        styles = ""
+                    self.new_paragraph(classes, styles)
                     self.traverse(part)
                 elif part.name == 'ul':
                     # logmessage("Entering a UL")
@@ -374,7 +439,15 @@ class SoupParser(object):
                 elif re.match(r'h[1-6]', part.name):
                     oldsize = self.size
                     self.size = 60 - ((int(part.name[1]) - 1) * 10)
-                    self.new_paragraph()
+                    if 'class' in part.attrs:
+                        classes = part.attrs['class']
+                    else:
+                        classes = []
+                    if 'style' in part.attrs:
+                        styles = part.attrs['style']
+                    else:
+                        styles = ""
+                    self.new_paragraph(classes, styles)
                     self.bold = True
                     self.traverse(part)
                     self.bold = False
@@ -399,7 +472,7 @@ class SoupParser(object):
             else:
                 logmessage("Encountered a " + part.__class__.__name__)
 
-class InlineSoupParser(object):
+class InlineSoupParser:
     def __init__(self, tpl):
         self.runs = [RichText('')]
         self.run = self.runs[-1]
@@ -575,8 +648,7 @@ def markdown_to_docx(text, question, tpl):
         output = str(parser)
         # logmessage(output)
         return docassemble.base.filter.docx_template_filter(output, question=question)
-    else:
-        return inline_markdown_to_docx(text, question, tpl)
+    return inline_markdown_to_docx(text, question, tpl)
 
 def safe_pypdf_reader(filename):
     try:
@@ -585,7 +657,7 @@ def safe_pypdf_reader(filename):
         new_filename = tempfile.NamedTemporaryFile(prefix="datemp", mode="wb", suffix=".pdf", delete=False)
         qpdf_subprocess_arguments = [QPDF_PATH, filename, new_filename.name]
         try:
-            result = subprocess.run(qpdf_subprocess_arguments, timeout=60).returncode
+            result = subprocess.run(qpdf_subprocess_arguments, timeout=60, check=False).returncode
         except subprocess.TimeoutExpired:
             result = 1
         if result != 0:
@@ -608,7 +680,7 @@ def pdf_pages(file_info, width):
     max_pages = 1 + int(file_info['pages'])
     formatter = '%0' + str(len(str(max_pages))) + 'd'
     for page in range(1, max_pages):
-        page_file = dict()
+        page_file = {}
         test_path = file_info['path'] + 'page-in-progress'
         if os.path.isfile(test_path):
             while (os.path.isfile(test_path) and time.time() - os.stat(test_path)[stat.ST_MTIME]) < 30:
@@ -625,12 +697,10 @@ def pdf_pages(file_info, width):
         else:
             output += "[Error including page image]"
         output += ' '
-    return(output)
+    return output
 
 def concatenate_files(path_list):
-    import docassemble.base.pandoc
-    import docx
-    new_path_list = list()
+    new_path_list = []
     for path in path_list:
         mimetype, encoding = mimetypes.guess_type(path)
         if mimetype in ('application/rtf', 'application/msword', 'application/vnd.oasis.opendocument.text'):

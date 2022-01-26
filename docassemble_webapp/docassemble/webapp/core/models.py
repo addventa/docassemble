@@ -1,9 +1,9 @@
 from docassemble.webapp.db_object import db
-from docassemble.base.config import daconfig, dbtableprefix
+from docassemble.base.config import dbtableprefix
 from docassemble.webapp.database import dbprefix
 from sqlalchemy import true, false
-import docassemble.webapp.users.models
 from sqlalchemy.dialects.postgresql.json import JSONB
+import docassemble.webapp.users.models
 
 class Uploads(db.Model):
     __tablename__ = dbtableprefix + "uploads"

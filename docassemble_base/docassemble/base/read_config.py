@@ -131,7 +131,7 @@ if __name__ == "__main__":
         print('export DAWEBSOCKETSPORT=5000')
     if 'redis' in daconfig and daconfig['redis'] is not None:
         print('export REDIS="' + str(daconfig['redis']) + '"')
-        (redis_host, redis_port, redis_password, redis_offset, redis_cli) = parse_redis_uri()
+        (redis_host, redis_port, redis_username, redis_password, redis_offset, redis_cli) = parse_redis_uri()
         print('export REDISCLI="' + str(redis_cli) + '"')
     if 'rabbitmq' in daconfig and daconfig['rabbitmq'] is not None:
         print('export RABBITMQ="' + str(daconfig['rabbitmq']) + '"')
@@ -148,6 +148,10 @@ if __name__ == "__main__":
         print('export BACKUPFILESTORAGE=false')
     else:
         print('export BACKUPFILESTORAGE=true')
+    if 'enable unoconv' in daconfig and daconfig['enable unoconv'] is True:
+        print('export ENABLEUNOCONV=true')
+    else:
+        print('export ENABLEUNOCONV=false')
     if 's3' in daconfig:
         if 'enable' in daconfig['s3'] and daconfig['s3']['enable']:
             print('export S3ENABLE=true')
@@ -165,6 +169,7 @@ if __name__ == "__main__":
             print('export S3BUCKET="' + str(daconfig['s3']['bucket']) + '"')
         if 'region' in daconfig['s3'] and daconfig['s3']['region'] is not None:
             print('export S3REGION="' + str(daconfig['s3']['region']) + '"')
+            print('export AWS_DEFAULT_REGION="' + str(daconfig['s3']['region']) + '"')
         if 'endpoint url' in daconfig['s3'] and daconfig['s3']['endpoint url'] is not None:
             print('export S3ENDPOINTURL="' + str(daconfig['s3']['endpoint url']) + '"')
             print('export S4CMD_OPTS="--endpoint-url=\\"' + str(daconfig['s3']['endpoint url']) + '\\""')

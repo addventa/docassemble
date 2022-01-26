@@ -3,39 +3,42 @@ import os
 import stat
 import re
 import copy
-from pwd import getpwnam
 import shutil
+from pwd import getpwnam
+if __name__ == "__main__":
+    import docassemble.base.config
+    docassemble.base.config.load(arguments=sys.argv)
+from docassemble.base.config import daconfig, S3_ENABLED, s3_config, AZURE_ENABLED, azure_config
+import docassemble.base.amazon
+import docassemble.base.microsoft
 
 def main():
-    from docassemble.base.config import daconfig, S3_ENABLED, s3_config, AZURE_ENABLED, azure_config
     certs_location = daconfig.get('certs', None)
     cloud = None
     prefix = None
     if S3_ENABLED:
-        import docassemble.webapp.amazon
         my_config = copy.deepcopy(s3_config)
         if certs_location is None:
-            cloud = docassemble.webapp.amazon.s3object(my_config)
+            cloud = docassemble.base.amazon.s3object(my_config)
             prefix = 'certs/'
         else:
             m = re.search(r'^s3://([^/]+)/(.*)', certs_location)
             if m:
                 prefix = m.group(2)
                 my_config['bucket'] = m.group(1)
-                cloud = docassemble.webapp.amazon.s3object(my_config)
+                cloud = docassemble.base.amazon.s3object(my_config)
     elif AZURE_ENABLED:
-        import docassemble.webapp.microsoft
         my_config = copy.deepcopy(azure_config)
         if certs_location is None:
             prefix = 'certs/'
-            cloud = docassemble.webapp.microsoft.azureobject(my_config)
+            cloud = docassemble.base.microsoft.azureobject(my_config)
         else:
             m = re.search(r'^blob://([^/]+)/([^/]+)/(.*)', certs_location)
             if m:
                 my_config['account name'] = m.group(1)
                 my_config['container'] = m.group(2)
                 prefix = m.group(3)
-                cloud = docassemble.webapp.microsoft.azureobject(my_config)
+                cloud = docassemble.base.microsoft.azureobject(my_config)
     if cloud is not None and prefix is not None:
         success = False
         if not re.search(r'/$', prefix):
@@ -64,7 +67,6 @@ def main():
     if not os.path.isdir(certs_location):
         sys.stderr.write("certs directory " + str(certs_location) + " does not exist")
         sys.exit(1)
-    import shutil
     dest = daconfig.get('cert install directory', '/etc/ssl/docassemble')
     if dest:
         if os.path.isdir(dest):
@@ -92,7 +94,4 @@ def main():
     return
 
 if __name__ == "__main__":
-    import docassemble.base.config
-    docassemble.base.config.load(arguments=sys.argv)
     main()
-    sys.exit(0)

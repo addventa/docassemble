@@ -1,11 +1,10 @@
 import os
-import sys
-from setuptools import setup, find_packages
 from fnmatch import fnmatchcase
 from distutils.util import convert_path
+from setuptools import setup, find_packages
 
 def read(fname):
-    return open(os.path.join(os.path.dirname(__file__), fname)).read()
+    return open(os.path.join(os.path.dirname(__file__), fname), encoding='utf-8').read()
 
 standard_exclude = ('*.py', '*.pyc', '*~', '.*', '*.bak', '*.swp*')
 standard_exclude_directories = ('.*', 'CVS', '_darcs', os.path.join('.', 'build'), os.path.join('.', 'dist'), 'EGG-INFO', '*.egg-info')
@@ -46,7 +45,7 @@ def find_package_data(where='.', package='', exclude=standard_exclude, exclude_d
     return out
 
 install_requires = [
-    'docassemble==1.2.100',
+    'docassemble==1.3.20',
     "3to2==1.1.1",
     "alembic==1.6.2",
     "astunparse==1.6.3",
@@ -56,21 +55,29 @@ install_requires = [
     "azure-core==1.13.0",
     "azure-identity==1.5.0",
     "azure-keyvault-secrets==4.2.0",
+    "azure-nspkg==3.0.2",
+    "azure-storage-blob==12.8.1",
     "Babel==2.9.1",
     "bcrypt==3.2.0",
     "beautifulsoup4==4.9.3",
     "bleach==3.3.0",
     "blinker==1.4",
+    "boto3==1.17.71",
+    "boto==2.49.0",
+    "botocore==1.20.71",
+    "cairocffi==1.3.0",
+    "cairosvg==2.5.2",
     "cachetools==4.2.2",
     "certifi==2020.12.5",
     "cffi==1.14.5",
     "chardet==4.0.0",
-    "click==7.1.2",
+    "click==8.0.3",
     "colorama==0.4.4",
     "convertapi==1.4.0",
     "cryptography==3.4.7",
+    "cssselect2==0.4.1",
     "da-pkg-resources==0.0.1",
-    "Docassemble-Pattern==3.6.2",
+    "Docassemble-Pattern==3.6.4",
     "docassemble-textstat==0.7.1",
     "docopt==0.6.2",
     "docutils==0.17.1",
@@ -102,16 +109,15 @@ install_requires = [
     "Jinja2==3.0.0",
     "joblib==1.0.1",
     "keyring==23.0.1",
-    "lxml==4.6.3",
+    "lxml==4.6.5",
     "Mako==1.1.4",
-    "Marisol==0.3.0",
     "Markdown==3.3.4",
     "MarkupSafe==2.0.0",
     "mdx-smartypants==1.5.1",
     "namedentities==1.5.2",
-    "nltk==3.5",
+    "nltk==3.6.6",
     "num2words==0.5.10",
-    "numpy==1.19.4",
+    "numpy==1.21.0",
     "oauth2client==4.1.3",
     "oauthlib==3.1.0",
     "openpyxl==3.0.7",
@@ -123,7 +129,7 @@ install_requires = [
     "pdfminer.six==20201018",
     "phonenumbers==8.12.22",
     "Pillow==8.3.2",
-    "pip==20.1.1",
+    "pip==21.1",
     "pkginfo==1.7.0",
     "pluggy==0.13.1",
     "ply==3.11",
@@ -153,8 +159,8 @@ install_requires = [
     "pyzbar==0.1.8",
     "qrcode==6.1",
     "readme-renderer==29.0",
-    "regex==2021.4.4",
-    "reportlab==3.3.0",
+    "regex==2021.11.2",
+    "reportlab==3.5.55",
     "repoze.lru==0.7",
     "requests-oauthlib==1.3.0",
     "requests-toolbelt==0.9.1",
@@ -169,6 +175,7 @@ install_requires = [
     "sortedcontainers==2.3.0",
     "soupsieve==2.2.1",
     "SQLAlchemy==1.4.15",
+    "tinycss2==1.1.1",
     "titlecase==2.0.0",
     "toml==0.10.2",
     "tqdm==4.60.0",
@@ -197,7 +204,7 @@ install_requires = [
 ]
 
 setup(name='docassemble.base',
-      version='1.2.100',
+      version='1.3.20',
       python_requires='>=3.8',
       description=('The base components of the docassemble system.'),
       long_description=read("README.md"),

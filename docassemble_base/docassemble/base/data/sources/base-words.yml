@@ -11,6 +11,7 @@
 "Active File": Null
 "Active": Null
 "Actual": Null
+"Add a New API Key": Null
 "Add a new privilege": Null
 "Add a New Project": Null
 "Add an item": Null
@@ -84,6 +85,7 @@
 "Back to Playground": Null
 "Back to profile": Null
 "Back to question": Null
+"Back to user list": Null
 "Bad date": Null
 "Bad file format": Null
 "Bahamas": Null
@@ -105,6 +107,7 @@
 "Bouvet Island": Null
 "Branch": Null
 "Brazil": Null
+"breadcrumb": Null
 "British Indian Ocean Territory": Null
 "Brunei Darussalam": Null
 "Bulgaria": Null
@@ -132,7 +135,6 @@
 "Chile": Null
 "China": Null
 "Choices:": Null
-"Choose file": Null
 "Christmas Island": Null
 "Classes": Null
 "Clear": Null
@@ -255,6 +257,7 @@
 "e.g., *example.com": Null
 "Egypt": Null
 "El Salvador": Null
+"E-mail addresses with this domain are not authorized to register for accounts on this system.": Null
 "E-mail address is required": Null
 "Email address is required": Null
 "E-mail address": Null
@@ -424,9 +427,13 @@
 "Import method": Null
 "Import": Null
 "Import training data from a JSON file": Null
+"Include DOCX and Markdown files for editing": Null
 "Include DOCX file for editing": Null
 "Include DOCX files for editing": Null
+"Include Markdown file for editing": Null
+"Include Markdown files for editing": Null
 "Include RTF and DOCX files for editing": Null
+"Include RTF and Markdown files for editing": Null
 "Include RTF file for editing": Null
 "Include RTF files for editing": Null
 "Incorrect Email and/or Password": Null
@@ -434,6 +441,7 @@
 "Incorrect %(username_or_email)s and/or Password": Null
 "India": Null
 "Indonesia": Null
+"Information for the developer": Null
 "in mako": Null
 "Input box": Null
 "Input not processed because the page expired.": Null
@@ -688,6 +696,7 @@
 "Paraguay": Null
 "Password and Retype Password did not match": Null
 "Password is required": Null
+"Password must be at least six characters long with at least one lowercase letter, at least one uppercase letter, and at least one number.": Null
 "Password must have at least 6 characters with one lowercase letter, one uppercase letter and one number": Null
 "password": Null
 "Password": Null
@@ -700,6 +709,7 @@
 "Phone help is available": Null
 "Phone help": Null
 "Phone number": Null
+"Pick actual value": Null
 "pip log": Null
 "Pitcairn": Null
 "Plain text of sections": Null
@@ -772,7 +782,8 @@
 "question": Null
 "Question": Null
 "quit": Null
-"Readability": Null
+"Readability of help text": Null
+"Readability of question": Null
 "README file": Null
 "Read this screen out loud": Null
 "Reason for needing developer account (optional)": Null
@@ -889,6 +900,7 @@
 "Sign in with Twitter": Null
 "Sign in with your mobile phone": Null
 "Sign Out": Null
+"Sign up": Null
 "Sign Your Name": Null
 "Since you changed a Python module, the server needs to restart in order to load your module.": Null
 "Since you did not type \"delete my account\" I did not delete your account.": Null
@@ -908,7 +920,6 @@
 "Sorry, only .py files can be uploaded here.  To upload other types of files, use other Folders.": Null
 "Sorry, only YAML files can be uploaded here.  To upload other types of files, use the Folders.": Null
 "Sorry, that package name does not exist in the playground": Null
-"Sorry, that package name is already in use by someone else": Null
 "Sorry, that package name,": Null
 "Source code for question": Null
 "Source files": Null
@@ -1029,6 +1040,7 @@
 "This field is required.": Null
 "This image file does not exist": Null
 "This is my custom interview page.": Null
+"This is the only time you will be able to see your API key, so make sure to make a note of it and keep it in a secure place.": Null
 "This package is not yet published on PyPI.": Null
 "This package is not yet published on your GitHub account.": Null
 "This package is": Null
@@ -1063,6 +1075,7 @@
 "Tuvalu": Null
 "Twice Per Month": Null
 "Two-factor authentication": Null
+"Type actual value": Null
 "Type a currency value.": Null
 "Type a currency value, or type skip.": Null
 "Type a date and time.": Null

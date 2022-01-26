@@ -1,5 +1,263 @@
 # Change Log
 
+## [1.3.20] - 2022-01-25
+### Fixed
+- Error with the `.convert_to()` method of `DAFile`.
+- Issue with display of modules in the Playground variables.
+
+## [1.3.19] - 2022-01-17
+### Fixed
+- Issue with the sizing of images inside of `terms` descriptions.
+
+## [1.3.18] - 2022-01-15
+### Added
+- Support for using `md` as one of the `valid formats` in an
+  `attachment` when using `content` or `content file`.
+- The `enable unoconv` Configuration directive (requires system
+  upgrade). This provides a faster method for converting DOCX files to
+  PDF.
+### Fixed
+- When `raw: True` was enabled for an `attachment`, the file was not
+  included in e-mails sent from the user interface of the `attachment`
+  block.
+- When `raw: True` was enabled for an `attachment`, and the
+  `DAFileCollection` was passed to `send_email()` or `send_sms()`, the
+  assembled file was not included.
+- Fixed error from 1.3.17 relating to updating references.
+
+## [1.3.17] - 2022-01-13
+### Changed
+- Environment variable for S3 region for use in shell scripts.
+
+## [1.3.16] - 2022-01-08
+### Changed
+- Security updates to dependencies.
+### Fixed
+- Better support for including a variety of image types in documents
+  by converting the image type to PNG or EPS as appropriate.
+- Problem with order of table model module loading.
+
+## [1.3.15] - 2022-01-06
+### Added
+- The `TestContext` object for testing **docassemble** code from the
+  command line.
+- The `.pngs_ready()` and `.page_path()` methods of `DAFile`, for use
+  when the `DAFile` is a PDF.
+- The `page` and `size` parameters for the `.url_for()` method of
+  `DAfile`, for use when the `DAFile` is a PDF.
+- The `authorized registration domains` Configuration directive.
+### Fixed
+- CSS error in active subsection headings.
+- Error with getting status of background tasks.
+- Error with videos included using `[FILE]`.
+- Some API keys would not authenticate.
+- Error with DAGoogleAPI.
+
+## [1.3.14] - 2021-12-28
+### Fixed
+- Error in 1.3.11 related to Upgrade button.
+
+## [1.3.13] - 2021-12-28
+### Fixed
+- Error in 1.3.11 related to oauth logins.
+
+## [1.3.12] - 2021-12-27
+### Fixed
+- Error in 1.3.11 related to ClickSend.
+
+## [1.3.11] - 2021-12-27
+### Changed
+- API keys can now only be viewed when initially obtained.
+- Code that runs when a module is loading now runs in a context where
+  the original `admin` user is logged in.
+### Fixed
+- Bootstrap typo affecting alignment of dropdown menu.
+- Issue with machine learning sometimes returning no results when results exist.
+
+## [1.3.10] - 2021-12-16
+### Changed
+- In the Playground, pressing buttons is disabled during Ajax
+  requests.
+- The Playground "Pull" process now uses SSH to clone repositories
+  when GitHub integration is enabled, unless a personal access token
+  is embedded in the URL.
+### Fixed
+- CSS error resulting in certain validation errors being invisible on
+  administrative pages.
+
+## [1.3.9] - 2021-12-11
+### Added
+- The `/api/playground_pull` endpoint for pulling a package into a
+  Playground.
+- The `/api/config` PATCH endpoint for updating specific Configuration
+  directives.
+- The `/api/restart` endpoint for triggering a server restart.
+- The `/api/restart_status` endpoint for monitoring the status of a
+  server restart.
+### Changed
+- The `/api/config` API endpoint now returns status code 200 on
+  success, not 204. The response contains a code that can be passed to
+  `/api/restart_status` to check on the status of the restart.
+- The `/api/playground` POST and DELETE endpoints will now return
+  status code 200 instead of 204 if the server needs to restart.  The
+  response contains a code that can be passed to `/api/restart_status`
+  to check on the status of the restart.
+### Fixed
+- NGINX configuration syntax.
+- Better error message if Celery is used inside of Celery.
+- Gave the single Celery process a unique name.
+- Adjust for situation where Ajax request fails without a response.
+- Fixed JavaScript errors in some Playground pages.
+- Fixed issue where GitHub SSH only worked during a Playground pull if
+  there was an active package.
+- Miscellaneous undefined variables in rarely-run code.
+
+## [1.3.8] - 2021-12-05
+### Fixed
+- Issues with `show if` and `list collect`.
+
+## [1.3.7] - 2021-12-04
+### Added
+- The `footer css class` Configuration directive.
+### Changed
+- Upgraded `pip` from 20.1.1 to 21.1. Previously, `pip` had been
+  deliberately downgraded because the new resolver caused `pip` to
+  hang. Hopefully that issue does not appear again.
+- The `docassemble-os` Docker repository, which is a dependency of
+  this Docker repository, is now based on Ubuntu 21.10 rather than
+  Debian `testing`.
+### Fixed
+- Bug related to deleting Playground "projects" when S3 or Azure blob
+  storage is enabled.
+- Improved method for detecting variable names in Jinja2 files.
+- Increased threshold for detecting whether a server has become
+  unresponsive during the restart process.
+
+## [1.3.6] - 2021-11-26
+### Fixed
+- Adjustments to behavior of `skip undefined` with DOCX files.
+- Security update of `reportlab` dependency; incorporated `marisol`
+  into `docassemble.base` because of conflicting dependency.
+
+## [1.3.5] - 2021-11-13
+### Added
+- Data parameters for `CustomDataType`.
+- The `css class` field modifier.
+### Fixed
+- Adjusted CSS to fix navigation bar and required field CSS issues on
+  small screens.
+- Prevented the enter key from submitting the form in the Playground.
+
+## [1.3.4] - 2021-11-11
+### Changed
+- Upgraded from Bootstrap 4 to Bootstrap 5. This changes the HTML and
+  CSS significantly, so you may need to adjust your customizations and
+  testing scripts.  Bootstrap 5 is not necessarily more "attractive"
+  than Bootstrap 4, but it has better accessibility.
+- The Source tab is now represented by a "code" icon.
+- The administrative UI was adjusted for consistency.
+- Changed the appearance of help on field labels.
+
+## [1.3.3] - 2021-11-07
+### Added
+- The `short logo` screen part for specifying a different `logo` for
+  small screens.
+- The `navigation bar html` screen part for adding HTML to the
+  navigation bar.
+- The `_screen_size` option for `action_menu_item()` for hiding menu
+  items depending on the screen size.
+### Fixed
+- Decreased the `max-width` of the interview title in the navigation
+  bar to avoid problems with the navigation bar wrapping onto two
+  lines.
+
+## [1.3.2] - 2021-11-06
+### Added
+- The `DABreadCrumbs` class for displaying a breadcrumbs UI to the
+  user when the current question is the result of a nested action.
+
+## [1.3.1] - 2021-11-05
+### Added
+- The `button colors` Configuration directive for customizing the
+  Bootstrap colors of buttons.
+- The `label above field` modifer that puts the label above the field
+  for a specific field, which is preferable to using `no label` in
+  combination with a `note`.
+- The `login link style` Configuration directive for enabling
+  separate "Sign up" and "Sign in" buttons in the upper right corner
+  instead of "Sign in or sign up to save answers."
+### Changed
+- Changed the default color of `review` screen edit buttons and the
+  "add another" button from Bootstrap `success` (green) to `secondary`
+  (grey).
+- Added the Font Awesome pencil icon to `review` screen edit buttons.
+- Substituted a different Font Awesome icon for the selected radio
+  button option so that it is not the same as the icon for a selected
+  checkbox option.
+- Changed the left arrow icon in the "back to question" button so that
+  it matches the left arrow icon of "Back."
+- Added a light grey background color behind `review` screen `button`
+  items to help differentiate the sections of a review screen.
+- When `question help button` is used, the question-related help now
+  appears below the buttons, and the navigation bar help only
+  displays the `interview help` (if present).
+- The `skip undefined` option now works with `docx template file`.
+### Fixed
+- Inactive sections in the `sections` sidebar are no longer `<a>`
+  elements that screen readers may describe as clickable.
+
+## [1.2.108] - 2021-10-29
+### Fixed
+- On reset, kill zombie LibreOffice processes that might prevent
+  DOCX-to-PDF conversion from succeeding on the server.
+- Changed order of backup to prioritize file storage over logs in case
+  shutdown process is terminated.
+
+## [1.2.107] - 2021-10-26
+### Fixed
+- Problem with spinner staying on the screen after certain types of URL
+  redirects.
+
+## [1.2.106] - 2021-10-22
+### Fixed
+- Fix to the filename security adjustment in 1.2.105.
+
+## [1.2.105] - 2021-10-18
+### Added
+- ClickSend fax support.
+### Changed
+- Additional bracket expressions now valid with Jinja2 `markdown`
+  filter.
+- The blockquote Markdown format now indented on right and
+  single-spaced when used the the Jinja2 `markdown` filter.
+- Filename security in the Playground now allows reading existing
+  Playground files with names that contain spaces, although the
+  filename will be changed.
+
+## [1.2.104] - 2021-10-11
+### Fixed
+- Issue with counting SQL results for non-admin developers.
+
+## [1.2.103] - 2021-10-07
+### Fixed
+- `check in` actions were not aware of the current `x`, `i`, `j`, etc.
+- Population of fields by address autocomplete did not trigger the
+  `change` event on the fields.
+
+## [1.2.102] - 2021-09-28
+### Changed
+- Added a check during startup to see if PostgreSQL primary key
+  sequences have been reset and if so set their values to the maximum
+  value id in the table.
+### Fixed
+- Error getting JSON version of question involving `list collect`.
+
+## [1.2.101] - 2021-09-21
+### Fixed
+- `[BEGIN_CAPTION]` in HTML mode now behaves like `[BEGIN_TWOCOL]` in
+  that the columns are converted from Markdown and inserted in the
+  table as paragraphs.
+
 ## [1.2.100] - 2021-09-14
 ### Changed
 - Added descriptive log messages to `initialize` service.
