@@ -28346,18 +28346,18 @@ sys_logger.setLevel(logging.DEBUG)
 LOGFORMAT = daconfig.get('log format', 'docassemble: ip=%(clientip)s i=%(yamlfile)s uid=%(session)s user=%(user)s %(message)s')
 
 def add_log_handler():
-tries = 0
-while tries < 5:
-    try:
-        docassemble_log_handler = logging.FileHandler(filename=os.path.join(LOG_DIRECTORY, 'docassemble.log'))
+    tries = 0
+    while tries < 5:
+        try:
+            docassemble_log_handler = logging.FileHandler(filename=os.path.join(LOG_DIRECTORY, 'docassemble.log'))
+            sys_logger.addHandler(docassemble_log_handler)
+            stdout_handler = logging.StreamHandler(sys.stderr)
+            sys_logger.addHandler(stdout_handler)
+        except PermissionError:
+            time.sleep(1)
+            next
         sys_logger.addHandler(docassemble_log_handler)
-        stdout_handler = logging.StreamHandler(sys.stderr)
-        sys_logger.addHandler(stdout_handler)
-    except PermissionError:
-        time.sleep(1)
-        next
-    sys_logger.addHandler(docassemble_log_handler)
-    break
+        break
 
 add_log_handler()
 
