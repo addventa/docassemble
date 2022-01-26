@@ -62,7 +62,7 @@ install_requires = [
     "beautifulsoup4==4.9.3",
     "bleach==3.3.0",
     "blinker==1.4",
-    "boto3==1.17.71",
+    "boto3==1.4.3",
     "boto==2.49.0",
     "botocore==1.4.93",
     "cairocffi==1.3.0",
