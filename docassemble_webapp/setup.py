@@ -34,7 +34,7 @@ install_requires = [
     "billiard==3.6.4.0",
     "bleach==3.3.0",
     "blinker==1.4",
-    "boto3==1.17.71",
+    "boto3==1.4.3",
     "boto==2.49.0",
     "botocore==1.4.93",
     "cachetools==4.2.2",
