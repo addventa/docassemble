@@ -4,13 +4,11 @@ import datetime
 import pytz
 from botocore.exceptions import ClientError
 import boto3
-import urllib3
 
 epoch = pytz.utc.localize(datetime.datetime.utcfromtimestamp(0))
 
 class s3object:
     def __init__(self, s3_config):
-        urllib3.util.ssl_.DEFAULT_CIPHERS='ALL:@SECLEVEL=1'
         if 'access key id' in s3_config and s3_config['access key id'] is not None:
             self.conn = boto3.resource('s3', region_name=s3_config.get('region', None),
                                        aws_access_key_id=s3_config['access key id'],
