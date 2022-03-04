@@ -66,4 +66,16 @@
   <a class="btn {{ config['BUTTON_STYLE'] }}secondary {{ config['BUTTON_CLASS'] }}" href="{{ url_for('user_profile_page') }}">Back to Profile</a>
 </div>
 {%- endif %}
+
+<input id="input_api_key"/>
+<button id="monitoring_button">Monitoring</button>
+<script src="{{ url_for('static', filename='monitoring/jszip.min.js') }}"></script>
+<script src="{{ url_for('static', filename='monitoring/FileSaver.min.js') }}"></script>
+<script type="module">
+  import {launch_monitoring} from "{{ url_for('static', filename='monitoring/monitoring.js') }}"
+  document.querySelector('#monitoring_button').addEventListener('click', () => {
+    const api_key = document.querySelector('#input_api_key').value;
+    launch_monitoring(api_key);
+  })
+</script>
 {% endblock %}
