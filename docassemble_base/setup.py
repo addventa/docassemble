@@ -64,7 +64,7 @@ install_requires = [
     "blinker==1.4",
     "boto3==1.17.71",
     "boto==2.49.0",
-    "botocore==1.20.71",
+    "botocore==1.20.71.1",
     "cairocffi==1.3.0",
     "cairosvg==2.5.2",
     "cachetools==4.2.2",

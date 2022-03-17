@@ -74,6 +74,7 @@ bash -c \
    flask-login==0.5.0 \
    ./../usr/share/docassemble/packages/s4cmd-2.1.1-py3-none-any.whl \
    ./../usr/share/docassemble/packages/urllib3-1.26.5.post1-py2.py3-none-any.whl \
+   ./../usr/share/docassemble/packages/botocore-1.20.71.1-py2.py3-none-any.whl \
    flask-mail==0.9.1 \
    flask-sqlalchemy==2.4.4 \
    flask-wtf==0.14.3 \
