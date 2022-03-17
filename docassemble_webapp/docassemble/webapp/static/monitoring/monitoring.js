@@ -83,11 +83,22 @@ export async function launch_monitoring(api_key, callback) {
 
     /* Playground calls */
     callback("Computing number of calls on playground calls...");
-    const playground_calls = logs.filter(
-      (line) =>
-        line.includes("GET /interview") &&
-        line.includes("i=docassemble.playground")
-    );
+
+    const playground_calls = logs.filter((line) => {
+      const splitted_line = line.split(" ");
+      if (splitted_line.length < 9) return false;
+
+      const method = splitted_line[5];
+      const url = splitted_line[6];
+      const status_code = splitted_line[8];
+
+      return (
+        method.includes("GET") &&
+        status_code === "200" &&
+        url.startsWith("/interview") &&
+        url.includes("i=docassemble.playground")
+      );
+    });
 
     const playgrounds_usage = {};
 
