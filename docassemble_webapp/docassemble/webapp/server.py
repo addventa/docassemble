@@ -46,59 +46,30 @@ HTTP_TO_HTTPS = daconfig.get('behind https load balancer', False)
 GITHUB_BRANCH = daconfig.get('github default branch name', 'main')
 request_active = True
 
-default_playground_yaml = """metadata:
-  title: Default playground interview
-  short title: Test
-  comment: This is a learning tool.  Feel free to write over it.
----
-objects:
-  - client: Individual
----
-question: |
-  What is your name?
-fields:
-  - First Name: client.name.first
-  - Middle Name: client.name.middle
-    required: False
-  - Last Name: client.name.last
-  - Suffix: client.name.suffix
-    required: False
-    code: name_suffix()
----
-question: |
-  What is your date of birth?
-fields:
-  - Date of Birth: client.birthdate
-    datatype: date
----
+default_playground_yaml = """
 mandatory: True
-question: |
-  Here is your document, ${ client }.
-subquestion: |
-  In order ${ quest }, you will need this.
-attachments:
-  - name: Information Sheet
-    filename: info_sheet
-    content: |
-      Your name is ${ client }.
+question: Your document is ready.
+include download tab: False
+allow emailing: False
+attachment:
+    # the title of your document on the final page
+  - name: Document
 
-      % if client.age_in_years() > 60:
-      You are a senior.
-      % endif
-      Your quest is ${ quest }.  You
-      are eligible for ${ benefits }.
+    # the name of the file you will download
+    filename: draft_from_docassemble 
+
+    # Replace "template.docx" on the next line with the name of your uploaded template
+    docx template file: template.docx
+
+    # Available downloading format for the end user
+    valid formats:
+      - docx
+      - pdf
 ---
-question: |
-  What is your quest?
+question: Fill the following fields
 fields:
-  - Your quest: quest
-    hint: to find the Loch Ness Monster
----
-code: |
-  if client.age_in_years() < 18:
-    benefits = "CHIP"
-  else:
-    benefits = "Medicaid"
+    # replace the question below with your own!
+    - My first question: my_first_keyword
 """
 
 ok_mimetypes = {
