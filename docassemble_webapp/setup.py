@@ -165,7 +165,7 @@ install_requires = [
     "pyOpenSSL==20.0.1",
     "pyotp==2.6.0",
     "pyparsing==2.4.7",
-    "PyPDF2==1.26.0",
+    "PyPDF2==1.27.5",
     "pyPdf==1.13",
     "pypdftk==0.5",
     "pypng==0.0.20",
