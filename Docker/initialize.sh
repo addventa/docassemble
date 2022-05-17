@@ -487,29 +487,29 @@ if [ "${S3ENABLE:-false}" == "true" ] && [[ ! $(s4cmd ls "s3://${S3BUCKET}/confi
     s4cmd -f put "${DA_CONFIG_FILE}" "s3://${S3BUCKET}/config.yml"
 fi
 
-echo "initialize: If S3 is in use, test if the files folder is missing" >&2
-
-if [ "${S3ENABLE:-false}" == "true" ] && [[ ! $(s4cmd ls "s3://${S3BUCKET}/files") ]]; then
-    echo "initialize: Test if a files folder is present locally" >&2
-    if [ -d "${DA_ROOT}/files" ]; then
-	echo "initialize: Copy files from local storage to S3" >&2
-        for the_file in $(ls "${DA_ROOT}/files"); do
-            if [[ $the_file =~ ^[0-9]+ ]]; then
-                for sub_file in $(find "${DA_ROOT}/files/$the_file" -type f); do
-                    file_number="${sub_file#${DA_ROOT}/files/}"
-                    file_number="${file_number:0:15}"
-                    file_directory="${DA_ROOT}/files/$file_number"
-                    target_file="${sub_file#${file_directory}}"
-                    file_number="${file_number//\//}"
-                    file_number=$((16#$file_number))
-                    s4cmd -f put "${sub_file}" "s3://${S3BUCKET}/files/${file_number}/${target_file}"
-                done
-            else
-               s4cmd dsync "${DA_ROOT}/files/${the_file}" "s3://${S3BUCKET}/${the_file}"
-            fi
-        done
-    fi
-fi
+#echo "initialize: If S3 is in use, test if the files folder is missing" >&2
+#
+#if [ "${S3ENABLE:-false}" == "true" ] && [[ ! $(s4cmd ls "s3://${S3BUCKET}/files") ]]; then
+#    echo "initialize: Test if a files folder is present locally" >&2
+#    if [ -d "${DA_ROOT}/files" ]; then
+#	echo "initialize: Copy files from local storage to S3" >&2
+#        for the_file in $(ls "${DA_ROOT}/files"); do
+#            if [[ $the_file =~ ^[0-9]+ ]]; then
+#                for sub_file in $(find "${DA_ROOT}/files/$the_file" -type f); do
+#                    file_number="${sub_file#${DA_ROOT}/files/}"
+#                    file_number="${file_number:0:15}"
+#                    file_directory="${DA_ROOT}/files/$file_number"
+#                    target_file="${sub_file#${file_directory}}"
+#                    file_number="${file_number//\//}"
+#                    file_number=$((16#$file_number))
+#                    s4cmd -f put "${sub_file}" "s3://${S3BUCKET}/files/${file_number}/${target_file}"
+#                done
+#            else
+#               s4cmd dsync "${DA_ROOT}/files/${the_file}" "s3://${S3BUCKET}/${the_file}"
+#            fi
+#        done
+#    fi
+#fi
 
 if [ "${AZUREENABLE:-false}" == "true" ]; then
     echo "initialize: Initializing Azure Blob Storage if it is not already initialized" >&2
