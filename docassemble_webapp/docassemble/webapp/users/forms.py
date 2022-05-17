@@ -35,7 +35,7 @@ def get_requester_ip(req):
     return req.remote_addr
 
 def fix_nickname(form, field):
-    field.data = form.first_name.data + ' ' + form.last_name.data
+    field.data = str(form.first_name.data) + ' ' + str(form.last_name.data)
 
 class MySignInForm(LoginForm):
     def validate(self):
@@ -143,7 +143,6 @@ def da_registration_restrict_validator(form, field):
 class MyRegisterForm(RegisterForm):
     first_name = StringField(word('First name'), [validators.Length(min=0, max=255)])
     last_name = StringField(word('Last name'), [validators.Length(min=0, max=255)])
-    social_id = StringField(word('Social ID'))
     nickname = StringField(word('Nickname'), [fix_nickname])
     email = StringField(word('Email'), validators=[
         validators.DataRequired(word('Email is required')),
@@ -190,7 +189,7 @@ class EditUserProfileForm(UserProfileForm):
         if user is not None and user.id != user_id:
             self.email.errors.append(word('That e-mail address is already taken.'))
             return False
-        if current_user.id == user_id:
+        if current_user.id == user_id and current_user.has_roles('admin'):
             if admin_id not in self.role_id.data:
                 self.role_id.errors.append(word('You cannot take away your own admin privilege.'))
                 return False
@@ -315,3 +314,10 @@ class MyResendConfirmEmailForm(FlaskForm):
 class ManageAccountForm(FlaskForm):
     confirm = StringField(word('Type \"delete my account\" here to confirm that you want to delete your account.'), [validators.AnyOf(LazyArray([word("delete my account")]), message=word('Since you did not type \"delete my account\" I did not delete your account.'))])
     delete = SubmitField(word('Delete Account'))
+
+class InterviewsListForm(FlaskForm):
+    i = StringField()
+    session = StringField()
+    tags = StringField()
+    delete = SubmitField()
+    delete_all = SubmitField()

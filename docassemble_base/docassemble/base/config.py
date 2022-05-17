@@ -29,6 +29,7 @@ loaded = False
 in_celery = False
 errors = []
 env_messages = []
+allowed = {}
 
 def env_true_false(var):
     value = str(os.getenv(var, 'false')).lower().strip()
@@ -530,6 +531,8 @@ def load(**kwargs):
             daconfig['db']['port'] = '3306'
         elif daconfig['db']['prefix'].startswith('oracle'):
             daconfig['db']['port'] = '1521'
+    if 'default admin account' in daconfig:
+        config_error('For security, delete the default admin account directive, which is no longer needed')
     if 'ocr languages' not in daconfig:
         daconfig['ocr languages'] = {}
     if not isinstance(daconfig['ocr languages'], dict):
@@ -569,6 +572,34 @@ def load(**kwargs):
     if daconfig['verification code timeout'] < 1:
         config_error('verification code timeout must be one or greater')
         daconfig['verification code timeout'] = 180
+    if 'permissions' in daconfig:
+        if not isinstance(daconfig['permissions'], dict):
+            config_error("permissions must be in the form of a dict")
+            daconfig['permissions'] = {}
+        has_error = False
+        for key, val in daconfig['permissions'].items():
+            if key in ('admin', 'developer', 'cron', 'user'):
+                config_error("permissions cannot be used to change the allowed actions of the " + key + " privilege")
+                has_error = True
+                break
+            if not (isinstance(key, str) and isinstance(val, list)):
+                config_error("permissions must be a dictionary where the keys are strings and the values are lists")
+                has_error = True
+                break
+            for item in val:
+                if not isinstance(item, str):
+                    config_error("permissions must be a dictionary where the values are lists of strings")
+                    has_error = True
+                    break
+            if has_error:
+                break
+        if has_error:
+            daconfig['permissions'] = {}
+        for key, val in daconfig['permissions'].items():
+            if key not in allowed:
+                allowed[key] = set()
+            for item in val:
+                allowed[key].add(item)
     if 'api privileges' in daconfig:
         if not isinstance(daconfig['api privileges'], list):
             config_error("api privileges must be in the form of a list")
@@ -713,7 +744,7 @@ def load(**kwargs):
         daconfig['table css class'] = 'table table-striped'
     if env_true_false('ENVIRONMENT_TAKES_PRECEDENCE'):
         messages = []
-        for env_var, key in (('DBPREFIX', 'prefix'), ('DBNAME', 'name'), ('DBUSER', 'user'), ('DBPASSWORD', 'password'), ('DBHOST', 'host'), ('DBPORT', 'port'), ('DBTABLEPREFIX', 'table prefix'), ('DBBACKUP', 'backup')):
+        for env_var, key in (('DBPREFIX', 'prefix'), ('DBNAME', 'name'), ('DBUSER', 'user'), ('DBPASSWORD', 'password'), ('DBHOST', 'host'), ('DBPORT', 'port'), ('DBTABLEPREFIX', 'table prefix'), ('DBBACKUP', 'backup'), ('DBSSLMODE', 'ssl mode'), ('DBSSLCERT', 'ssl cert'), ('DBSSLKEY', 'ssl key'), ('DBSSLROOTCERT', 'ssl root cert')):
             if env_exists(env_var):
                 override_config(daconfig, messages, key, env_var, pre_key='db')
         if env_exists('DASECRETKEY'):
@@ -800,16 +831,18 @@ def parse_redis_uri():
     if redis_url is None:
         redis_url = 'redis://localhost'
     redis_url = redis_url.strip()
-    if not redis_url.startswith('redis://'):
+    if not (redis_url.startswith('redis://') or redis_url.startswith('rediss://')):
         redis_url = 'redis://' + redis_url
-    m = re.search(r'redis://([^:@\?]*):([^:@\?]*)@(.*)', redis_url)
+    m = re.search(r'(rediss?://)([^:@\?]*):([^:@\?]*)@(.*)', redis_url)
     if m:
-        redis_username = m.group(1)
-        redis_password = m.group(2)
-        redis_url = 'redis://' + m.group(3)
+        redis_username = m.group(2)
+        if redis_username == '':
+            redis_username = None
+        redis_password = m.group(3)
+        redis_url = m.group(1) + m.group(4)
     else:
         redis_username = None
-        m = re.search(r'redis://([^:@\?]*)@(.*)', redis_url)
+        m = re.search(r'rediss?://([^:@\?]*)@(.*)', redis_url)
         if m:
             redis_password = m.group(1)
         else:
@@ -824,7 +857,7 @@ def parse_redis_uri():
         redis_db = 0
 
     redis_host = re.sub(r'\?.*', '', redis_url)
-    redis_host = re.sub(r'^redis://', r'', redis_host)
+    redis_host = re.sub(r'^rediss?://', r'', redis_host)
     m = re.search(r'/([0-9]+)', redis_host)
     if m:
         redis_db = int(m.group(1))
@@ -837,12 +870,42 @@ def parse_redis_uri():
         redis_port = '6379'
 
     redis_offset = daconfig.get('redis database offset', redis_db)
+    if redis_url.startswith('rediss://'):
+        redis_ssl = True
+        directory = daconfig.get('cert install directory', '/etc/ssl/docassemble')
+        redis_ca_cert = os.path.join(directory, 'redis_ca.crt')
+        redis_cert = os.path.join(directory, 'redis.crt')
+        redis_key = os.path.join(directory, 'redis.key')
+        if not os.path.isfile(redis_ca_cert):
+            redis_ca_cert = None
+        if not os.path.isfile(redis_cert):
+            redis_cert = None
+        if not os.path.isfile(redis_key):
+            redis_key = None
+    else:
+        redis_ssl = False
+        redis_ca_cert = None
+        redis_cert = None
+        redis_key = None
     redis_cli = 'redis-cli'
     if redis_host != 'localhost' or redis_port != '6379':
         redis_cli += ' -h ' + redis_host + ' -p ' + redis_port
     if redis_password is not None:
         redis_cli += ' -a ' + redis_password
-    return (redis_host, redis_port, redis_username, redis_password, redis_offset, redis_cli)
+    ssl_opts = {}
+    if redis_ssl:
+        redis_cli += ' --tls'
+        ssl_opts['ssl'] = True
+        if redis_ca_cert is not None:
+            redis_cli += '--cacert ' + json.dumps(redis_ca_cert)
+            ssl_opts['ssl_ca_certs'] = redis_ca_cert
+        if redis_cert is not None:
+            redis_cli += '--cert ' + json.dumps(redis_cert)
+            ssl_opts['ssl_certfile'] = redis_cert
+        if redis_key is not None:
+            redis_cli += ' --key ' + json.dumps(redis_key)
+            ssl_opts['ssl_keyfile'] = redis_key
+    return (redis_host, redis_port, redis_username, redis_password, redis_offset, redis_cli, ssl_opts)
 
 def noquote(string):
     if isinstance(string, str):

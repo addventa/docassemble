@@ -18,6 +18,7 @@ from docassemble.webapp.users.models import UserModel, UserAuthModel, Role, User
 from docassemble.webapp.database import dbprefix
 import docassemble.webapp.core.models
 import docassemble.webapp.packages.models
+from docassemble.webapp.api_key import add_specific_api_key
 from sqlalchemy import select, delete, inspect
 from sqlalchemy.sql import text
 #import random
@@ -106,7 +107,7 @@ def test_for_errors(start_time=None):
         max_value = db.session.execute(select(db.func.max(getattr(tableclass, column)))).scalar()
         if max_value is not None and max_value > last_value:
             sys.stderr.write('create_tables.test_for_errors: ' + table + " has an error: " + str(last_value) + " " + str(max_value) + " after " + str(time.time() - start_time) + "\n")
-            db.session.execute(text("alter sequence " + table + "_" + column + "_seq restart with :newval"), {'newval': last_value})
+            db.session.execute(text("alter sequence " + table + "_" + column + "_seq restart with :newval"), {'newval': max_value + 1})
             db.session.commit()
 
 def populate_tables(start_time=None):
@@ -127,6 +128,10 @@ def populate_tables(start_time=None):
         admin_defaults['last_name'] = word('Administrator')
     if 'password' not in admin_defaults:
         admin_defaults['password'] = os.getenv('DA_ADMIN_PASSWORD', 'password')
+    if 'api key' not in admin_defaults:
+        api_key = os.getenv('DA_ADMIN_API_KEY', '')
+        if api_key:
+            admin_defaults['api key'] = api_key
     cron_defaults = daconfig.get('default cron account', {'nickname': 'cron', 'email': 'cron@admin.com', 'first_name': 'Cron', 'last_name': 'User'})
     cron_defaults['active'] = False
     user_role = get_role(db, 'user', result=result)
@@ -156,6 +161,10 @@ def populate_tables(start_time=None):
         cron.confirmed_at = datetime.datetime.now()
     if result.get('changed', False):
         db.session.commit()
+    if 'api key' in admin_defaults:
+        api_result = add_specific_api_key('default', admin_defaults['api key'], admin.id, daconfig.get('secretkey', '38ihfiFehfoU34mcq_4clirglw3g4o87'))
+        if api_result:
+            sys.stderr.write("create_tables.populate_tables: added API key")
     sys.stderr.write("create_tables.populate_tables: calling add_dependencies after " + str(time.time() - start_time) + "\n")
     add_dependencies(admin.id, start_time=start_time)
     sys.stderr.write("create_tables.populate_tables: add_dependencies finished after " + str(time.time() - start_time) + "\n")
@@ -258,8 +267,11 @@ def main():
                 test_for_errors(start_time=start_time)
             except:
                 sys.stderr.write("create_tables.main: unable to test for errors after " + str(time.time() - start_time) + " seconds.\n")
+        sys.stderr.write("create_tables.main: populating tables after " + str(time.time() - start_time) + " seconds.\n")
         populate_tables(start_time=start_time)
+        sys.stderr.write("create_tables.main: disposing engine after " + str(time.time() - start_time) + " seconds.\n")
         db.engine.dispose()
+    sys.stderr.write("create_tables.main: finishing after " + str(time.time() - start_time) + " seconds.\n")
 
 if __name__ == "__main__":
     main()

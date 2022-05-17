@@ -1,5 +1,237 @@
 # Change Log
 
+## [1.3.44] - 2022-05-16
+### Added
+- The `temp_url` variant of `url_of()`, which functions like the
+  `/api/temp_url` API endpoint.
+- The `login_url` variant of `url_of()`, which functions like the
+  `/api/login_url` API endpoint.
+- The `overwrite` parameter for `/api/session/action`.
+- The `run_action_in_session()` function.
+- A Jinja2 filter called `chain` that concatenates lists or other
+  iterables (`itertools.chain`).
+### Changed
+- The `/goto` and `/auto_login` endpoints return a blank page if the
+  `User-Agent` header indicates that the HTTP client is a bot.
+### Fixed
+- Added a color conversion strategy to Ghostscript for PDF/A
+  compliance.
+
+## [1.3.43] - 2022-05-11
+### Changed
+- Accessibility improvements.
+
+## [1.3.42] - 2022-05-10
+### Fixed
+- Error in `set_session_variables()`.
+
+## [1.3.41] - 2022-05-09
+### Fixed
+- `action buttons` were not called using Ajax.
+- `response()` was not functional when called from an action via Ajax.
+
+## [1.3.40] - 2022-05-05
+### Fixed
+- Logged-in user could not delete own interview session using
+  `interview_list()` without special permissions.
+
+## [1.3.39] - 2022-04-30
+### Changed
+- Calling `all_variables(simplify=False, include_internal=False)` now
+  omits `_internal`.
+- The HTML now uses `required` and `aria-required="true"` to indicate
+  required fields.
+### Fixed
+- `interview_url()` can now receive `session` without also receiving
+  `i` and `i` will be set to the current filename without overwriting
+  `session`.
+- Calling `create_session()` and other functions for manipulating
+  other sessions could disrupt `_internal` variables in some
+  circumstances.
+- `url_ask()` can now begin with an action.
+- Error in session deletion that caused sessions not to be deleted in
+  some circumstances.
+
+## [1.3.38] - 2022-04-28
+### Changed
+- The `permissions` system can now give privileges to `anonymous`
+  (non-logged in) users.
+### Fixed
+- Error with new Playground initialization.
+
+## [1.3.37] - 2022-04-25
+### Fixed
+- Error with user registration.
+
+## [1.3.36] - 2022-04-23
+### Fixed
+- Error with background tasks.
+- Minor user experience issues in Playground.
+
+## [1.3.35] - 2022-04-20
+### Added
+- Recipe for creating appointment invitations.
+### Fixed
+- Error with implicit instantiation of dictionary keys after certain
+  uses of `defined()` or `showifdef()`.
+- Issue with populating default values in `time` fields.
+- Error with obtaining API keys for non-`admin` users.
+
+## [1.3.34] - 2022-04-19
+### Fixed
+- Error that interferes with package updates.
+
+## [1.3.33] - 2022-04-19
+### Fixed
+- Error introduced in 1.3.32 with filenames on download.
+
+## [1.3.32] - 2022-04-19
+
+### Added
+- The `DAGlobal` class.
+### Changed
+- Upgraded dependencies.
+### Fixed
+- Issue with CSS classes and `disable others`.
+
+## [1.3.31] - 2022-04-13
+
+### Fixed
+- Bug in `delete_all` feature of `interview_list()`.
+
+## [1.3.30] - 2022-04-10
+
+### Added
+- The `query` option for `interview_list()` and API endpoints like
+  `/api/interviews`.
+- Recipes for setting screen parts and watermarking Markdown-to-PDF
+  files.
+- The `raw_result` keyword parameter for `ocr_file()` and
+  `ocr_file_in_background()` when used with Google Cloud Vision.
+### Changed
+- SQL tables now use a uniqueness constraint on primary key columns.
+- Errors with bookmarks in PDF templates will be ignored instead of
+  raising exceptions.
+### Fixed
+- Problem with the processing of `metadata` in the Markdown-to-PDF
+  feature.
+- Issue with `__getattr__()` causing objects to be created as a result
+  of testing for their existence.
+
+## [1.3.29] - 2022-04-07
+### Added
+- The option for using Google Cloud Vision when using `ocr_file()` and
+  `ocr_file_in_background()`.
+### Changed
+- When `new template markdown behavior: True` is set in the
+  Configuration (which is now part of the default initial
+  configuration), `template` variables do not have the `markdown`
+  filter automatically applied when they are used in a DOCX template
+  file. It is recommended that you add this to your Configuration,
+  and then modify your `docx template file` templates that use
+  `template` variables, adding ` | markdown` if necessary.
+### Fixed
+- Improved efficiency of system shutdown. (Requires a system upgrade.)
+- Problem with Let's Encrypt certificates not renewing. (Requires a
+  system upgrade.)
+- The `single_worker.log` file was missing from log rotation.
+- Erroneous exceptions could be raised if a `DAObject` attribute name
+  began with `_`. Attributes can begin with `_` but they cannot begin
+  with `__`.
+- The `DBSSLMODE`, `DBSSLCERT`, `DBSSLKEY`, and `DBSSLROOTCERT`
+  variables were not affected by `ENVIRONMENT_TAKES_PRECEDENCE`.
+
+## [1.3.28] - 2022-03-26
+### Added
+- The `default language` specifier in `metadata`.
+- Recipe for running reports.
+### Fixed
+- Some functions did not work in `on change` code.
+- UI issue with comboboxes.
+
+## [1.3.27] - 2022-03-20
+### Changed
+- Favicons not present will not be referenced in HTML.
+
+## [1.3.26] - 2022-03-19
+### Added
+- The `favicon tile color` Configuration directive.
+- The `favicon version` Configuration directive.
+### Changed
+- Favicon feature now uses the package version number when available.
+- Favicon feature now supports `site.webmanifest`.
+- Additional logging during server restart.
+- UI accessibility improvements.
+### Fixed
+- Problem importing unclassified machine learning entries from JSON.
+
+## [1.3.25] - 2022-03-16
+### Changed
+- `complete_attribute` can refer to a list of attributes.
+### Fixed
+- Markdown-to-HTML conversion was not being applied to the `pre` or
+  `submit` screen parts.
+- `[TARGET ...]` was not working in `html`.
+- Issues with the Training page.
+
+## [1.3.24] - 2022-03-14
+### Added
+- The `custom datatypes to load` directive under `features`.
+- The `set_variables()` function.
+- The `process_objects` parameter for `set_session_variables`.
+### Changed
+- Support for importing and exporting `datetime.date` and
+  `datetime.time` objects in the JSON representation of objects.
+- `input type: area` text boxes are resizable in both dimensions.
+### Fixed
+- Issue with `show if` and `labels above fields`.
+- Issues with using SSL for external PostgreSQL and Redis connections.
+
+## [1.3.23] - 2022-03-07
+### Changed
+- Upgraded CodeMirror.
+### Fixed
+- Error with `overlay_pdf()` introduced in the last version.
+
+## [1.3.22] - 2022-03-05
+### Added
+- The `permissions` Configuration directive.
+- Ability of `admin` users to create API keys with limited permissions.
+- The `multi` option of `overlay_pdf()`.
+- The `/api/user_invite` API endpoint.
+- The `api key` option of `default admin account`.
+- The `allow forgot password` Configuration directive.
+### Changed
+- Upgraded the `boto3` and `docxtpl` libraries.
+- The Logs are now shown in a resizable `<textarea>`.
+- Safer implementation of `exit link` and `exit url`.
+- For safety reasons, `url_of('exit')` and similar URLs no longer
+  accept `next` parameters.
+- The JavaScript for `CustomDataType` objects will only be inserted if
+  the interview uses the custom datatype.
+### Fixed
+- URL of exit link was being set to `/interview` in some
+  circumstances.
+- When server-side validation failed, the fields the user saw on the
+  next screen were not always populated with the user's answers.
+- HTML typos in `<form>` elements.
+- Problem converting DOCX to PDF when `attachment` filename contained
+  a space.
+- Inaccurate exceptions were sometimes raised when `AttributeError` or
+  `IndexError` exceptions arise during assembly of a DOCX file.
+- Fixes to Google geocoding for situations where the latitude and
+  longitude are undefined.
+
+## [1.3.21] - 2022-02-05
+### Added
+- The `fax provider` Configuration directive.
+- Option for faxing with Telnyx instead of ClickSend.
+### Changed
+- The server name of a `DAFile` can be changed using `.set_attributes()`.
+- NLTK data files are downloaded during the building of the Docker
+  image, so that the initial boot process does not require an internet
+  connection.
+
 ## [1.3.20] - 2022-01-25
 ### Fixed
 - Error with the `.convert_to()` method of `DAFile`.

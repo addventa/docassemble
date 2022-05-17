@@ -21,6 +21,8 @@ import tzlocal
 import us
 import pycountry
 import markdown
+from enum import Enum
+from typing import List
 from mdx_smartypants import SmartypantsExt
 import nltk
 try:
@@ -68,7 +70,7 @@ TypeType = type(type(None))
 locale.setlocale(locale.LC_ALL, '')
 contains_volatile = re.compile('^(x\.|x\[|.*\[[ijklmn]\])')
 
-__all__ = ['alpha', 'roman', 'item_label', 'ordinal', 'ordinal_number', 'comma_list', 'word', 'get_language', 'set_language', 'get_dialect', 'set_country', 'get_country', 'get_locale', 'set_locale', 'comma_and_list', 'need', 'nice_number', 'quantity_noun', 'currency_symbol', 'verb_past', 'verb_present', 'noun_plural', 'noun_singular', 'indefinite_article', 'capitalize', 'space_to_underscore', 'force_ask', 'period_list', 'name_suffix', 'currency', 'static_image', 'title_case', 'url_of', 'process_action', 'url_action', 'get_info', 'set_info', 'get_config', 'prevent_going_back', 'qr_code', 'action_menu_item', 'from_b64_json', 'defined', 'value', 'message', 'response', 'json_response', 'command', 'background_response', 'background_response_action', 'single_paragraph', 'quote_paragraphs', 'location_returned', 'location_known', 'user_lat_lon', 'interview_url', 'interview_url_action', 'interview_url_as_qr', 'interview_url_action_as_qr', 'interview_email', 'get_emails', 'action_arguments', 'action_argument', 'get_default_timezone', 'user_logged_in', 'user_privileges', 'user_has_privilege', 'user_info', 'background_action', 'background_response', 'background_response_action', 'us', 'set_live_help_status', 'chat_partners_available', 'phone_number_in_e164', 'phone_number_formatted', 'phone_number_is_valid', 'countries_list', 'country_name', 'write_record', 'read_records', 'delete_record', 'variables_as_json', 'all_variables', 'language_from_browser', 'device', 'plain', 'bold', 'italic', 'subdivision_type', 'indent', 'raw', 'fix_punctuation', 'set_progress', 'get_progress', 'referring_url', 'undefine', 'invalidate', 'dispatch', 'yesno', 'noyes', 'phone_number_part', 'log', 'encode_name', 'decode_name', 'interview_list', 'interview_menu', 'server_capabilities', 'session_tags', 'get_chat_log', 'get_user_list', 'get_user_info', 'set_user_info', 'get_user_secret', 'create_user', 'create_session', 'get_session_variables', 'set_session_variables', 'go_back_in_session', 'manage_privileges', 'redact', 'forget_result_of', 're_run_logic', 'reconsider', 'get_question_data', 'set_save_status', 'single_to_double_newlines', 'verbatim', 'add_separators', 'store_variables_snapshot', 'update_terms']
+__all__ = ['alpha', 'roman', 'item_label', 'ordinal', 'ordinal_number', 'comma_list', 'word', 'get_language', 'set_language', 'get_dialect', 'set_country', 'get_country', 'get_locale', 'set_locale', 'comma_and_list', 'need', 'nice_number', 'quantity_noun', 'currency_symbol', 'verb_past', 'verb_present', 'noun_plural', 'noun_singular', 'indefinite_article', 'capitalize', 'space_to_underscore', 'force_ask', 'period_list', 'name_suffix', 'currency', 'static_image', 'title_case', 'url_of', 'process_action', 'url_action', 'get_info', 'set_info', 'get_config', 'prevent_going_back', 'qr_code', 'action_menu_item', 'from_b64_json', 'defined', 'value', 'message', 'response', 'json_response', 'command', 'background_response', 'background_response_action', 'single_paragraph', 'quote_paragraphs', 'location_returned', 'location_known', 'user_lat_lon', 'interview_url', 'interview_url_action', 'interview_url_as_qr', 'interview_url_action_as_qr', 'interview_email', 'get_emails', 'action_arguments', 'action_argument', 'get_default_timezone', 'user_logged_in', 'user_privileges', 'user_has_privilege', 'user_info', 'background_action', 'background_response', 'background_response_action', 'us', 'set_live_help_status', 'chat_partners_available', 'phone_number_in_e164', 'phone_number_formatted', 'phone_number_is_valid', 'countries_list', 'country_name', 'write_record', 'read_records', 'delete_record', 'variables_as_json', 'all_variables', 'language_from_browser', 'device', 'plain', 'bold', 'italic', 'subdivision_type', 'indent', 'raw', 'fix_punctuation', 'set_progress', 'get_progress', 'referring_url', 'undefine', 'invalidate', 'dispatch', 'yesno', 'noyes', 'phone_number_part', 'log', 'encode_name', 'decode_name', 'interview_list', 'interview_menu', 'server_capabilities', 'session_tags', 'get_chat_log', 'get_user_list', 'get_user_info', 'set_user_info', 'get_user_secret', 'create_user', 'create_session', 'get_session_variables', 'set_session_variables', 'go_back_in_session', 'manage_privileges', 'redact', 'forget_result_of', 're_run_logic', 'reconsider', 'get_question_data', 'set_save_status', 'single_to_double_newlines', 'verbatim', 'add_separators', 'store_variables_snapshot', 'update_terms', 'set_variables', 'language_name', 'run_action_in_session']
 
 # debug = False
 # default_dialect = 'us'
@@ -144,6 +146,8 @@ def pop_event_stack(var):
         if len(this_thread.internal['event_stack'][unique_id]) > 0 and this_thread.internal['event_stack'][unique_id][0]['action'] == var:
             this_thread.internal['event_stack'][unique_id].pop(0)
             #logmessage("popped the event stack")
+    if 'action' in this_thread.current_info and this_thread.current_info['action'] == var:
+        del docassemble.base.functions.this_thread.current_info['action']
 
 def pop_current_variable():
     #logmessage("pop_current_variable: " + str(this_thread.current_variable))
@@ -342,6 +346,21 @@ def state_name(state_code, country_code=None):
             return word(subdivision.name)
     return state_code
     #return us.states.lookup(state_code).name
+
+def language_name(language_code):
+    """Given a 2 digit language code abbreviation, returns the full name
+    of the language. The language name will be passed through the
+    `word()` function.
+
+    """
+    ensure_definition(language_code)
+    try:
+        if len(language_code) == 2:
+            return word(pycountry.languages.get(alpha_2=language_code).name)
+        else:
+            return word(pycountry.languages.get(alpha_3=language_code).name)
+    except:
+        return word(language_code)
 
 def subdivision_type(country_code):
     """Returns the name of the most common country subdivision type for
@@ -832,7 +851,8 @@ def interview_url(**kwargs):
             args['from_list'] = 1
     else:
         args['i'] = this_thread.current_info['yaml_filename']
-        args['session'] = this_thread.current_info['session']
+        if not args.get('session', None):
+            args['session'] = this_thread.current_info['session']
     if not do_local:
         args['_external'] = True
     try:
@@ -1445,6 +1465,7 @@ server.alchemy_url = null_func_str
 server.connect_args = null_func_str
 server.applock = null_func
 server.bg_action = null_func
+server.ocr_google_in_background = null_func
 server.button_class_prefix = 'btn-'
 server.chat_partners_available = null_func
 server.chord = null_func_func
@@ -1457,7 +1478,7 @@ server.default_dialect = 'us'
 server.default_language = 'en'
 server.default_locale = 'US.utf8'
 try:
-    server.default_timezone = tzlocal.get_localzone().zone
+    server.default_timezone = tzlocal.get_localzone_name()
 except:
     server.default_timezone = 'America/New_York'
 server.delete_answer_json = null_func
@@ -1527,6 +1548,7 @@ server.worker_convert = null_func
 server.write_answer_json = null_func
 server.write_record = null_func
 server.to_text = null_func
+server.transform_json_variables = null_func
 
 def write_record(key, data):
     """Stores the data in a SQL database for later retrieval with the
@@ -1545,6 +1567,34 @@ def delete_record(key, the_id):
     return server.delete_record(key, the_id)
 def url_of(file_reference, **kwargs):
     """Returns a URL to a file within a docassemble package, or another page in the application."""
+    if file_reference == 'temp_url':
+        url = kwargs.get('url', None)
+        if url is None:
+            raise Exception("url_of: a url keyword parameter must accompany temp_url")
+        expire = kwargs.get('expire', None)
+        local = kwargs.get('local', False)
+        one_time = kwargs.get('one_time', False)
+        if expire is None:
+            expire = 60*60*24*90
+        try:
+            expire = int(expire)
+            assert expire > 0
+        except:
+            raise Exception("url_of: invalid expire value")
+        return temp_redirect(url, expire_seconds, bool(local), bool(one_time))
+    if file_reference == 'login_url':
+        username = kwargs.get('username', None)
+        password = kwargs.get('password', None)
+        if username is None or password is None:
+            raise Exception("url_of: username and password must accompany login_url")
+        info = {'username': username, 'password': password}
+        for param in ('expire', 'url_args', 'next', 'i', 'session', 'resume_existing'):
+            if param in kwargs and kwargs[param] is not None:
+                info[param] = kwargs[param]
+        result = server.get_login_url(**info)
+        if result['status'] == 'success':
+            return result['url']
+        raise Exception("url_of: " + result['message'])
     if 'package' not in kwargs:
         kwargs['_package'] = get_current_package()
     if 'question' not in kwargs:
@@ -1751,6 +1801,7 @@ this_thread.markdown = markdown.Markdown(extensions=[smartyext, 'markdown.extens
 this_thread.saved_files = {}
 this_thread.message_log = []
 this_thread.misc = {}
+this_thread.probing = False
 this_thread.prevent_going_back = False
 this_thread.current_question = None
 
@@ -1759,9 +1810,17 @@ def backup_thread_variables():
     for key in ('interview', 'interview_status', 'open_files', 'current_question'):
         if hasattr(this_thread, key):
             backup[key] = getattr(this_thread, key)
-    for key in ['language', 'dialect', 'country', 'locale', 'current_info', 'internal', 'initialized', 'session_id', 'gathering_mode', 'current_variable', 'global_vars', 'current_package', 'initialized', 'session_id', 'evaluation_context', 'misc', 'prevent_going_back']:
+    for key in ['language', 'dialect', 'country', 'locale', 'current_info', 'internal', 'initialized', 'session_id', 'current_package', 'interview', 'interview_status', 'evaluation_context', 'gathering_mode', 'global_vars', 'current_variable', 'saved_files', 'message_log', 'misc', 'probing', 'prevent_going_back', 'current_question']:
         if hasattr(this_thread, key):
-            backup[key] = copy.deepcopy(getattr(this_thread, key))
+            backup[key] = getattr(this_thread, key)
+            if key == 'global_vars':
+                this_thread.global_vars = GenericObject()
+            elif key in ('current_info', 'misc'):
+                setattr(this_thread, key, copy.deepcopy(getattr(this_thread, key)))
+            elif key in ('internal', 'gathering_mode', 'saved_files'):
+                setattr(this_thread, key, {})
+            elif key in ('current_variable', 'message_log'):
+                setattr(this_thread, key, [])
     return backup
 
 def restore_thread_variables(backup):
@@ -2124,6 +2183,7 @@ def reset_local_variables():
     this_thread.saved_files = {}
     this_thread.message_log = []
     this_thread.misc = {}
+    this_thread.probing = False
     this_thread.current_info = {}
     this_thread.current_package = None
     this_thread.current_question = None
@@ -3228,8 +3288,13 @@ def all_variables(simplify=True, include_internal=False, special=False, make_cop
     if simplify:
         return serializable_dict(get_user_dict(), include_internal=include_internal)
     if make_copy:
-        return copy.deepcopy(pickleable_objects(get_user_dict()))
-    return pickleable_objects(get_user_dict())
+        new_dict = copy.deepcopy(pickleable_objects(get_user_dict()))
+    else:
+        new_dict = pickleable_objects(get_user_dict())
+    if not include_internal and '_internal' in new_dict:
+        new_dict = copy.copy(new_dict)
+        del new_dict['_internal']
+    return new_dict
 
 def command(*pargs, **kwargs):
     """Executes a command, such as exit, logout, restart, or leave."""
@@ -3505,7 +3570,7 @@ def process_action():
         if 'forgive_missing_question' in this_thread.misc:
             del this_thread.misc['forgive_missing_question']
         return
-    #sys.stderr.write("process_action() continuing")
+    #logmessage("process_action() continuing")
     the_action = this_thread.current_info['action']
     #logmessage("process_action: action is " + repr(the_action))
     del this_thread.current_info['action']
@@ -3732,6 +3797,8 @@ def process_action():
         this_thread.internal['event_stack'][unique_id].insert(0, the_action)
         this_thread.current_info.update(the_action)
         raise ForcedReRun()
+    if the_action == '_da_exit':
+        command('interview_exit')
     if the_action == 'need':
         for key in ['variable', 'variables']:
             if key in this_thread.current_info['arguments']:
@@ -3835,12 +3902,22 @@ class lister(ast.NodeVisitor):
     def visit_Subscript(self, node):
         self.stack.append(['index', re.sub(r'\n', '', astunparse.unparse(node.slice))])
         ast.NodeVisitor.generic_visit(self, node)
+    # def visit_BinOp(self, node):
+    #     self.stack.append(['binop', re.sub(r'\n', '', astunparse.unparse(node))])
+    #     ast.NodeVisitor.generic_visit(self, node)
+    # def visit_Constant(self, node):
+    #     return
 
 def components_of(full_variable):
     node = ast.parse(full_variable, mode='eval')
     crawler = lister()
     crawler.visit(node)
-    return list(reversed(crawler.stack))
+    components = list(reversed(crawler.stack))
+    start_index = 0
+    for the_index, elem in enumerate(components):
+        if elem[0] == 'name':
+            start_index = the_index
+    return components[start_index:]
 
 def get_user_dict():
     frame = inspect.stack()[1][0]
@@ -3895,6 +3972,7 @@ def undefine(*pargs, invalidate=False):
                 return False
         else:
             the_user_dict = frame.f_locals
+    this_thread.probing = True
     if invalidate:
         for var in vars_to_delete:
             try:
@@ -3906,6 +3984,7 @@ def undefine(*pargs, invalidate=False):
             exec('del ' + var, the_user_dict)
         except:
             pass
+    this_thread.probing = False
 
 def dispatch(var):
     """Shows a menu screen."""
@@ -3917,6 +3996,24 @@ def dispatch(var):
         undefine(var)
     undefine(var)
     return True
+
+def set_variables(variables, process_objects=False):
+    """Updates the interview answers using variable names and values specified in a dictionary"""
+    if hasattr(variables, 'instanceName') and hasattr(variables, 'elements'):
+        variables = variables.elements
+    if not isinstance(variables, dict):
+        raise Exception("set_variables: argument must be a dictionary")
+    user_dict = get_user_dict()
+    if user_dict is None:
+        raise Exception("set_variables: could not find interview answers")
+    if process_objects:
+        variables = server.transform_json_variables(variables)
+    for var, val in variables.items():
+        exec(var + " = None", user_dict)
+        user_dict['__define_val'] = val
+        exec(var + " = __define_val", user_dict)
+        if '__define_val' in user_dict:
+            del user_dict['__define_val']
 
 def define(var, val):
     """Sets the given variable, expressed as a string, to the given value."""
@@ -3934,7 +4031,134 @@ def define(var, val):
     if '__define_val' in user_dict:
         del user_dict['__define_val']
 
-def defined(var):
+class DefCaller(Enum):
+    DEFINED = 1
+    VALUE = 2
+    SHOWIFDEF = 3
+    def is_pure(self) -> bool:
+        """The functions defined() and showifdef() don't affect the external state of the
+            interview, and are idempotent, so they are pure functions"""
+        return self == self.DEFINED or self == self.SHOWIFDEF
+    def is_predicate(self) -> bool:
+        """True if the function itself is a predicate (returns True/False)"""
+        return self == self.DEFINED
+
+def _defined_internal(var, caller:DefCaller, alt=None):
+    """Checks if a variable is defined at all in the stack. Used by defined(),
+    value(), and showifdef(). `var` is the name of the variable to check,
+    `caller` is the name of the function calling (which determines what to do
+    if the variable is found to be defined or not).
+
+    if caller is:
+    * DEFINED, then True/False is returned depending on if the variable is defined
+    * VALUE, then the actual value of the variable is returned, after asking the
+      user all of the questions necessary to answer it
+    * SHOWIFDEF, then the value if returned, but only if no questions have to be asked
+    """
+    frame = inspect.stack()[1][0]
+    components = components_of(var)
+    if len(components) == 0 or len(components[0]) < 2:
+        raise Exception("defined: variable " + repr(var) + " is not a valid variable name")
+    variable = components[0][1]
+    the_user_dict = frame.f_locals
+    failure_val = False if caller.is_predicate() else alt
+    while variable not in the_user_dict:
+        frame = frame.f_back
+        if frame is None:
+            if caller.is_pure():
+                return failure_val
+            force_ask(variable, persistent=False)
+        if 'user_dict' in frame.f_locals:
+            the_user_dict = eval('user_dict', frame.f_locals)
+            if variable in the_user_dict:
+                break
+            else:
+                if caller.is_pure():
+                    return failure_val
+                force_ask(variable, persistent=False)
+        else:
+            the_user_dict = frame.f_locals
+    if variable not in the_user_dict:
+        if caller.is_pure():
+            return failure_val
+        force_ask(variable, persistent=False)
+    if len(components) == 1:
+        if caller.is_predicate():
+            return True
+        return eval(variable, the_user_dict)
+    cum_variable = ''
+    if caller.is_pure():
+        this_thread.probing = True
+    for elem in components:
+        if elem[0] == 'name':
+            # on a new name, we re-accumulate the prev checked code from scratch
+            cum_variable = elem[1]
+            continue
+        if elem[0] == 'attr':
+            to_eval = "hasattr(" + cum_variable + ", " + repr(elem[1]) + ")"
+            cum_variable += '.' + elem[1]
+        elif elem[0] == 'index':
+            try:
+                the_index = eval(elem[1], the_user_dict)
+            except:
+                if caller.is_pure():
+                    this_thread.probing = False
+                    return failure_val
+                force_ask(elem[1], persistent=False)
+            try:
+                the_cum = eval(cum_variable, the_user_dict)
+            except:
+                if caller.is_pure():
+                    this_thread.probing = False
+                    return failure_val
+                force_ask(cum_variable, persistent=False)
+            if hasattr(the_cum, 'instanceName') and hasattr(the_cum, 'elements'):
+                var_elements = cum_variable + '.elements'
+            else:
+                var_elements = cum_variable
+
+            if isinstance(the_index, int):
+                to_eval = 'len(' + var_elements + ') > ' + str(the_index)
+            else:
+                to_eval = elem[1] + " in " + var_elements
+            cum_variable += '[' + elem[1] + ']'
+        # elif elem[0] == 'binop':
+        #     # no easy way to check if 2 objs can be compared w/o just comparing
+        #     to_eval = elem[1]
+        #     cum_variable += elem[1]
+        try:
+            result = eval(to_eval, the_user_dict)
+        except Exception as err:
+            if caller.is_pure():
+                this_thread.probing = False
+                return failure_val
+            force_ask(to_eval, persistent=False)
+        if result:
+            continue
+        if caller.is_pure():
+            this_thread.probing = False
+            return failure_val
+        force_ask(var, persistent=False)
+    if caller.is_pure():
+        this_thread.probing = False
+    if caller.is_predicate():
+        return True
+    return eval(cum_variable, the_user_dict)
+
+def value(var:str):
+    """Returns the value of the variable given by the string 'var'."""
+    str(var)
+    if not isinstance(var, str):
+        raise Exception("value() must be given a string")
+    try:
+        return eval(var, {})
+    except:
+        pass
+    if re.search(r'[\(\)\n\r]|lambda:|lambda ', var):
+        raise Exception("value() is invalid: " + repr(var))
+    return _defined_internal(var, DefCaller.VALUE)
+
+def defined(var:str) -> bool:
     """Returns true if the variable has already been defined.  Otherwise, returns false."""
     str(var)
     if not isinstance(var, str):
@@ -3946,69 +4170,25 @@ def defined(var):
         return True
     except:
         pass
-    frame = inspect.stack()[1][0]
-    components = components_of(var)
-    if len(components) == 0 or len(components[0]) < 2:
-        raise Exception("defined: variable " + repr(var) + " is not a valid variable name")
-    variable = components[0][1]
-    the_user_dict = frame.f_locals
-    while variable not in the_user_dict:
-        frame = frame.f_back
-        if frame is None:
-            return False
-        if 'user_dict' in frame.f_locals:
-            the_user_dict = eval('user_dict', frame.f_locals)
-            if variable in the_user_dict:
-                break
-            else:
-                return False
-        else:
-            the_user_dict = frame.f_locals
-    if variable not in the_user_dict:
-        #logmessage("Returning False1")
-        return False
-    if len(components) == 1:
-        return True
-    cum_variable = ''
-    for elem in components:
-        if elem[0] == 'name':
-            cum_variable += elem[1]
-            continue
-        if elem[0] == 'attr':
-            to_eval = "hasattr(" + cum_variable + ", " + repr(elem[1]) + ")"
-            cum_variable += '.' + elem[1]
-        elif elem[0] == 'index':
-            try:
-                the_index = eval(elem[1], the_user_dict)
-            except:
-                #logmessage("Returning False2")
-                return False
-            try:
-                the_cum = eval(cum_variable, the_user_dict)
-            except:
-                #logmessage("Returning False2.5")
-                return False
-            if hasattr(the_cum, 'instanceName') and hasattr(the_cum, 'elements'):
-                if isinstance(the_index, int):
-                    to_eval = 'len(' + cum_variable + '.elements) > ' + str(the_index)
-                else:
-                    to_eval = elem[1] + " in " + cum_variable + ".elements"
-            else:
-                if isinstance(the_index, int):
-                    to_eval = 'len(' + cum_variable + ') > ' + str(the_index)
-                else:
-                    to_eval = elem[1] + " in " + cum_variable
-            cum_variable += '[' + elem[1] + ']'
-        try:
-            result = eval(to_eval, the_user_dict)
-        except Exception as err:
-            #logmessage("Returning False3 after " + to_eval + ": " + str(err))
-            return False
-        if result:
-            continue
-        #logmessage("Returning False4")
-        return False
-    return True
+    return _defined_internal(var, DefCaller.DEFINED)
+
+def showifdef(var:str, alternative=''):
+    """Returns the variable indicated by the variable name if it is
+     defined, but otherwise returns empty text, or other alternative text.
+     """
+    # A combination of the preambles of defined and value
+    str(var)
+    if not isinstance(var, str):
+        raise Exception("showifdef() must be given a string")
+    if not re.search(r'[A-Za-z][A-Za-z0-9\_]*', var):
+        raise Exception("showifdef() must be given a valid Python variable name")
+    try:
+        return eval(var, {})
+    except:
+       pass
+    if re.search(r'[\(\)\n\r]|lambda:|lambda ', var):
+        raise Exception("showifdef() is invalid: " + repr(var))
+    return _defined_internal(var, DefCaller.SHOWIFDEF, alt=alternative)
 
 def illegal_variable_name(var):
     if re.search(r'[\n\r]', var):
@@ -4020,107 +4200,6 @@ def illegal_variable_name(var):
     detector = docassemble.base.astparser.detectIllegal()
     detector.visit(t)
     return detector.illegal
-
-def value(var):
-    """Returns the value of the variable given by the string 'var'."""
-    str(var)
-    if not isinstance(var, str):
-        raise Exception("value() must be given a string")
-    try:
-        return eval(var, {})
-    except:
-        pass
-    if re.search(r'[\(\)\n\r]|lambda:|lambda ', var):
-        raise Exception("value() is invalid: " + repr(var))
-    frame = inspect.stack()[1][0]
-    components = components_of(var)
-    if len(components) == 0 or len(components[0]) < 2:
-        raise Exception("value: variable " + repr(var) + " is not a valid variable name")
-    variable = components[0][1]
-    the_user_dict = frame.f_locals
-    while variable not in the_user_dict:
-        frame = frame.f_back
-        if frame is None:
-            force_ask(variable, persistent=False)
-        if 'user_dict' in frame.f_locals:
-            the_user_dict = eval('user_dict', frame.f_locals)
-            if variable in the_user_dict:
-                break
-            else:
-                force_ask(variable, persistent=False)
-        else:
-            the_user_dict = frame.f_locals
-    if variable not in the_user_dict:
-        force_ask(variable, persistent=False)
-    if len(components) == 1:
-        return eval(variable, the_user_dict)
-    cum_variable = ''
-    for elem in components:
-        if elem[0] == 'name':
-            if cum_variable == '':
-                cum_variable = elem[1]
-            continue
-        if elem[0] == 'attr':
-            to_eval = "hasattr(" + cum_variable + ", " + repr(elem[1]) + ")"
-            cum_variable += '.' + elem[1]
-        elif elem[0] == 'index':
-            try:
-                the_index = eval(elem[1], the_user_dict)
-            except:
-                force_ask(elem[1], persistent=False)
-            try:
-                the_cum_variable = eval(cum_variable, the_user_dict)
-            except:
-                force_ask(cum_variable, persistent=False)
-            if hasattr(the_cum_variable, 'instanceName') and hasattr(the_cum_variable, 'elements'):
-                cum_variable_elements = cum_variable + '.elements'
-            else:
-                cum_variable_elements = cum_variable
-            if isinstance(the_index, int):
-                to_eval = 'len(' + cum_variable_elements + ') > ' + str(the_index)
-            else:
-                to_eval = elem[1] + " in " + cum_variable_elements
-            cum_variable += '[' + elem[1] + ']'
-        try:
-            result = eval(to_eval, the_user_dict)
-        except:
-            force_ask(to_eval, persistent=False)
-        if result:
-            continue
-        force_ask(var, persistent=False)
-    return eval(cum_variable, the_user_dict)
-
-# def _undefine(*pargs):
-#     logmessage("called _undefine")
-#     for var in pargs:
-#         _undefine(var)
-
-# def undefine(var):
-#     """Makes the given variable undefined."""
-#     logmessage("called undefine")
-#     if type(var) not in [str, unicode]:
-#         raise Exception("undefine() must be given one or more strings")
-#     components = components_of(var)
-#     variable = components[0][1]
-#     frame = inspect.stack()[1][0]
-#     the_user_dict = frame.f_locals
-#     while variable not in the_user_dict:
-#         frame = frame.f_back
-#         if frame is None:
-#             return
-#         if 'user_dict' in frame.f_locals:
-#             the_user_dict = eval('user_dict', frame.f_locals)
-#             if variable in the_user_dict:
-#                 break
-#             else:
-#                 return
-#         else:
-#             the_user_dict = frame.f_locals
-#     try:
-#         exec("del " + var, the_user_dict)
-#     except:
-#         logmessage("Failed to delete " + var)
-#         pass
 
 def single_paragraph(text):
     """Reduces the text to a single paragraph.  Useful when using Markdown
@@ -4293,15 +4372,14 @@ def safe_json(the_object, level=0, is_key=False):
             new_list.append(safe_json(sub_object, level=level+1))
         return new_list
     if isinstance(the_object, TypeType):
-        return {'_class': 'type', 'name': class_name(the_object)}
+        the_class_name = class_name(the_object)
+        if not the_class_name.startswith('docassemble.'):
+            return 'None'
+        return {'_class': 'type', 'name': the_class_name}
     if isinstance(the_object, (types.ModuleType, types.FunctionType, TypeType, types.BuiltinFunctionType, types.BuiltinMethodType, types.MethodType, FileType)):
         return 'None' if is_key else None
-    if isinstance(the_object, datetime.datetime):
-        serial = the_object.isoformat()
-        return serial
-    if isinstance(the_object, datetime.time):
-        serial = the_object.isoformat()
-        return serial
+    if isinstance(the_object, (datetime.datetime, datetime.date, datetime.time)):
+        return the_object.isoformat()
     if isinstance(the_object, decimal.Decimal):
         return float(the_object)
     if isinstance(the_object, DANav):
@@ -4427,11 +4505,11 @@ def noyes(the_value, invert=False):
         return ""
     if the_value:
         if invert:
-            return this_thread.misc.get('checkbox_export_the_value', 'Yes')
+            return 'Yes'
         return "No"
     if invert:
         return "No"
-    return this_thread.misc.get('checkbox_export_value', 'Yes')
+    return 'Yes'
 
 def split(text, breaks, index):
     """Splits text at particular breakpoints and returns the given piece."""
@@ -4494,15 +4572,6 @@ def showif(var, condition, alternative=''):
         return value(var)
     return alternative
 
-def showifdef(var, alternative=''):
-    """Returns the variable indicated by the variable name if it is
-    defined, but otherwise returns empty text, or other alternative text.
-
-    """
-    if defined(var):
-        return value(var)
-    return alternative
-
 def log(message, priority='log'):
     """Log a message to the server or the browser."""
     if priority == 'log':
@@ -4524,7 +4593,7 @@ def decode_name(var):
     """Convert a base64-encoded variable name to plain text."""
     return codecs.decode(repad_byte(bytearray(var, encoding='utf-8')), 'base64').decode('utf-8')
 
-def interview_list(exclude_invalid=True, action=None, filename=None, session=None, user_id=None, include_dict=True, delete_shared=False, next_id=None):
+def interview_list(exclude_invalid=True, action=None, filename=None, session=None, user_id=None, query=None, include_dict=True, delete_shared=False, next_id=None):
     """Returns a list of interviews that users have started."""
     if this_thread.current_info['user']['is_authenticated']:
         if user_id == 'all' or session is not None:
@@ -4546,11 +4615,11 @@ def interview_list(exclude_invalid=True, action=None, filename=None, session=Non
                     raise DAError("interview_list: invalid next_id.")
             else:
                 start_id = None
-            (the_list, start_id) = server.user_interviews(user_id=user_id, secret=this_thread.current_info['secret'], exclude_invalid=exclude_invalid, action=action, filename=filename, session=session, include_dict=include_dict, delete_shared=delete_shared, start_id=start_id)
+            (the_list, start_id) = server.user_interviews(user_id=user_id, secret=this_thread.current_info['secret'], exclude_invalid=exclude_invalid, action=action, filename=filename, session=session, include_dict=include_dict, delete_shared=delete_shared, start_id=start_id, query=query)
             if start_id is None:
                 return (the_list, None)
             return (the_list, myb64quote(str(start_id)))
-        return server.user_interviews(user_id=user_id, secret=this_thread.current_info['secret'], exclude_invalid=exclude_invalid, action=action, filename=filename, session=session, include_dict=include_dict, delete_shared=delete_shared)
+        return server.user_interviews(user_id=user_id, secret=this_thread.current_info['secret'], exclude_invalid=exclude_invalid, action=action, filename=filename, session=session, include_dict=include_dict, delete_shared=delete_shared, query=query)
     return None
 
 def interview_menu(*pargs, **kwargs):
@@ -4584,12 +4653,20 @@ def manage_privileges(*pargs):
             command = arglist.pop(0)
         if command == 'list':
             return server.get_privileges_list()
+        if command == 'inspect':
+            if len(arglist) != 1:
+                raise Exception("manage_privileges: invalid number of arguments")
+            return server.get_permissions_of_privilege(arglist[0])
         if command == 'add':
             for priv in arglist:
                 server.add_privilege(priv)
+            if len(arglist) > 0:
+                return True
         elif command == 'remove':
             for priv in arglist:
                 server.remove_privilege(priv)
+            if len(arglist) > 0:
+                return True
         else:
             raise Exception("manage_privileges: invalid command")
     return None
@@ -4640,22 +4717,48 @@ def create_session(yaml_filename, secret=None, url_args=None):
 
 def get_session_variables(yaml_filename, session_id, secret=None, simplify=True):
     """Returns the interview dictionary for the given interview session."""
+    if session_id == get_uid() and yaml_filename == this_thread.current_info.get('yaml_filename', None):
+        raise Exception("You cannot get variables from the current interview session")
+    if secret is None:
+        secret = this_thread.current_info.get('secret', None)
     return server.get_session_variables(yaml_filename, session_id, secret=secret, simplify=simplify)
 
-def set_session_variables(yaml_filename, session_id, variables, secret=None, question_name=None, overwrite=False):
+def set_session_variables(yaml_filename, session_id, variables, secret=None, question_name=None, overwrite=False, process_objects=False):
     """Sets variables in the interview dictionary for the given interview session."""
     if session_id == get_uid() and yaml_filename == this_thread.current_info.get('yaml_filename', None):
         raise Exception("You cannot set variables in the current interview session")
-    server.set_session_variables(yaml_filename, session_id, variables, secret=secret, question_name=question_name, post_setting=False if overwrite else True)
+    if secret is None:
+        secret = this_thread.current_info.get('secret', None)
+    server.set_session_variables(yaml_filename, session_id, variables, secret=secret, question_name=question_name, post_setting=False if overwrite else True, process_objects=process_objects)
+
+def run_action_in_session(yaml_filename, session_id, action, arguments=None, secret=None, persistent=False, overwrite=False):
+    if session_id == get_uid() and yaml_filename == this_thread.current_info.get('yaml_filename', None):
+        raise Exception("You cannot run an action in the current interview session")
+    if arguments is None:
+        arguments = {}
+    if secret is None:
+        secret = this_thread.current_info.get('secret', None)
+    result = server.run_action_in_session(i=yaml_filename, session=session_id, secret=secret, action=action, persistent=persistent, overwrite=overwrite, arguments=arguments)
+    if isinstance(result, dict):
+        if result['status'] == 'success':
+            return True
+        raise Exception("run_action_in_session: " + result['message'])
+    return True
 
 def get_question_data(yaml_filename, session_id, secret=None):
     """Returns data about the current question for the given interview session."""
+    if session_id == get_uid() and yaml_filename == this_thread.current_info.get('yaml_filename', None):
+        raise Exception("You cannot get question data from the current interview session")
+    if secret is None:
+        secret = this_thread.current_info.get('secret', None)
     return server.get_question_data(yaml_filename, session_id, secret)
 
 def go_back_in_session(yaml_filename, session_id, secret=None):
     """Goes back one step in an interview session."""
     if session_id == get_uid() and yaml_filename == this_thread.current_info.get('yaml_filename', None):
         raise Exception("You cannot go back in the current interview session")
+    if secret is None:
+        secret = this_thread.current_info.get('secret', None)
     server.go_back_in_session(yaml_filename, session_id, secret=secret)
 
 def turn_to_at_sign(match):
@@ -4798,11 +4901,17 @@ def secure_filename(the_filename):
 custom_types = {}
 
 class CustomDataTypeRegister(type):
-    def __init__(cls, name, bases, clsdict):
+    def __init__(cls, name, bases, orig_clsdict):
+        clsdict = copy.copy(orig_clsdict)
         if len(cls.mro()) > 2:
             if 'name' in clsdict and isinstance(clsdict['name'], str) and not re.search(r'[^a-z0-9A-Z\-\_]', clsdict['name']):
                 dataname = clsdict['name']
                 new_type = {}
+                for base in bases:
+                    if base is not CustomDataType:
+                        for attr in ('container_class', 'input_class', 'input_type', 'javascript', 'jq_rule', 'jq_message', 'parameters', 'code_parameters', 'mako_parameters', 'skip_if_empty', 'is_object'):
+                            if attr not in clsdict and hasattr(base, attr):
+                                clsdict[attr] = getattr(base, attr)
                 new_type['container_class'] = clsdict.get('container_class', 'da-field-container-datatype-' + dataname)
                 new_type['input_class'] = clsdict.get('input_class', 'da' + dataname)
                 new_type['input_type'] = clsdict.get('input_type', 'text')
@@ -4812,8 +4921,8 @@ class CustomDataTypeRegister(type):
                 new_type['parameters'] = clsdict.get('parameters', [])
                 new_type['code_parameters'] = clsdict.get('code_parameters', [])
                 new_type['mako_parameters'] = clsdict.get('mako_parameters', [])
-                new_type['skip_if_empty'] = True if clsdict.get('skip_if_empty', True) else False
-                new_type['is_object'] = True if clsdict.get('is_object', False) else False
+                new_type['skip_if_empty'] = bool(clsdict.get('skip_if_empty', True))
+                new_type['is_object'] = bool(clsdict.get('is_object', False))
                 new_type['class'] = cls
                 custom_types[dataname] = new_type
         super().__init__(name, bases, clsdict)

@@ -13,7 +13,6 @@ from urllib.parse import quote
 import httplib2
 import iso8601
 import oauth2client.client
-import pytz
 import docassemble.base.config
 if not docassemble.base.config.loaded:
     docassemble.base.config.load(in_celery=True)
@@ -408,10 +407,10 @@ def try_request(*pargs, **kwargs):
     return r, content
 
 def epoch_from_iso(datestring):
-    return (iso8601.parse_date(datestring) - datetime.datetime(1970,1,1, tzinfo=pytz.utc)).total_seconds()
+    return (iso8601.parse_date(datestring) - datetime.datetime(1970,1,1, tzinfo=datetime.timezone.utc)).total_seconds()
 
 def iso_from_epoch(seconds):
-    return datetime.datetime.utcfromtimestamp(seconds).replace(tzinfo=pytz.utc).isoformat().replace('+00:00', 'Z')
+    return datetime.datetime.utcfromtimestamp(seconds).replace(tzinfo=datetime.timezone.utc).isoformat().replace('+00:00', 'Z')
 
 @workerapp.task
 def sync_with_onedrive(user_id):
@@ -851,6 +850,8 @@ def ocr_finalize(*pargs, **kwargs):
                         user_object = worker_controller.get_user_object(user_info['theid'])
                         worker_controller.login_user(user_object, remember=False)
                     #sys.stderr.write("ocr_finalize: yaml_filename is " + str(yaml_filename) + " and session code is " + str(session_code) + "\n")
+                    the_current_info = dict(user=user_info, session=session_code, secret=secret, yaml_filename=yaml_filename, url=url, url_root=url_root, interface='worker')
+                    docassemble.base.functions.this_thread.current_info = the_current_info
                     worker_controller.set_request_active(False)
                     worker_controller.obtain_lock_patiently(session_code, yaml_filename)
                     try:
@@ -1107,6 +1108,8 @@ def background_action(yaml_filename, user_info, session_code, secret, url, url_r
             if action['action'] == 'incoming_email':
                 if 'id' in action['arguments']:
                     action['arguments'] = dict(email=worker_controller.retrieve_email(action['arguments']['id']))
+            the_current_info = dict(user=user_info, session=session_code, secret=secret, yaml_filename=yaml_filename, url=url, url_root=url_root, encrypted=True, action=action['action'], interface='worker', arguments=action['arguments'])
+            docassemble.base.functions.this_thread.current_info = the_current_info
             interview = worker_controller.interview_cache.get_interview(yaml_filename)
             worker_controller.obtain_lock_patiently(session_code, yaml_filename)
             try:
@@ -1115,12 +1118,13 @@ def background_action(yaml_filename, user_info, session_code, secret, url, url_r
                 worker_controller.release_lock(session_code, yaml_filename)
                 sys.stderr.write("background_action: could not obtain dictionary because of " + str(the_err.__class__.__name__) + ": " + str(the_err) + "\n")
                 return worker_controller.functions.ReturnValue(extra=extra)
+            the_current_info['encrypted'] = is_encrypted
             worker_controller.release_lock(session_code, yaml_filename)
             if user_dict is None:
                 sys.stderr.write("background_action: dictionary could not be found\n")
                 return worker_controller.functions.ReturnValue(extra=extra)
             start_time = time.time()
-            interview_status = worker_controller.parse.InterviewStatus(current_info=dict(user=user_info, session=session_code, secret=secret, yaml_filename=yaml_filename, url=url, url_root=url_root, encrypted=is_encrypted, action=action['action'], interface='worker', arguments=action['arguments']))
+            interview_status = worker_controller.parse.InterviewStatus(current_info=the_current_info)
             old_language = worker_controller.functions.get_language()
             try:
                 interview.assemble(user_dict, interview_status)
@@ -1175,9 +1179,12 @@ def background_action(yaml_filename, user_info, session_code, secret, url, url_r
                 start_time = time.time()
                 new_action = interview_status.question.action
                 #sys.stderr.write("new action is " + repr(new_action) + "\n")
+                the_current_info = dict(user=user_info, session=session_code, secret=secret, yaml_filename=yaml_filename, url=url, url_root=url_root, encrypted=True, interface='worker', action=new_action['action'], arguments=new_action['arguments'])
+                docassemble.base.functions.this_thread.current_info = the_current_info
                 worker_controller.obtain_lock_patiently(session_code, yaml_filename)
                 steps, user_dict, is_encrypted = worker_controller.fetch_user_dict(session_code, yaml_filename, secret=secret)
-                interview_status = worker_controller.parse.InterviewStatus(current_info=dict(user=user_info, session=session_code, secret=secret, yaml_filename=yaml_filename, url=url, url_root=url_root, encrypted=is_encrypted, interface='worker', action=new_action['action'], arguments=new_action['arguments']))
+                the_current_info['encrypted'] = is_encrypted
+                interview_status = worker_controller.parse.InterviewStatus(current_info=the_current_info)
                 old_language = worker_controller.functions.get_language()
                 try:
                     interview.assemble(user_dict, interview_status)
@@ -1247,9 +1254,11 @@ def process_error(interview, session_code, yaml_filename, secret, user_info, url
     new_action['arguments']['error_message'] = error_message
     new_action['arguments']['error_trace'] = error_trace
     new_action['arguments']['variables'] = variables
+    the_current_info = dict(user=user_info, session=session_code, secret=secret, yaml_filename=yaml_filename, url=url, url_root=url_root, encrypted=is_encrypted, interface='worker', action=new_action['action'], arguments=new_action['arguments'])
+    docassemble.base.functions.this_thread.current_info = the_current_info
     worker_controller.obtain_lock(session_code, yaml_filename)
     steps, user_dict, is_encrypted = worker_controller.fetch_user_dict(session_code, yaml_filename, secret=secret)
-    interview_status = worker_controller.parse.InterviewStatus(current_info=dict(user=user_info, session=session_code, secret=secret, yaml_filename=yaml_filename, url=url, url_root=url_root, encrypted=is_encrypted, interface='worker', action=new_action['action'], arguments=new_action['arguments']))
+    interview_status = worker_controller.parse.InterviewStatus(current_info=the_current_info)
     old_language = worker_controller.functions.get_language()
     try:
         interview.assemble(user_dict, interview_status)
@@ -1289,3 +1298,17 @@ def process_error(interview, session_code, yaml_filename, secret, user_info, url
             return worker_controller.functions.ReturnValue(ok=False, error_type=error_type, error_trace=error_trace, error_message=error_message, variables=variables, value=interview_status.question.backgroundresponse, extra=extra)
     sys.stderr.write("Time in error callback was " + str(time.time() - start_time) + "\n")
     return worker_controller.functions.ReturnValue(ok=False, error_type=error_type, error_trace=error_trace, error_message=error_message, variables=variables, extra=extra)
+
+@workerapp.task
+def ocr_google(image_file, raw_result, user_code):
+    sys.stderr.write("ocr_google started in worker\n")
+    if not hasattr(worker_controller, 'loaded'):
+        initialize_db()
+    url_root = daconfig.get('url root', 'http://localhost') + daconfig.get('root', '/')
+    url = url_root + 'interview'
+    with worker_controller.flaskapp.app_context():
+        with worker_controller.flaskapp.test_request_context(base_url=url_root, path=url):
+            worker_controller.functions.reset_local_variables()
+            worker_controller.functions.set_uid(user_code)
+            worker_controller.set_request_active(False)
+            return worker_controller.util.google_ocr_file(image_file, raw_result=raw_result)

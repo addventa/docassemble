@@ -39,7 +39,7 @@ echo "initialize: config.yml is at" $DA_CONFIG_FILE >&2
 echo "initialize: initialize starting" >&2
 
 echo "--------------------------" >&2
-echo "Docassemble V1.3.20-6" >&2
+echo "Docassemble V1.3.20-9" >&2
 echo "--------------------------" >&2
 
 RESTOREFROMBACKUP=true
@@ -413,6 +413,10 @@ if [ ! -f "$DA_CONFIG_FILE" ]; then
         -e 's/{{DBPORT}}/'"${DBPORT:-null}"'/' \
         -e 's/{{DBTABLEPREFIX}}/'"${DBTABLEPREFIX:-null}"'/' \
         -e 's/{{DBBACKUP}}/'"${DBBACKUP:-true}"'/' \
+        -e 's/{{DBSSLMODE}}/'"${DBSSLMODE:-null}"'/' \
+        -e 's/{{DBSSLCERT}}/'"${DBSSLCERT:-null}"'/' \
+        -e 's/{{DBSSLKEY}}/'"${DBSSLKEY:-null}"'/' \
+        -e 's/{{DBSSLROOTCERT}}/'"${DBSSLROOTCERT:-null}"'/' \
         -e 's#{{CONFIGFROM}}#'"${CONFIGFROM:-null}"'#' \
         -e 's/{{S3ENABLE}}/'"${S3ENABLE:-false}"'/' \
         -e 's#{{S3ACCESSKEY}}#'"${S3ACCESSKEY:-null}"'#' \
@@ -425,7 +429,7 @@ if [ ! -f "$DA_CONFIG_FILE" ]; then
         -e 's@{{AZUREACCOUNTKEY}}@'"${AZUREACCOUNTKEY:-null}"'@' \
         -e 's/{{AZURECONTAINER}}/'"${AZURECONTAINER:-null}"'/' \
         -e 's/{{DABACKUPDAYS}}/'"${DABACKUPDAYS:-14}"'/' \
-        -e 's@{{REDIS}}@'"${REDIS:-null}"'@' \
+        -e 's#{{REDIS}}#'"${REDIS:-null}"'#' \
         -e 's#{{RABBITMQ}}#'"${RABBITMQ:-null}"'#' \
         -e 's@{{DACELERYWORKERS}}@'"${DACELERYWORKERS:-null}"'@' \
         -e 's@{{TIMEZONE}}@'"${TIMEZONE:-null}"'@' \
@@ -727,6 +731,71 @@ if [ "${S3ENABLE:-false}" == "true" ] || [ "${AZUREENABLE:-false}" == "true" ]; 
     su -c "source \"${DA_ACTIVATE}\" && python -m docassemble.webapp.cloud_register \"${DA_CONFIG_FILE}\"" www-data
 fi
 
+echo "initialize: Copying SSL certificates into position, if necessary" >&2
+
+if [ ! -f "${DA_ROOT}/certs/apache.key" ] && [ -f "${DA_ROOT}/certs/apache.key.orig" ]; then
+    mv "${DA_ROOT}/certs/apache.key.orig" "${DA_ROOT}/certs/apache.key"
+fi
+if [ ! -f "${DA_ROOT}/certs/apache.crt" ] && [ -f "${DA_ROOT}/certs/apache.crt.orig" ]; then
+    mv "${DA_ROOT}/certs/apache.crt.orig" "${DA_ROOT}/certs/apache.crt"
+fi
+if [ ! -f "${DA_ROOT}/certs/apache.ca.pem" ] && [ -f "${DA_ROOT}/certs/apache.ca.pem.orig" ]; then
+    mv "${DA_ROOT}/certs/apache.ca.pem.orig" "${DA_ROOT}/certs/apache.ca.pem"
+fi
+if [ ! -f "${DA_ROOT}/certs/nginx.key" ] && [ -f "${DA_ROOT}/certs/nginx.key.orig" ]; then
+    mv "${DA_ROOT}/certs/nginx.key.orig" "${DA_ROOT}/certs/nginx.key"
+fi
+if [ ! -f "${DA_ROOT}/certs/nginx.crt" ] && [ -f "${DA_ROOT}/certs/nginx.crt.orig" ]; then
+    mv "${DA_ROOT}/certs/nginx.crt.orig" "${DA_ROOT}/certs/nginx.crt"
+fi
+if [ ! -f "${DA_ROOT}/certs/nginx.ca.pem" ] && [ -f "${DA_ROOT}/certs/nginx.ca.pem.orig" ]; then
+    mv "${DA_ROOT}/certs/nginx.ca.pem.orig" "${DA_ROOT}/certs/nginx.ca.pem"
+fi
+if [ ! -f "${DA_ROOT}/certs/exim.key" ] && [ -f "${DA_ROOT}/certs/exim.key.orig" ]; then
+    mv "${DA_ROOT}/certs/exim.key.orig" "${DA_ROOT}/certs/exim.key"
+fi
+if [ ! -f "${DA_ROOT}/certs/exim.crt" ] && [ -f "${DA_ROOT}/certs/exim.crt.orig" ]; then
+    mv "${DA_ROOT}/certs/exim.crt.orig" "${DA_ROOT}/certs/exim.crt"
+fi
+if [ ! -f "${DA_ROOT}/certs/postgresql.key" ] && [ -f "${DA_ROOT}/certs/postgresql.key.orig" ]; then
+    mv "${DA_ROOT}/certs/postgresql.key.orig" "${DA_ROOT}/certs/postgresql.key"
+fi
+if [ ! -f "${DA_ROOT}/certs/postgresql.crt" ] && [ -f "${DA_ROOT}/certs/postgresql.crt.orig" ]; then
+    mv "${DA_ROOT}/certs/postgresql.crt.orig" "${DA_ROOT}/certs/postgresql.crt"
+fi
+if [ ! -f "${DA_ROOT}/certs/apache.key" ] && [ -f "${DA_ROOT}/config/defaultcerts/apache.key.orig" ]; then
+    cp "${DA_ROOT}/config/defaultcerts/apache.key.orig" "${DA_ROOT}/certs/apache.key"
+fi
+if [ ! -f "${DA_ROOT}/certs/apache.crt" ] && [ -f "${DA_ROOT}/config/defaultcerts/apache.crt.orig" ]; then
+    cp "${DA_ROOT}/config/defaultcerts/apache.crt.orig" "${DA_ROOT}/certs/apache.crt"
+fi
+if [ ! -f "${DA_ROOT}/certs/apache.ca.pem" ] && [ -f "${DA_ROOT}/config/defaultcerts/apache.ca.pem.orig" ]; then
+    cp "${DA_ROOT}/config/defaultcerts/apache.ca.pem.orig" "${DA_ROOT}/certs/apache.ca.pem"
+fi
+if [ ! -f "${DA_ROOT}/certs/nginx.key" ] && [ -f "${DA_ROOT}/config/defaultcerts/nginx.key.orig" ]; then
+    cp "${DA_ROOT}/config/defaultcerts/nginx.key.orig" "${DA_ROOT}/certs/nginx.key"
+fi
+if [ ! -f "${DA_ROOT}/certs/nginx.crt" ] && [ -f "${DA_ROOT}/config/defaultcerts/nginx.crt.orig" ]; then
+    cp "${DA_ROOT}/config/defaultcerts/nginx.crt.orig" "${DA_ROOT}/certs/nginx.crt"
+fi
+if [ ! -f "${DA_ROOT}/certs/nginx.ca.pem" ] && [ -f "${DA_ROOT}/config/defaultcerts/nginx.ca.pem.orig" ]; then
+    cp "${DA_ROOT}/config/defaultcerts/nginx.ca.pem.orig" "${DA_ROOT}/certs/nginx.ca.pem"
+fi
+if [ ! -f "${DA_ROOT}/certs/exim.key" ] && [ -f "${DA_ROOT}/config/defaultcerts/exim.key.orig" ]; then
+    cp "${DA_ROOT}/config/defaultcerts/exim.key.orig" "${DA_ROOT}/certs/exim.key"
+fi
+if [ ! -f "${DA_ROOT}/certs/exim.crt" ] && [ -f "${DA_ROOT}/config/defaultcerts/exim.crt.orig" ]; then
+    cp "${DA_ROOT}/config/defaultcerts/exim.crt.orig" "${DA_ROOT}/certs/exim.crt"
+fi
+if [ ! -f "${DA_ROOT}/certs/postgresql.key" ] && [ -f "${DA_ROOT}/config/defaultcerts/postgresql.key.orig" ]; then
+    cp "${DA_ROOT}/config/defaultcerts/postgresql.key.orig" "${DA_ROOT}/certs/postgresql.key"
+fi
+if [ ! -f "${DA_ROOT}/certs/postgresql.crt" ] && [ -f "${DA_ROOT}/config/defaultcerts/postgresql.crt.orig" ]; then
+    cp "${DA_ROOT}/config/defaultcerts/postgresql.crt.orig" "${DA_ROOT}/certs/postgresql.crt"
+fi
+
+python -m docassemble.webapp.install_certs "${DA_CONFIG_FILE}" || exit 1
+
 echo "initialize: Testing if PostgreSQL is running" >&2
 
 if pg_isready -q; then
@@ -768,7 +837,7 @@ if [[ $CONTAINERROLE =~ .*:(all|sql):.* ]] && [ "$PGRUNNING" = false ] && [ "$DB
 	if [ -d "${PGBACKUPDIR}" ]; then
 	    cd "$PGBACKUPDIR"
 	    chown -R postgres.postgres "$PGBACKUPDIR"
-	    for db in $( ls ); do
+	    for db in $( find . -maxdepth 1 -type f ! -iname ".*" ); do
 		echo "initialize: Restoring postgres database $db" >&2
 		pg_restore -f - -F c -C -c $db | su -c psql postgres
 	    done
@@ -790,6 +859,21 @@ elif [ "$PGRUNNING" = false ] && [ "$DBTYPE" == "postgresql" ]; then
     export PGUSER="${DBUSER}"
     export PGPASSWORD="${DBPASSWORD}"
     export PGDATABASE="postgres"
+    if [ "$DBPORT" != "" ]; then
+	export PGPORT="${DBPORT}"
+    fi
+    if [ "$DBSSLMODE" != "" ]; then
+	export PGSSLMODE="${DBSSLMODE}"
+    fi
+    if [ "$DBSSLCERT" != "" ]; then
+	export PGSSLCERT="/etc/ssl/docassemble/${DBSSLCERT}"
+    fi
+    if [ "$DBSSLKEY" != "" ]; then
+	export PGSSLKEY="/etc/ssl/docassemble/${DBSSLKEY}"
+    fi
+    if [ "$DBSSLROOTCERT" != "" ]; then
+	export PGSSLROOTCERT="/etc/ssl/docassemble/${DBSSLROOTCERT}"
+    fi
     echo "initialize: Testing if remote SQL server is ready" >&2
     while ! pg_isready -q; do sleep 1; done
     echo "initialize: Testing if remote SQL database exists" >&2
@@ -802,42 +886,12 @@ elif [ "$PGRUNNING" = false ] && [ "$DBTYPE" == "postgresql" ]; then
     unset PGUSER
     unset PGPASSWORD
     unset PGDATABASE
+    unset PGPORT
+    unset PGSSLMODE
+    unset PGSSLCERT
+    unset PGSSLKEY
+    unset PGSSLROOTCERT
 fi
-
-echo "initialize: Copying SSL certificates into position, if necessary" >&2
-
-if [ ! -f "${DA_ROOT}/certs/apache.key" ] && [ -f "${DA_ROOT}/certs/apache.key.orig" ]; then
-    mv "${DA_ROOT}/certs/apache.key.orig" "${DA_ROOT}/certs/apache.key"
-fi
-if [ ! -f "${DA_ROOT}/certs/apache.crt" ] && [ -f "${DA_ROOT}/certs/apache.crt.orig" ]; then
-    mv "${DA_ROOT}/certs/apache.crt.orig" "${DA_ROOT}/certs/apache.crt"
-fi
-if [ ! -f "${DA_ROOT}/certs/apache.ca.pem" ] && [ -f "${DA_ROOT}/certs/apache.ca.pem.orig" ]; then
-    mv "${DA_ROOT}/certs/apache.ca.pem.orig" "${DA_ROOT}/certs/apache.ca.pem"
-fi
-if [ ! -f "${DA_ROOT}/certs/nginx.key" ] && [ -f "${DA_ROOT}/certs/nginx.key.orig" ]; then
-    mv "${DA_ROOT}/certs/nginx.key.orig" "${DA_ROOT}/certs/nginx.key"
-fi
-if [ ! -f "${DA_ROOT}/certs/nginx.crt" ] && [ -f "${DA_ROOT}/certs/nginx.crt.orig" ]; then
-    mv "${DA_ROOT}/certs/nginx.crt.orig" "${DA_ROOT}/certs/nginx.crt"
-fi
-if [ ! -f "${DA_ROOT}/certs/nginx.ca.pem" ] && [ -f "${DA_ROOT}/certs/nginx.ca.pem.orig" ]; then
-    mv "${DA_ROOT}/certs/nginx.ca.pem.orig" "${DA_ROOT}/certs/nginx.ca.pem"
-fi
-if [ ! -f "${DA_ROOT}/certs/exim.key" ] && [ -f "${DA_ROOT}/certs/exim.key.orig" ]; then
-    mv "${DA_ROOT}/certs/exim.key.orig" "${DA_ROOT}/certs/exim.key"
-fi
-if [ ! -f "${DA_ROOT}/certs/exim.crt" ] && [ -f "${DA_ROOT}/certs/exim.crt.orig" ]; then
-    mv "${DA_ROOT}/certs/exim.crt.orig" "${DA_ROOT}/certs/exim.crt"
-fi
-if [ ! -f "${DA_ROOT}/certs/postgresql.key" ] && [ -f "${DA_ROOT}/certs/postgresql.key.orig" ]; then
-    mv "${DA_ROOT}/certs/postgresql.key.orig" "${DA_ROOT}/certs/postgresql.key"
-fi
-if [ ! -f "${DA_ROOT}/certs/postgresql.crt" ] && [ -f "${DA_ROOT}/certs/postgresql.crt.orig" ]; then
-    mv "${DA_ROOT}/certs/postgresql.crt.orig" "${DA_ROOT}/certs/postgresql.crt"
-fi
-
-python -m docassemble.webapp.install_certs "${DA_CONFIG_FILE}" || exit 1
 
 if [[ $CONTAINERROLE =~ .*:(all|cron|celery):.* ]]; then
     echo "initialize: Obtaining default e-mail and password from mounted credentials, if available" >&2
@@ -850,6 +904,7 @@ if [[ $CONTAINERROLE =~ .*:(all|cron|celery):.* ]]; then
     su -c "source \"${DA_ACTIVATE}\" && python -m docassemble.webapp.create_tables \"${DA_CONFIG_FILE}\"" www-data
     unset DA_ADMIN_EMAIL
     unset DA_ADMIN_PASSWORD
+    unset DA_ADMIN_API_KEY
 fi
 
 echo "initialize: Configuring log server, if applicable" >&2
@@ -1089,9 +1144,8 @@ if [ "${DAWEBSERVER:-nginx}" = "apache" ]; then
                     rm -f "${DA_ROOT}/backup/letsencrypt.tar.gz"
                     tar -zcf "${DA_ROOT}/backup/letsencrypt.tar.gz" etc/letsencrypt
                 fi
-                rm -rf "${DA_ROOT}/backup/apache"
                 mkdir -p "${DA_ROOT}/backup/apache"
-                rsync -auq /etc/apache2/sites-available/ "${DA_ROOT}/backup/apache/"
+                rsync -auq --delete /etc/apache2/sites-available/ "${DA_ROOT}/backup/apache/"
             fi
         fi
     }
@@ -1217,7 +1271,7 @@ fi
 
 echo "initialize: Checking to see if unoconv should be started" >&2
 
-if [ "$ENABLEUNOCONV" == "true" ] && [[ -x /usr/bin/unoconv ]]; then
+if [ "$ENABLEUNOCONV" == "true" ] && command -v unoconv &> /dev/null; then
     echo "initialize: Starting unoconv" >&2
     supervisorctl --serverurl http://localhost:9001 start unoconv
 fi
@@ -1305,6 +1359,15 @@ if [[ $CONTAINERROLE =~ .*:(log):.* ]] || [ "$OTHERLOGSERVER" = true ]; then
     fi
 fi
 
+echo "initialize: creating crashpad folder" >&2
+
+mkdir -p /tmp/Crashpad/attachments
+mkdir -p /tmp/Crashpad/completed
+mkdir -p /tmp/Crashpad/new
+mkdir -p /tmp/Crashpad/pending
+touch /tmp/Crashpad/settings.dat
+chmod -R ogu+rwx /tmp/Crashpad
+
 function deregister {
     rm -f "${DA_ROOT}/webapp/ready"
     su -c "source \"${DA_ACTIVATE}\" && python -m docassemble.webapp.deregister \"${DA_CONFIG_FILE}\"" www-data
@@ -1326,7 +1389,7 @@ function deregister {
         fi
     fi
     if [ "${S3ENABLE:-false}" == "true" ]; then
-        if [[ $CONTAINERROLE =~ .*:(all|log):.* ]]; then
+	if [[ $CONTAINERROLE =~ .*:(all|log):.* ]]; then
             s4cmd dsync "${DA_ROOT}/log" "s3://${S3BUCKET}/log"
         fi
         if [[ $CONTAINERROLE =~ .*:(all):.* ]]; then
@@ -1354,7 +1417,7 @@ function deregister {
                 done
             fi
             if [ "${DAWEBSERVER:-nginx}" = "nginx" ]; then
-		echo "initialize: Saving NGINX log files to Azure Blob Storage" >&2
+                echo "initialize: Saving NGINX log files to Azure Blob Storage" >&2
                 for the_file in $(find /var/log/nginx -type f | cut -c 16-); do
                     cmd_retry blob-cmd -f cp "/var/log/nginx/${the_file}" "blob://${AZUREACCOUNTNAME}/${AZURECONTAINER}/nginxlogs/${the_file}"
                 done
@@ -1362,33 +1425,27 @@ function deregister {
         fi
     else
         if [[ $CONTAINERROLE =~ .*:(all|cron):.* ]]; then
-	    echo "initialize: Saving Configuration" >&2
+            echo "initialize: Saving Configuration" >&2
             rm -f "${DA_ROOT}/backup/config.yml"
             cp "${DA_CONFIG_FILE}" "${DA_ROOT}/backup/config.yml"
-	    echo "initialize: Saving files" >&2
-            rm -rf "${DA_ROOT}/backup/files"
-            rsync -auq "${DA_ROOT}/files" "${DA_ROOT}/backup/"
-	    echo "initialize: Done saving files" >&2
+            echo "initialize: Saving files" >&2
+            rsync -auq --delete "${DA_ROOT}/files" "${DA_ROOT}/backup/"
+            echo "initialize: Done saving files" >&2
         fi
         if [[ $CONTAINERROLE =~ .*:(all):.* ]]; then
             if [ "${DAWEBSERVER:-nginx}" = "apache" ]; then
-		echo "initialize: Saving Apache log files" >&2
-                rm -rf "${DA_ROOT}/backup/apachelogs"
+                echo "initialize: Saving Apache log files" >&2
                 mkdir -p "${DA_ROOT}/backup/apachelogs"
-                rsync -auq /var/log/apache2/ "${DA_ROOT}/backup/apachelogs/"
+                rsync -auq --delete /var/log/apache2/ "${DA_ROOT}/backup/apachelogs/"
             fi
             if [ "${DAWEBSERVER:-nginx}" = "nginx" ]; then
-		echo "initialize: Saving NGINX log files" >&2
-                rm -rf "${DA_ROOT}/backup/nginxlogs"
+                echo "initialize: Saving NGINX log files" >&2
                 mkdir -p "${DA_ROOT}/backup/nginxlogs"
-                rsync -auq /var/log/nginx/ "${DA_ROOT}/backup/nginxlogs/"
+                rsync -auq --delete /var/log/nginx/ "${DA_ROOT}/backup/nginxlogs/"
             fi
         fi
-        if [[ $CONTAINERROLE =~ .*:(all|log):.* ]]; then
-	    echo "initialize: Saving log files" >&2
-            rm -rf "${DA_ROOT}/backup/log"
-            rsync -auq "${LOGDIRECTORY}/" "${DA_ROOT}/backup/log/"
-        fi
+        echo "initialize: Saving log files" >&2
+        rsync -auq --delete "${LOGDIRECTORY}/" "${DA_ROOT}/backup/log/"
     fi
     rm -f /etc/da_running
     echo "initialize: finished shutting down initialize" >&2

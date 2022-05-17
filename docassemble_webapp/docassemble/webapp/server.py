@@ -5,6 +5,7 @@ import codecs
 import collections
 import copy
 import datetime
+import email
 from distutils.version import LooseVersion
 import filecmp
 from functools import update_wrapper
@@ -52,9 +53,11 @@ from docassemble.base.config import daconfig, hostname, in_celery
 import docassemble.webapp.setup
 from docassemble.webapp.setup import da_version
 import docassemble.base.astparser
+from docassemble.webapp.api_key import encrypt_api_key
 from docassemble.base.error import DAError, DAErrorNoEndpoint, DAErrorMissingVariable, DAErrorCompileError, DAValidationError
 import docassemble.base.functions
 from docassemble.base.functions import pickleable_objects, word, comma_and_list, get_default_timezone, ReturnValue
+import docassemble.base.DA
 from docassemble.base.generate_key import random_string, random_lower_string, random_alphanumeric, random_digits
 import docassemble.base.interview_cache
 from docassemble.base.logger import logmessage
@@ -70,20 +73,22 @@ from docassemble.webapp.app_object import app, csrf, flaskbabel
 import docassemble.webapp.backend
 from docassemble.webapp.backend import cloud, initial_dict, can_access_file_number, get_info_from_file_number, get_info_from_file_number_with_uids, da_send_mail, get_new_file_number, pad, unpad, encrypt_phrase, pack_phrase, decrypt_phrase, unpack_phrase, encrypt_dictionary, pack_dictionary, decrypt_dictionary, unpack_dictionary, nice_date_from_utc, fetch_user_dict, fetch_previous_user_dict, advance_progress, reset_user_dict, get_chat_log, save_numbered_file, generate_csrf, get_info_from_file_reference, reference_exists, write_ml_source, fix_ml_files, is_package_ml, user_dict_exists, file_set_attributes, file_user_access, file_privilege_access, url_if_exists, get_person, Message, url_for, encrypt_object, decrypt_object, delete_user_data, delete_temp_user_data, clear_session, clear_specific_session, guess_yaml_filename, get_session, get_uid_for_filename, update_session, get_session_uids, project_name, directory_for, add_project
 import docassemble.webapp.clicksend
+import docassemble.webapp.telnyx
 from docassemble.webapp.core.models import Uploads, UploadsUserAuth, SpeakList, Supervisors, Shortener, Email, EmailAttachment, MachineLearning, GlobalObjectStorage
 from docassemble.webapp.daredis import r, r_user, r_store
 from docassemble.webapp.db_object import db
 from docassemble.webapp.develop import CreatePackageForm, CreatePlaygroundPackageForm, UpdatePackageForm, ConfigForm, PlaygroundForm, PlaygroundUploadForm, LogForm, Utilities, PlaygroundFilesForm, PlaygroundFilesEditForm, PlaygroundPackagesForm, GoogleDriveForm, OneDriveForm, GitHubForm, PullPlaygroundPackage, TrainingForm, TrainingUploadForm, APIKey, AddinUploadForm, FunctionFileForm, RenameProject, DeleteProject, NewProject
 from docassemble.webapp.files import SavedFile, get_ext_and_mimetype, make_package_zip
 from docassemble.webapp.fixpickle import fix_pickle_obj
+from docassemble.webapp.info import system_packages
 from docassemble.webapp.jsonstore import read_answer_json, write_answer_json, delete_answer_json, variables_snapshot_connection
 import docassemble.webapp.machinelearning
 from docassemble.webapp.packages.models import Package, PackageAuth, Install
 from docassemble.webapp.playground import PlaygroundSection
 from docassemble.webapp.screenreader import to_text
 from docassemble.webapp.translations import setup_translation
-from docassemble.webapp.users.forms import MyRegisterForm, MyInviteForm, MySignInForm, PhoneLoginForm, PhoneLoginVerifyForm, MFASetupForm, MFAReconfigureForm, MFALoginForm, MFAChooseForm, MFASMSSetupForm, MFAVerifySMSSetupForm, MyResendConfirmEmailForm, ManageAccountForm, RequestDeveloperForm
-from docassemble.webapp.users.models import UserAuthModel, UserModel, UserDict, UserDictKeys, TempUser, ChatLog, MyUserInvitation, Role, UserRoles
+from docassemble.webapp.users.forms import MyRegisterForm, MyInviteForm, MySignInForm, PhoneLoginForm, PhoneLoginVerifyForm, MFASetupForm, MFAReconfigureForm, MFALoginForm, MFAChooseForm, MFASMSSetupForm, MFAVerifySMSSetupForm, MyResendConfirmEmailForm, ManageAccountForm, RequestDeveloperForm, InterviewsListForm
+from docassemble.webapp.users.models import UserAuthModel, UserModel, UserDict, UserDictKeys, TempUser, ChatLog, MyUserInvitation, Role, UserRoles, AnonymousUserModel
 from docassemble.webapp.users.views import user_profile_page
 if not in_celery:
     import docassemble.webapp.worker
@@ -123,14 +128,15 @@ import pyotp
 from pygments import highlight
 from pygments.formatters import HtmlFormatter
 from pygments.lexers import YamlLexer, PythonLexer
-import pytz
+import pytz # should be loaded into memory because pickled objects might use it
+from backports import zoneinfo
 import qrcode
 import qrcode.image.svg
 from rauth import OAuth1Service, OAuth2Service
 import requests
 import ruamel.yaml
 from simplekv.memory.redisstore import RedisStore
-from sqlalchemy import or_, and_, select, delete, update
+from sqlalchemy import or_, and_, not_, select, delete, update
 import tailer
 import twilio.twiml
 import twilio.twiml.messaging_response
@@ -174,6 +180,26 @@ else:
 REQUIRE_IDEMPOTENT = not daconfig.get('allow non-idempotent questions', True)
 STRICT_MODE = daconfig.get('restrict input variables', False)
 PACKAGE_PROTECTION = daconfig.get('package protection', True)
+PERMISSIONS_LIST = [
+    'access_privileges',
+    'access_sessions',
+    'access_user_info',
+    'access_user_api_info',
+    'create_user',
+    'delete_user',
+    'demo_interviews',
+    'edit_privileges',
+    'edit_sessions',
+    'edit_user_active_status',
+    'edit_user_info',
+    'edit_user_api_info',
+    'edit_user_password',
+    'edit_user_privileges',
+    'interview_data',
+    'log_user_in',
+    'playground_control',
+    'template_parse'
+    ]
 
 HTTP_TO_HTTPS = daconfig.get('behind https load balancer', False)
 GITHUB_BRANCH = daconfig.get('github default branch name', 'main')
@@ -438,7 +464,7 @@ keymap = daconfig.get('keymap', None)
 google_config = daconfig.get('google', {})
 
 contains_volatile = re.compile(r'^(x\.|x\[|.*\[[ijklmn]\])')
-is_integer = re.compile(r'[0-9]+')
+is_integer = re.compile(r'^[0-9]+$')
 detect_mobile = re.compile(r'Mobile|iP(hone|od|ad)|Android|BlackBerry|IEMobile|Kindle|NetFront|Silk-Accelerated|(hpw|web)OS|Fennec|Minimo|Opera M(obi|ini)|Blazer|Dolfin|Dolphin|Skyfire|Zune')
 alphanumeric_only = re.compile(r'[\W_]+')
 phone_pattern = re.compile(r"^[\d\+\-\(\) ]+$")
@@ -456,8 +482,8 @@ key_requires_preassembly = re.compile(r'^(session_local\.|device_local\.|user_lo
 match_brackets = re.compile(r'\[[BR]?\'[^\]]*\'\]$')
 match_inside_and_outside_brackets = re.compile(r'(.*)(\[[BR]?\'[^\]]*\'\])$')
 match_inside_brackets = re.compile(r'\[([BR]?)\'([^\]]*)\'\]')
-valid_python_var = re.compile(r'[A-Za-z][A-Za-z0-9\_]*')
-valid_python_exp = re.compile(r'[A-Za-z][A-Za-z0-9\_\.]*')
+valid_python_var = re.compile(r'^[A-Za-z][A-Za-z0-9\_]*$')
+valid_python_exp = re.compile(r'^[A-Za-z][A-Za-z0-9\_\.]*$')
 
 default_title = daconfig.get('default title', daconfig.get('brandname', 'docassemble'))
 default_short_title = daconfig.get('default short title', default_title)
@@ -701,7 +727,13 @@ def custom_register():
                 if db_adapter.UserAuthClass:
                     if field_name in user_auth_class_fields:
                         user_auth_fields[field_name] = field_value
-
+        while True:
+            new_social = 'local$' + random_alphanumeric(32)
+            existing_user = db.session.execute(select(UserModel).filter_by(social_id=new_social)).first()
+            if existing_user:
+                continue
+            break
+        user_fields['social_id'] = new_social
         # Add User record using named arguments 'user_fields'
         user = db_adapter.add_object(User, **user_fields)
 
@@ -987,8 +1019,11 @@ def logout():
     #     secret = str(secret)
     #     set_cookie = False
     user_manager = current_app.user_manager
-    if 'next' in request.args:
-        next_url = request.args['next']
+    if 'next_arg' in session:
+        next_url = session['next_arg']
+        del session['next_arg']
+    # if 'next' in request.args:
+    #     next_url = request.args['next']
     elif session.get('language', None) and session['language'] != DEFAULT_LANGUAGE:
         next_url = _endpoint_url(user_manager.after_logout_endpoint, lang=session['language'])
     else:
@@ -1131,6 +1166,7 @@ the_user_manager.init_app(app, db_adapter=the_db_adapter, login_form=MySignInFor
 lm = LoginManager()
 lm.init_app(app)
 lm.login_view = 'custom_login'
+lm.anonymous_user = AnonymousUserModel
 
 def login_as_admin(url, url_root):
     found = False
@@ -1186,6 +1222,8 @@ def import_necessary(url, url_root):
             sys.stderr.write("Import of " + module_name + " failed.  " + err.__class__.__name__ + ": " + str(err) + "\n")
     current_app.login_manager._update_request_context_with_user()
 
+fax_provider = daconfig.get('fax provider', None) or 'clicksend'
+
 def get_clicksend_config():
     if 'clicksend' in daconfig and isinstance(daconfig['clicksend'], (list, dict)):
         the_clicksend_config = {'name': {}, 'number': {}}
@@ -1205,14 +1243,46 @@ def get_clicksend_config():
                 if 'name' in the_config:
                     the_clicksend_config['name'][the_config['name']] = the_config
             else:
-                sys.stderr.write("improper setup in twilio configuration\n")
+                sys.stderr.write("improper setup in clicksend configuration\n")
         if 'default' not in the_clicksend_config['name']:
             the_clicksend_config = None
     else:
         the_clicksend_config = None
+    #if fax_provider == 'clicksend' and the_clicksend_config is None:
+    #    sys.stderr.write("improper clicksend configuration; faxing will not be functional\n")
     return the_clicksend_config
 
 clicksend_config = get_clicksend_config()
+
+def get_telnyx_config():
+    if 'telnyx' in daconfig and isinstance(daconfig['telnyx'], (list, dict)):
+        the_telnyx_config = {'name': {}, 'number': {}}
+        if isinstance(daconfig['telnyx'], dict):
+            config_list = [daconfig['telnyx']]
+        else:
+            config_list = daconfig['telnyx']
+        for the_config in config_list:
+            if isinstance(the_config, dict) and 'app id' in the_config and 'api key' in the_config and 'number' in the_config:
+                if 'country' not in the_config:
+                    the_config['country'] = docassemble.webapp.backend.DEFAULT_COUNTRY or 'US'
+                if 'from email' not in the_config:
+                    the_config['from email'] = app.config['MAIL_DEFAULT_SENDER']
+                the_telnyx_config['number'][str(the_config['number'])] = the_config
+                if 'default' not in the_telnyx_config['name']:
+                    the_telnyx_config['name']['default'] = the_config
+                if 'name' in the_config:
+                    the_telnyx_config['name'][the_config['name']] = the_config
+            else:
+                sys.stderr.write("improper setup in twilio configuration\n")
+        if 'default' not in the_telnyx_config['name']:
+            the_telnyx_config = None
+    else:
+        the_telnyx_config = None
+    if fax_provider == 'telnyx' and the_telnyx_config is None:
+        sys.stderr.write("improper telnyx configuration; faxing will not be functional\n")
+    return the_telnyx_config
+
+telnyx_config = get_telnyx_config()
 
 def get_twilio_config():
     if 'twilio' in daconfig:
@@ -1788,6 +1858,11 @@ def encrypt_session(secret, user_code=None, filename=None):
 def substitute_secret(oldsecret, newsecret, user=None, to_convert=None):
     if user is None:
         user = current_user
+    device_id = request.cookies.get('ds', None)
+    if device_id is None:
+        device_id = random_string(16)
+    the_current_info = current_info(yaml=None, req=request, action=None, session_info=None, secret=oldsecret, device_id=device_id)
+    docassemble.base.functions.this_thread.current_info = the_current_info
     temp_user = session.get('tempuser', None)
     #logmessage("substitute_secret: " + repr(oldsecret) + " and " + repr(newsecret) + " and temp_user is " + repr(temp_user))
     if oldsecret in ('None', newsecret):
@@ -1795,6 +1870,8 @@ def substitute_secret(oldsecret, newsecret, user=None, to_convert=None):
         return newsecret
     #logmessage("substitute_secret: continuing")
     if temp_user is not None:
+        temp_user_info = dict(email=None, the_user_id='t' + str(temp_user), theid=temp_user, roles=[])
+        the_current_info['user'] = temp_user_info
         for object_entry in db.session.execute(select(GlobalObjectStorage).filter_by(user_id=user.id, encrypted=True).with_for_update()).scalars():
             try:
                 object_entry.value = encrypt_object(decrypt_object(object_entry.value, oldsecret), newsecret)
@@ -1815,6 +1892,9 @@ def substitute_secret(oldsecret, newsecret, user=None, to_convert=None):
     else:
         to_do = set(to_convert)
     for (filename, user_code) in to_do:
+        the_current_info['yaml_filename'] = filename
+        the_current_info['session'] = user_code
+        the_current_info['encrypted'] = True
         #obtain_lock(user_code, filename)
         #logmessage("substitute_secret: filename is " + str(filename) + " and key is " + str(user_code))
         for record in db.session.execute(select(SpeakList).filter_by(key=user_code, filename=filename, encrypted=True).with_for_update()).scalars():
@@ -2284,7 +2364,7 @@ def standard_html_start(interview_language=DEFAULT_LANGUAGE, debug=False, bootst
         bootstrap_part = '\n    <link href="' + url_for('static', filename='bootstrap/css/bootstrap.min.css', v=da_version, _external=external) + '" rel="stylesheet">'
     else:
         bootstrap_part = '\n    <link href="' + bootstrap_theme + '" rel="stylesheet">'
-    output = '<!DOCTYPE html>\n<html lang="' + interview_language + '">\n  <head>\n    <meta charset="utf-8">\n    <meta name="mobile-web-app-capable" content="yes">\n    <meta name="apple-mobile-web-app-capable" content="yes">\n    <meta http-equiv="X-UA-Compatible" content="IE=edge">\n    <meta name="viewport" content="width=device-width, initial-scale=1">\n    <link rel="shortcut icon" href="' + url_for('favicon', _external=external) + '">\n    <link rel="apple-touch-icon" sizes="180x180" href="' + url_for('apple_touch_icon', _external=external) + '">\n    <link rel="icon" type="image/png" href="' + url_for('favicon_md', _external=external) + '" sizes="32x32">\n    <link rel="icon" type="image/png" href="' + url_for('favicon_sm', _external=external) + '" sizes="16x16">\n    <link rel="manifest" href="' + url_for('favicon_manifest_json', _external=external) + '" crossorigin="use-credentials">\n    <link rel="mask-icon" href="' + url_for('favicon_safari_pinned_tab', _external=external) + '" color="' + daconfig.get('favicon mask color', '#698aa7') + '">\n    <meta name="theme-color" content="' + daconfig.get('favicon theme color', '#83b3dd') + '">\n    <script defer src="' + url_for('static', filename='fontawesome/js/all.min.js', v=da_version, _external=external) + '"></script>' + bootstrap_part + '\n    <link href="' + url_for('static', filename='app/bundle.css', v=da_version, _external=external) + '" rel="stylesheet">'
+    output = '<!DOCTYPE html>\n<html lang="' + interview_language + '">\n  <head>\n    <meta charset="utf-8">\n    <meta name="mobile-web-app-capable" content="yes">\n    <meta name="apple-mobile-web-app-capable" content="yes">\n    <meta http-equiv="X-UA-Compatible" content="IE=edge">\n    <meta name="viewport" content="width=device-width, initial-scale=1">\n    ' + ('<link rel="shortcut icon" href="' + url_for('favicon', _external=external, **app.config['FAVICON_PARAMS']) + '">\n    ' if app.config['USE_FAVICON'] else '') + ('<link rel="apple-touch-icon" sizes="180x180" href="' + url_for('apple_touch_icon', _external=external, **app.config['FAVICON_PARAMS']) + '">\n    ' if app.config['USE_APPLE_TOUCH_ICON'] else '') + ('<link rel="icon" type="image/png" href="' + url_for('favicon_md', _external=external, **app.config['FAVICON_PARAMS']) + '" sizes="32x32">\n    ' if app.config['USE_FAVICON_MD'] else '') + ('<link rel="icon" type="image/png" href="' + url_for('favicon_sm', _external=external, **app.config['FAVICON_PARAMS']) + '" sizes="16x16">\n    ' if app.config['USE_FAVICON_SM'] else '') + ('<link rel="manifest" href="' + url_for('favicon_site_webmanifest', _external=external, **app.config['FAVICON_PARAMS']) + '" crossorigin="use-credentials">\n    ' if app.config['USE_SITE_WEBMANIFEST'] else '') + ('<link rel="mask-icon" href="' + url_for('favicon_safari_pinned_tab', _external=external, **app.config['FAVICON_PARAMS']) + '" color="' + app.config['FAVICON_MASK_COLOR'] + '">\n    ' if app.config['USE_SAFARI_PINNED_TAB'] else '') + '<meta name="msapplication-TileColor" content="' + app.config['FAVICON_TILE_COLOR'] + '">\n    <meta name="theme-color" content="' + app.config['FAVICON_THEME_COLOR'] + '">\n    <script defer src="' + url_for('static', filename='fontawesome/js/all.min.js', v=da_version, _external=external) + '"></script>' + bootstrap_part + '\n    <link href="' + url_for('static', filename='app/bundle.css', v=da_version, _external=external) + '" rel="stylesheet">'
     if debug:
         output += '\n    <link href="' + url_for('static', filename='app/pygments.min.css', v=da_version, _external=external) + '" rel="stylesheet">'
     page_title = page_title.replace('\n', ' ').replace('"', '&quot;').strip()
@@ -2430,6 +2510,16 @@ def sub_temp_user_dict_key(temp_user_id, user_id):
 
 def sub_temp_other(user):
     if 'tempuser' in session:
+        device_id = request.cookies.get('ds', None)
+        if device_id is None:
+            device_id = random_string(16)
+        url_root = daconfig.get('url root', 'http://localhost') + daconfig.get('root', '/')
+        url = url_root + 'interview'
+        role_list = [role.name for role in user.roles]
+        if len(role_list) == 0:
+            role_list = ['user']
+        the_current_info = dict(user=dict(email=user.email, roles=role_list, the_user_id=user.id, theid=user.id, firstname=user.first_name, lastname=user.last_name, nickname=user.nickname, country=user.country, subdivisionfirst=user.subdivisionfirst, subdivisionsecond=user.subdivisionsecond, subdivisionthird=user.subdivisionthird, organization=user.organization, timezone=user.timezone, language=user.language, location=None, session_uid='admin', device_id=device_id), session=None, secret=None, yaml_filename=None, url=url, url_root=url_root, encrypted=False, action=None, interface='web', arguments={})
+        docassemble.base.functions.this_thread.current_info = the_current_info
         for chat_entry in db.session.execute(select(ChatLog).filter_by(temp_user_id=int(session['tempuser'])).with_for_update()).scalars():
             chat_entry.user_id = user.id
             chat_entry.temp_user_id = None
@@ -2439,11 +2529,10 @@ def sub_temp_other(user):
             chat_entry.temp_owner_id = None
         db.session.commit()
         keys_in_use = {}
-        for object_entry in db.session.execute(select(GlobalObjectStorage.id, GlobalObjectStorage.key).filter_by(user_id=user.id)).all():
-            if object_entry.key.startswith('da:userid:{:d}:'.format(user.id)):
-                if object_entry.key not in keys_in_use:
-                    keys_in_use[object_entry.key] = []
-                keys_in_use[object_entry.key].append(object_entry.id)
+        for object_entry in db.session.execute(select(GlobalObjectStorage.id, GlobalObjectStorage.key).filter(or_(GlobalObjectStorage.key.like('da:userid:{:d}:%'.format(user.id)), GlobalObjectStorage.key.like('da:daglobal:userid:{:d}:%'.format(user.id))))).all():
+            if object_entry.key not in keys_in_use:
+                keys_in_use[object_entry.key] = []
+            keys_in_use[object_entry.key].append(object_entry.id)
         ids_to_delete = []
         for object_entry in db.session.execute(select(GlobalObjectStorage).filter_by(temp_user_id=int(session['tempuser'])).with_for_update()).scalars():
             object_entry.user_id = user.id
@@ -2458,6 +2547,11 @@ def sub_temp_other(user):
                     object_entry.value = encrypt_object(decrypt_object(object_entry.value, str(request.cookies.get('secret', None))), session['newsecret'])
                 except Exception as err:
                     logmessage("Failure to change encryption of object " + object_entry.key + ": " + str(err))
+        for object_entry in db.session.execute(select(GlobalObjectStorage).filter(and_(GlobalObjectStorage.temp_user_id == None, GlobalObjectStorage.user_id == None, GlobalObjectStorage.key.like('da:daglobal:userid:t{:d}:%'.format(session['tempuser'])))).with_for_update()).scalars():
+            new_key = re.sub(r'^da:daglobal:userid:t{:d}:'.format(session['tempuser']), 'da:daglobal:userid:{:d}:'.format(user.id), object_entry.key)
+            object_entry.key = new_key
+            if new_key in keys_in_use:
+                ids_to_delete.extend(keys_in_use[new_key])
         for the_id in ids_to_delete:
             db.session.execute(delete(GlobalObjectStorage).filter_by(id=the_id))
         db.session.commit()
@@ -2648,12 +2742,12 @@ def navigation_bar(nav, interview, wrapper=True, inner_div_class=None, inner_div
             elif len(x) == 1:
                 #logmessage("The len is one")
                 the_key = list(x)[0]
-                test_for_valid_var(the_key)
                 value = x[the_key]
                 if isinstance(value, list):
                     subitems = value
                     the_title = the_key
                 else:
+                    test_for_valid_var(the_key)
                     the_title = value
             else:
                 raise DAError("navigation_bar: too many keys in dict.  " + str(the_sections))
@@ -2779,7 +2873,7 @@ def progress_bar(progress, interview):
         percentage = str(int(progress)) + '%'
     else:
         percentage = ''
-    return '<div class="progress mt-2"><div class="progress-bar" role="progressbar" aria-valuenow="' + str(progress) + '" aria-valuemin="0" aria-valuemax="100" style="width: ' + str(progress) + '%;">' + percentage + '</div></div>\n'
+    return '<div class="progress mt-2"><div class="progress-bar" aria-label="' + noquote(word('Interview Progress')) + '" role="progressbar" aria-valuenow="' + str(progress) + '" aria-valuemin="0" aria-valuemax="100" style="width: ' + str(progress) + '%;">' + percentage + '</div></div>\n'
 
 def get_unique_name(filename, secret):
     nowtime = datetime.datetime.utcnow()
@@ -2873,7 +2967,7 @@ def make_navbar(status, steps, show_login, chat_info, debug_mode, index_params, 
 """
         else:
             navbar += """\
-        <form style="display: inline-block" id="dabackbutton" method="POST" action=""" + json.dumps(url_for('index', **index_params)) + """><input type="hidden" name="csrf_token" value=""" + '"' + generate_csrf() + '"' + """/><input type="hidden" name="_back_one" value="1"/></form>
+        <form hidden style="display: inline-block" id="dabackbutton" method="POST" action=""" + json.dumps(url_for('index', **index_params)) + """><input type="hidden" name="csrf_token" value=""" + '"' + generate_csrf() + '"' + """/><input type="hidden" name="_back_one" value="1"/></form>
 """
     if status.title_url:
         if str(status.title_url_opens_in_other_window) == 'False':
@@ -2907,20 +3001,22 @@ def make_navbar(status, steps, show_login, chat_info, debug_mode, index_params, 
     chat_sr = word("Live chat")
     source_message = word("Information for the developer")
     if debug_mode:
-        source_button = '<li class="nav-item d-none d-md-block"><button class="btn btn-link nav-link da-no-outline" title=' + json.dumps(source_message) + ' id="dasourcetoggle" data-bs-toggle="collapse" data-bs-target="#dasource"><i class="fas fa-code"></i></button></li>'
-        source_menu_item = '<a class="dropdown-item d-block d-md-none" title=' + json.dumps(source_message) + ' id="dasourcetoggle" href="#dasource" data-bs-toggle="collapse" aria-expanded="false" aria-controls="source">' + word('Source') + '</a>'
+        source_button = '<div class="nav-item navbar-nav d-none d-md-block"><button class="btn btn-link nav-link da-no-outline" title=' + json.dumps(source_message) + ' id="dasourcetoggle" data-bs-toggle="collapse" data-bs-target="#dasource"><i class="fas fa-code"></i></button></div>'
+        source_menu_item = '<a class="dropdown-item d-block d-md-none navbar" title=' + json.dumps(source_message) + ' href="#dasource" data-bs-toggle="collapse" aria-expanded="false" aria-controls="source">' + word('Source') + '</a>'
     else:
         source_button = ''
         source_menu_item = ''
-    navbar += '        <ul class="nav navbar-nav damynavbar-right" role="tablist">' + source_button + '<li class="nav-item dainvisible" role="presentation"><button class="btn btn-link nav-link active da-no-outline" id="daquestionlabel" data-bs-toggle="tab" data-bs-target="#daquestion">' + word('Question') + '</button></li>'
+    hidden_question_button = '<li class="nav-item visually-hidden-focusable"><button class="btn btn-link nav-link active da-no-outline" id="daquestionlabel" data-bs-toggle="tab" data-bs-target="#daquestion">' + word('Question') + '</button></li>'
+    navbar += '        ' + source_button + '<ul id="nav-bar-tab-list" class="nav navbar-nav damynavbar-right" role="tablist">' + hidden_question_button
     if len(status.interviewHelpText) > 0 or (len(status.helpText) > 0 and not status.question.interview.question_help_button):
         if status.question.helptext is None or status.question.interview.question_help_button:
-            navbar += '<li class="nav-item" role="presentation"><button class="btn btn-link nav-link dahelptrigger da-no-outline" data-bs-target="#dahelp" data-bs-toggle="tab" id="dahelptoggle" title=' + json.dumps(help_message) + '>' + help_label + '</button></li>'
+            navbar += '<li class="nav-item" role="presentation"><button class="btn btn-link nav-link dahelptrigger da-no-outline" data-bs-target="#dahelp" data-bs-toggle="tab" role="tab" id="dahelptoggle" title=' + json.dumps(help_message) + '>' + help_label + '</button></li>'
         else:
-            navbar += '<li class="nav-item" role="presentation"><button class="btn btn-link nav-link dahelptrigger da-no-outline daactivetext" data-bs-target="#dahelp" data-bs-toggle="tab" id="dahelptoggle" title=' + json.dumps(extra_help_message) + '>' + help_label + ' <i class="fas fa-star"></i></button></li>'
+            navbar += '<li class="nav-item" role="presentation"><button class="btn btn-link nav-link dahelptrigger da-no-outline daactivetext" data-bs-target="#dahelp" data-bs-toggle="tab" role="tab" id="dahelptoggle" title=' + json.dumps(extra_help_message) + '>' + help_label + ' <i class="fas fa-star"></i></button></li>'
     else:
-        navbar += '<li class="nav-item dainvisible" role="presentation"><button class="btn btn-link nav-link dahelptrigger da-no-outline" id="dahelptoggle" data-bs-target="#dahelp" data-bs-toggle="tab">' + word('Help') + '</button></li>'
-    navbar += '<li class="nav-item dainvisible" id="daPhoneAvailable"><button data-bs-target="#dahelp" data-bs-toggle="tab" title=' + json.dumps(phone_message) + ' class="btn btn-link nav-link dapointer dahelptrigger da-no-outline"><i class="fas fa-phone da-chat-active"></i><span class="visually-hidden">' + phone_sr + '</span></button></li><li class="nav-item dainvisible" id="daChatAvailable"><button data-bs-target="#dahelp" data-bs-toggle="tab" class="btn btn-link nav-link dapointer dahelptrigger da-no-outline"><i class="fas fa-comment-alt"></i><span class="visually-hidden">' + chat_sr + '</span></button></li></ul>'
+        navbar += '<li hidden class="nav-item dainvisible" role="presentation"><button class="btn btn-link nav-link dahelptrigger da-no-outline" id="dahelptoggle" data-bs-target="#dahelp" data-bs-toggle="tab" role="tab">' + word('Help') + '</button></li>'
+    navbar += '<li hidden class="nav-item dainvisible" id="daPhoneAvailable"><button data-bs-target="#dahelp" data-bs-toggle="tab" role="tab" title=' + json.dumps(phone_message) + ' class="btn btn-link nav-link dapointer dahelptrigger da-no-outline"><i class="fas fa-phone da-chat-active"></i><span class="visually-hidden">' + phone_sr + '</span></button></li>' + \
+              '<li class="nav-item dainvisible" id="daChatAvailable"><button data-bs-target="#dahelp" data-bs-toggle="tab" class="btn btn-link nav-link dapointer dahelptrigger da-no-outline"><i class="fas fa-comment-alt"></i><span class="visually-hidden">' + chat_sr + '</span></button></li></ul>'
     navbar += """
         <button id="damobile-toggler" type="button" class="navbar-toggler ms-auto" data-bs-toggle="collapse" data-bs-target="#danavbar-collapse">
           <span class="navbar-toggler-icon"></span><span class="visually-hidden">""" + word("Display the menu") + """</span>
@@ -2999,9 +3095,10 @@ def make_navbar(status, steps, show_login, chat_info, debug_mode, index_params, 
                         if app.config['ENABLE_PLAYGROUND']:
                             navbar +='<a class="dropdown-item" href="' + url_for('playground_page') + '">' + word('Playground') + '</a>'
                         navbar +='<a class="dropdown-item" href="' + url_for('utilities') + '">' + word('Utilities') + '</a>'
-                        if current_user.has_role('admin'):
-                            navbar +='<a class="dropdown-item" href="' + url_for('user_list') + '">' + word('User List') + '</a>'
-                            navbar +='<a class="dropdown-item" href="' + url_for('config_page') + '">' + word('Configuration') + '</a>'
+                    if current_user.has_role('admin', 'advocate') or current_user.can_do('access_user_info'):
+                        navbar +='<a class="dropdown-item" href="' + url_for('user_list') + '">' + word('User List') + '</a>'
+                    if current_user.has_role('admin'):
+                        navbar +='<a class="dropdown-item" href="' + url_for('config_page') + '">' + word('Configuration') + '</a>'
                     if app.config['SHOW_DISPATCH']:
                         navbar += '<a class="dropdown-item" href="' + url_for('interview_start') + '">' + word('Available Interviews') + '</a>'
                     for item in app.config['ADMIN_INTERVIEWS']:
@@ -3038,15 +3135,7 @@ def make_navbar(status, steps, show_login, chat_info, debug_mode, index_params, 
     return navbar
 
 def exit_href(status):
-    exit_link = status.exit_link
-    if exit_link == 'logout':
-        if docassemble.base.functions.this_thread.current_info['user']['is_authenticated']:
-            exit_link = 'user.logout'
-        else:
-            exit_link = 'leave'
-    if status.exit_url:
-        return url_for(exit_link, next=status.exit_url)
-    return url_for(exit_link)
+    return docassemble.base.functions.url_action('_da_exit')
 
 def delete_session_for_interview(i=None):
     if i is not None:
@@ -3242,7 +3331,7 @@ def install_pip_package(packagename, limitation):
     db.session.commit()
 
 def get_package_info(exclude_core=False):
-    is_admin = bool(current_user.has_role('admin'))
+    is_admin = current_user.has_role('admin')
     package_list = []
     package_auth = {}
     seen = {}
@@ -3259,12 +3348,12 @@ def get_package_info(exclude_core=False):
         if package.type is not None:
             can_update = not bool(package.type == 'zip')
             can_uninstall = bool(is_admin or (package.id in package_auth and current_user.id in package_auth[package.id]))
-            if package.core or package.name in ('docassemble', 'docassemble.base', 'docassemble.webapp'):
-                can_uninstall = False
-                can_update = is_admin
-            if exclude_core and package.name in ('docassemble', 'docassemble.base', 'docassemble.webapp'):
+            if package.name in system_packages:
                 can_uninstall = False
                 can_update = False
+            if package.name == 'docassemble.webapp':
+                can_uninstall = False
+                can_update = is_admin
             package_list.append(Object(package=package, can_update=can_update, can_uninstall=can_uninstall))
     return package_list, package_auth
 
@@ -3622,7 +3711,7 @@ def get_vars_in_use(interview, interview_status, debug_mode=False, return_json=F
             name_info[var]['doc'] += '<br>'
         else:
             name_info[var]['doc'] = ''
-        name_info[var]['doc'] += "<a target='_blank' href='" + documentation_dict[var] + "'>" + view_doc_text + "</a>"
+        name_info[var]['doc'] += "<a target='_blank' href='" + DOCUMENTATION_BASE + documentation_dict[var] + "'>" + view_doc_text + "</a>"
     for var in name_info:
         if 'methods' in name_info[var]:
             for method in name_info[var]['methods']:
@@ -3632,7 +3721,7 @@ def get_vars_in_use(interview, interview_status, debug_mode=False, return_json=F
                     else:
                         method['doc'] += '<br>'
                     if view_doc_text not in method['doc']:
-                        method['doc'] += "<a target='_blank' href='" + documentation_dict[var + '.' + method['name']] + "'>" + view_doc_text + "</a>"
+                        method['doc'] += "<a target='_blank' href='" + DOCUMENTATION_BASE + documentation_dict[var + '.' + method['name']] + "'>" + view_doc_text + "</a>"
     content = ''
     if has_error and show_messages:
         error_style = 'danger'
@@ -3949,6 +4038,9 @@ def get_vars_in_use(interview, interview_status, debug_mode=False, return_json=F
             vocab_dict[item] = base_name_info.get('insert', item)
     return content, sorted(vocab_set), vocab_dict
 
+def ocr_google_in_background(image_file, raw_result, user_code):
+    return docassemble.webapp.worker.ocr_google.delay(image_file, raw_result, user_code)
+
 def make_png_for_pdf(doc, prefix, page=None):
     if prefix == 'page':
         resolution = PNG_RESOLUTION
@@ -4052,6 +4144,7 @@ def restart_on(host):
     return True
 
 def restart_all():
+    logmessage("restarting all")
     for interview_path in [x.decode() for x in r.keys('da:interviewsource:*')]:
         r.delete(interview_path)
     restart_others()
@@ -4118,7 +4211,7 @@ def get_requester_ip(req):
 def current_info(yaml=None, req=None, action=None, location=None, interface='web', session_info=None, secret=None, device_id=None, session_uid=None):
     #logmessage("interface is " + str(interface))
     if current_user.is_authenticated and not current_user.is_anonymous:
-        role_list = [role.name for role in current_user.roles]
+        role_list = [str(role.name) for role in current_user.roles]
         if len(role_list) == 0:
             role_list = ['user']
         ext = dict(email=current_user.email, roles=role_list, the_user_id=current_user.id, theid=current_user.id, firstname=current_user.first_name, lastname=current_user.last_name, bnpp_roles=current_user.bnpp_roles, social_id=current_user.social_id, nickname=current_user.nickname, country=current_user.country, subdivisionfirst=current_user.subdivisionfirst, subdivisionsecond=current_user.subdivisionsecond, subdivisionthird=current_user.subdivisionthird, organization=current_user.organization, timezone=current_user.timezone, language=current_user.language)
@@ -4160,7 +4253,7 @@ def current_info(yaml=None, req=None, action=None, location=None, interface='web
     else:
         user_code = None
         encrypted = True
-    return_val = {'session': user_code, 'secret': secret, 'yaml_filename': yaml, 'interface': interface, 'url': url, 'url_root': url_root, 'encrypted': encrypted, 'user': {'is_anonymous': current_user.is_anonymous, 'is_authenticated': current_user.is_authenticated, 'session_uid': session_uid, 'device_id': device_id}, 'headers': headers, 'clientip': clientip, 'method': method}
+    return_val = {'session': user_code, 'secret': secret, 'yaml_filename': yaml, 'interface': interface, 'url': url, 'url_root': url_root, 'encrypted': encrypted, 'user': {'is_anonymous': bool(current_user.is_anonymous), 'is_authenticated': bool(current_user.is_authenticated), 'session_uid': session_uid, 'device_id': device_id}, 'headers': headers, 'clientip': clientip, 'method': method}
     if action is not None:
         #logmessage("current_info: setting an action " + repr(action))
         return_val.update(action)
@@ -4208,16 +4301,16 @@ def call_sync():
 
 def formatted_current_time():
     if current_user.timezone:
-        the_timezone = pytz.timezone(current_user.timezone)
+        the_timezone = zoneinfo.ZoneInfo(current_user.timezone)
     else:
-        the_timezone = pytz.timezone(get_default_timezone())
+        the_timezone = zoneinfo.ZoneInfo(get_default_timezone())
     return datetime.datetime.utcnow().replace(tzinfo=tz.tzutc()).astimezone(the_timezone).strftime('%H:%M:%S %Z')
 
 def formatted_current_date():
     if current_user.timezone:
-        the_timezone = pytz.timezone(current_user.timezone)
+        the_timezone = zoneinfo.ZoneInfo(current_user.timezone)
     else:
-        the_timezone = pytz.timezone(get_default_timezone())
+        the_timezone = zoneinfo.ZoneInfo(get_default_timezone())
     return datetime.datetime.utcnow().replace(tzinfo=tz.tzutc()).astimezone(the_timezone).strftime("%Y-%m-%d")
 
 class Object:
@@ -4524,6 +4617,11 @@ def run_temp():
     code = request.args.get('c', None)
     if code is None:
         abort(403)
+    ua_string = request.headers.get('User-Agent', None)
+    if ua_string is not None:
+        response = ua_parse(ua_string)
+        if response.device.brand == 'Spider':
+            return render_template_string('')
     the_key = 'da:temporary_url:' + str(code)
     data = r.get(the_key)
     if data is None:
@@ -4540,6 +4638,11 @@ def run_temp():
 
 @app.route('/user/autologin', methods=['GET'])
 def auto_login():
+    ua_string = request.headers.get('User-Agent', None)
+    if ua_string is not None:
+        response = ua_parse(ua_string)
+        if response.device.brand == 'Spider':
+            return render_template_string('')
     if 'key' not in request.args or len(request.args['key']) != 40:
         abort(403)
     code = str(request.args['key'][16:40])
@@ -4743,7 +4846,7 @@ def phone_login_verify():
                         to_convert.append((filename, info['uid']))
                         save_user_dict_key(info['uid'], filename, priors=True, user=user)
                         update_session(filename, key_logged=True)
-            secret = substitute_secret(str(request.cookies.get('secret', None)), pad_to_16(MD5Hash(data=social_id).hexdigest()), to_convert=to_convert)
+            secret = substitute_secret(str(request.cookies.get('secret', None)), pad_to_16(MD5Hash(data=social_id).hexdigest()), user=user, to_convert=to_convert)
             response = redirect(url_for('interview_list', from_login='1'))
             response.set_cookie('secret', secret, httponly=True, secure=app.config['SESSION_COOKIE_SECURE'], samesite=app.config['SESSION_COOKIE_SAMESITE'])
             return response
@@ -5305,10 +5408,7 @@ def post_sign_in():
 
 @app.route("/leave", methods=['GET'])
 def leave():
-    if 'language' in session:
-        the_exit_page = request.args.get('next', exit_page)
-    else:
-        the_exit_page = exit_page
+    the_exit_page = exit_page
     # if current_user.is_authenticated:
     #     flask_user.signals.user_logged_out.send(current_app._get_current_object(), user=current_user)
     #     logout_user()
@@ -5338,6 +5438,7 @@ def restart_session():
         secret = request.cookies.get('secret', None)
     if secret is not None:
         secret = str(secret)
+    docassemble.base.functions.this_thread.current_info = current_info(yaml=yaml_filename, req=request, interface='vars', device_id=request.cookies.get('ds', None), session_uid=current_user.email)
     try:
         steps, user_dict, is_encrypted = fetch_user_dict(session_id, yaml_filename, secret=secret)
     except:
@@ -5358,10 +5459,7 @@ def new_session():
 
 @app.route("/exit", methods=['GET'])
 def exit_endpoint():
-    if 'language' in session:
-        the_exit_page = request.args.get('next', exit_page)
-    else:
-        the_exit_page = exit_page
+    the_exit_page = exit_page
     yaml_filename = request.args.get('i', None)
     if yaml_filename is not None:
         session_info = get_session(yaml_filename)
@@ -5373,10 +5471,7 @@ def exit_endpoint():
 
 @app.route("/exit_logout", methods=['GET'])
 def exit_logout():
-    if 'language' in session:
-        the_exit_page = request.args.get('next', exit_page)
-    else:
-        the_exit_page = exit_page
+    the_exit_page = exit_page
     yaml_filename = request.args.get('i', guess_yaml_filename())
     if yaml_filename is not None:
         session_info = get_session(yaml_filename)
@@ -5447,7 +5542,7 @@ class ChatPartners:
 def get_current_chat_log(yaml_filename, session_id, secret, utc=True, timezone=None):
     if timezone is None:
         timezone = get_default_timezone()
-    timezone = pytz.timezone(timezone)
+    timezone = zoneinfo.ZoneInfo(timezone)
     output = []
     if yaml_filename is None or session_id is None:
         return output
@@ -5526,11 +5621,14 @@ def checkin():
         auth_user_id = current_user.id
         the_user_id = current_user.id
         temp_user_id = None
+    the_current_info = current_info(yaml=yaml_filename, req=request, action=None, session_info=session_info, secret=secret, device_id=request.cookies.get('ds', None))
+    docassemble.base.functions.this_thread.current_info = the_current_info
     if request.form.get('action', None) == 'chat_log':
         #sys.stderr.write("checkin: fetch_user_dict1\n")
         steps, user_dict, is_encrypted = fetch_user_dict(session_id, yaml_filename, secret=secret)
         if user_dict is None or user_dict['_internal']['livehelp']['availability'] != 'available':
             return jsonify_with_cache(success=False)
+        the_current_info['encrypted'] == is_encrypted
         messages = get_chat_log(user_dict['_internal']['livehelp']['mode'], yaml_filename, session_id, auth_user_id, temp_user_id, secret, auth_user_id, temp_user_id)
         return jsonify_with_cache(success=True, messages=messages)
     if request.form.get('action', None) == 'checkin':
@@ -5547,8 +5645,9 @@ def checkin():
             obtain_lock(session_id, yaml_filename)
             #sys.stderr.write("checkin: fetch_user_dict2\n")
             steps, user_dict, is_encrypted = fetch_user_dict(session_id, yaml_filename, secret=secret)
+            the_current_info['encrypted'] == is_encrypted
             interview = docassemble.base.interview_cache.get_interview(yaml_filename)
-            interview_status = docassemble.base.parse.InterviewStatus(current_info=current_info(yaml=yaml_filename, req=request, action=None, session_info=session_info, secret=secret, device_id=request.cookies.get('ds', None)))
+            interview_status = docassemble.base.parse.InterviewStatus(current_info=the_current_info)
             interview_status.checkin = True
             interview.assemble(user_dict, interview_status=interview_status)
             interview_status.current_info.update(dict(action=do_action, arguments=parameters))
@@ -5606,6 +5705,7 @@ def checkin():
         if str(chatstatus) != 'off': #in ('waiting', 'standby', 'ringing', 'ready', 'on', 'hangup', 'observeonly'):
             #sys.stderr.write("checkin: fetch_user_dict3\n")
             steps, user_dict, is_encrypted = fetch_user_dict(session_id, yaml_filename, secret=secret)
+            the_current_info['encrypted'] == is_encrypted
             if user_dict is None:
                 sys.stderr.write("checkin: error accessing dictionary for %s and %s" % (session_id, yaml_filename))
                 return jsonify_with_cache(success=False)
@@ -5853,6 +5953,7 @@ def get_variables():
     if session_id is None or yaml_filename is None:
         return jsonify(success=False)
     #sys.stderr.write("get_variables: fetch_user_dict\n")
+    docassemble.base.functions.this_thread.current_info = current_info(yaml=yaml_filename, req=request, interface='vars', device_id=request.cookies.get('ds', None))
     try:
         steps, user_dict, is_encrypted = fetch_user_dict(session_id, yaml_filename, secret=secret)
         assert user_dict is not None
@@ -5907,7 +6008,9 @@ def test_embed():
     yaml_filename = request.args.get('i', final_default_yaml_filename)
     user_dict = fresh_dictionary()
     interview = docassemble.base.interview_cache.get_interview(yaml_filename)
-    interview_status = docassemble.base.parse.InterviewStatus(current_info=current_info(yaml=yaml_filename, req=request, action=None, location=None, interface='web', device_id=request.cookies.get('ds', None)))
+    the_current_info = current_info(yaml=yaml_filename, req=request, action=None, location=None, interface='web', device_id=request.cookies.get('ds', None))
+    docassemble.base.functions.this_thread.current_info = the_current_info
+    interview_status = docassemble.base.parse.InterviewStatus(current_info=the_current_info)
     try:
         interview.assemble(user_dict, interview_status)
     except:
@@ -6016,6 +6119,15 @@ def refresh_or_continue(interview, post_data):
         pass
     return return_val
 
+def update_current_info_with_session_info(the_current_info, session_info):
+    if session_info is not None:
+        user_code = session_info['uid']
+        encrypted = session_info['encrypted']
+    else:
+        user_code = None
+        encrypted = True
+    the_current_info.update({'session': user_code, 'encrypted': encrypted})
+
 @app.route(index_path, methods=['POST', 'GET'])
 def index(action_argument=None, refer=None):
     import pprint
@@ -6103,11 +6215,38 @@ def index(action_argument=None, refer=None):
             sys.stderr.write("Redirecting to dispatch page because no YAML filename provided.\n")
             return redirect(url_for('interview_start'))
         yaml_filename = final_default_yaml_filename
+    action = None
+    if '_action' in request.form and 'in error' not in session:
+        action = tidy_action(json.loads(myb64unquote(request.form['_action'])))
+        no_defs = True
+    elif 'action' in request.args and 'in error' not in session:
+        action = tidy_action(json.loads(myb64unquote(request.args['action'])))
+        no_defs = True
+    elif action_argument:
+        action = tidy_action(action_argument)
+        no_defs = False
+    else:
+        no_defs = False
+    disregard_input = not bool(request.method == 'POST' and not no_defs)
+    if disregard_input:
+        post_data = {}
+    else:
+        post_data = request.form.copy()
+    if current_user.is_anonymous:
+        the_user_id = 't' + str(session['tempuser'])
+    else:
+        the_user_id = current_user.id
+    if '_track_location' in post_data and post_data['_track_location']:
+        the_location = json.loads(post_data['_track_location'])
+    else:
+        the_location = None
     session_info = get_session(yaml_filename)
     session_parameter = request.args.get('session', None)
+    the_current_info = current_info(yaml=yaml_filename, req=request, action=None, location=the_location, interface=the_interface, session_info=session_info, secret=secret, device_id=device_id)
+    docassemble.base.functions.this_thread.current_info = the_current_info
     if session_info is None or reset_interview or new_interview:
         was_new = True
-        if (PREVENT_DEMO) and (yaml_filename.startswith('docassemble.base:') or yaml_filename.startswith('docassemble.demo:')) and (current_user.is_anonymous or not current_user.has_role('admin', 'developer')):
+        if (PREVENT_DEMO) and (yaml_filename.startswith('docassemble.base:') or yaml_filename.startswith('docassemble.demo:')) and (current_user.is_anonymous or not (current_user.has_role('admin', 'developer') or current_user.can_do('demo_interviews'))):
             raise DAError(word("Not authorized"), code=403)
         if current_user.is_anonymous and not daconfig.get('allow anonymous access', True):
             sys.stderr.write("Redirecting to login because no anonymous access allowed.\n")
@@ -6117,6 +6256,7 @@ def index(action_argument=None, refer=None):
                 raise DAError(word("Not authorized"), code=403)
         else:
             yaml_filename = re.sub(r':([^\/]+)$', r':data/questions/\1', yaml_filename)
+            docassemble.base.functions.this_thread.current_info['yaml_filename'] = yaml_filename
         show_flash = False
         interview = docassemble.base.interview_cache.get_interview(yaml_filename)
         if session_info is None and request.args.get('from_list', None) is None and not yaml_filename.startswith("docassemble.playground") and not yaml_filename.startswith("docassemble.base") and not yaml_filename.startswith("docassemble.demo") and SHOW_LOGIN and not new_interview and len(session['sessions']) > 0:
@@ -6149,6 +6289,8 @@ def index(action_argument=None, refer=None):
                             reset_user_dict(session_id, yaml_filename)
                         else:
                             break
+                        the_current_info['session'] = session_id
+                        the_current_info['encrypted'] = encrypted
                     reset_interview = 1
             if current_user.is_anonymous:
                 if (not interview.allowed_to_initiate(is_anonymous=True)) or (not interview.allowed_to_access(is_anonymous=True)):
@@ -6173,6 +6315,7 @@ def index(action_argument=None, refer=None):
                 release_lock(user_code, yaml_filename)
                 need_to_reset = True
             session_info = get_session(yaml_filename)
+            update_current_info_with_session_info(the_current_info, session_info)
         else:
             unique_sessions = interview.consolidated_metadata.get('sessions are unique', False)
             if unique_sessions is not False and not current_user.is_authenticated:
@@ -6200,9 +6343,11 @@ def index(action_argument=None, refer=None):
                 save_user_dict(user_code, user_dict, yaml_filename, secret=secret)
                 release_lock(user_code, yaml_filename)
                 session_info = get_session(yaml_filename)
+                update_current_info_with_session_info(the_current_info, session_info)
                 need_to_reset = True
             else:
                 session_info = update_session(yaml_filename, uid=session_parameter)
+                update_current_info_with_session_info(the_current_info, session_info)
                 need_to_reset = True
             if show_flash:
                 if current_user.is_authenticated:
@@ -6217,6 +6362,7 @@ def index(action_argument=None, refer=None):
         was_new = False
         if session_parameter is not None and not need_to_reset:
             session_info = update_session(yaml_filename, uid=session_parameter)
+            update_current_info_with_session_info(the_current_info, session_info)
             need_to_reset = True
     user_code = session_info['uid']
     encrypted = session_info['encrypted']
@@ -6259,7 +6405,6 @@ def index(action_argument=None, refer=None):
     if encrypted != is_encrypted:
         update_session(yaml_filename, encrypted=is_encrypted)
         encrypted = is_encrypted
-    action = None
     if user_dict.get('multi_user', False) is True and encrypted is True:
         encrypted = False
         update_session(yaml_filename, encrypted=encrypted)
@@ -6268,20 +6413,10 @@ def index(action_argument=None, refer=None):
         encrypt_session(secret, user_code=user_code, filename=yaml_filename)
         encrypted = True
         update_session(yaml_filename, encrypted=encrypted)
+    the_current_info['encrypted'] = encrypted
     if not session_info['key_logged']:
         save_user_dict_key(user_code, yaml_filename)
         update_session(yaml_filename, key_logged=True)
-    if '_action' in request.form and 'in error' not in session:
-        action = tidy_action(json.loads(myb64unquote(request.form['_action'])))
-        no_defs = True
-    elif 'action' in request.args and 'in error' not in session:
-        action = tidy_action(json.loads(myb64unquote(request.args['action'])))
-        no_defs = True
-    elif action_argument:
-        action = tidy_action(action_argument)
-        no_defs = False
-    else:
-        no_defs = False
     url_args_changed = False
     if len(request.args) > 0:
         for argname in request.args:
@@ -6305,21 +6440,8 @@ def index(action_argument=None, refer=None):
         response_wrapper = make_response_wrapper(set_cookie, secret, set_device_id, device_id, expire_visitor_secret)
     else:
         response_wrapper = None
-    disregard_input = not bool(request.method == 'POST' and not no_defs)
-    if disregard_input:
-        post_data = {}
-    else:
-        post_data = request.form.copy()
-    if current_user.is_anonymous:
-        the_user_id = 't' + str(session['tempuser'])
-    else:
-        the_user_id = current_user.id
-    if '_track_location' in post_data and post_data['_track_location']:
-        the_location = json.loads(post_data['_track_location'])
-    else:
-        the_location = None
     interview = docassemble.base.interview_cache.get_interview(yaml_filename)
-    interview_status = docassemble.base.parse.InterviewStatus(current_info=current_info(yaml=yaml_filename, req=request, action=None, location=the_location, interface=the_interface, session_info=session_info, secret=secret, device_id=device_id), tracker=user_dict['_internal']['tracker'])
+    interview_status = docassemble.base.parse.InterviewStatus(current_info=the_current_info, tracker=user_dict['_internal']['tracker'])
     old_user_dict = None
     if '_back_one' in post_data and steps > 1:
         ok_to_go_back = True
@@ -6328,13 +6450,16 @@ def index(action_argument=None, refer=None):
             if not interview_status.question.can_go_back:
                 ok_to_go_back = False
         if ok_to_go_back:
+            action = None
+            the_current_info = current_info(yaml=yaml_filename, req=request, action=action, location=the_location, interface=the_interface, session_info=session_info, secret=secret, device_id=device_id)
+            docassemble.base.functions.this_thread.current_info = the_current_info
             old_user_dict = user_dict
             steps, user_dict, is_encrypted = fetch_previous_user_dict(user_code, yaml_filename, secret)
             if encrypted != is_encrypted:
                 encrypted = is_encrypted
                 update_session(yaml_filename, encrypted=encrypted)
-            action = None
-            interview_status = docassemble.base.parse.InterviewStatus(current_info=current_info(yaml=yaml_filename, req=request, action=action, location=the_location, interface=the_interface, session_info=session_info, secret=secret, device_id=device_id), tracker=user_dict['_internal']['tracker'])
+            the_current_info['encrypted'] = encrypted
+            interview_status = docassemble.base.parse.InterviewStatus(current_info=the_current_info, tracker=user_dict['_internal']['tracker'])
             post_data = {}
             disregard_input = True
     known_varnames = {}
@@ -6538,7 +6663,7 @@ def index(action_argument=None, refer=None):
                     file_formats.append('raw')
                 for the_format in file_formats:
                     if the_format == 'raw':
-                        attachment_info.append({'filename': str(the_attachment['filename']) + '.' + the_attachment['raw'], 'number': the_attachment['file'][the_format], 'mimetype': the_attachment['mimetype'][the_format], 'attachment': the_attachment})
+                        attachment_info.append({'filename': str(the_attachment['filename']) + the_attachment['raw'], 'number': the_attachment['file'][the_format], 'mimetype': the_attachment['mimetype'][the_format], 'attachment': the_attachment})
                     else:
                         attachment_info.append({'filename': str(the_attachment['filename']) + '.' + str(docassemble.base.parse.extension_of_doc_format[the_format]), 'number': the_attachment['file'][the_format], 'mimetype': the_attachment['mimetype'][the_format], 'attachment': the_attachment})
                     attached_file_count += 1
@@ -6853,6 +6978,7 @@ def index(action_argument=None, refer=None):
                                 field_error[orig_key] = word("You need to enter a valid date.")
                             else:
                                 field_error[orig_key] = word("You need to enter a valid date and time.")
+                            new_values[key] = repr(data)
                             continue
                         test_data = data
                         is_date = True
@@ -6870,6 +6996,7 @@ def index(action_argument=None, refer=None):
                         except:
                             validated = False
                             field_error[orig_key] = word("You need to enter a valid time.")
+                            new_values[key] = repr(data)
                             continue
                         test_data = data
                         is_date = True
@@ -6886,6 +7013,7 @@ def index(action_argument=None, refer=None):
                 except:
                     validated = False
                     field_error[orig_key] = word("You need to enter a valid number.")
+                    new_values[key] = repr(data)
                     continue
                 data = "int(" + repr(data) + ")"
             elif known_datatypes[real_key] in ('ml', 'mlarea'):
@@ -6900,6 +7028,7 @@ def index(action_argument=None, refer=None):
                 except:
                     validated = False
                     field_error[orig_key] = word("You need to enter a valid number.")
+                    new_values[key] = repr(data)
                     continue
                 data = "float(" + repr(data) + ")"
             elif known_datatypes[real_key] in ('object', 'object_radio'):
@@ -6938,6 +7067,7 @@ def index(action_argument=None, refer=None):
                     except DAValidationError as err:
                         validated = False
                         field_error[orig_key] = word(err)
+                        new_values[key] = repr(data)
                         continue
                     test_data = info['class'].transform(data)
                     if is_object:
@@ -6993,6 +7123,7 @@ def index(action_argument=None, refer=None):
                                 field_error[orig_key] = word("You need to enter a valid date.")
                             else:
                                 field_error[orig_key] = word("You need to enter a valid date and time.")
+                            new_values[key] = repr(data)
                             continue
                         test_data = data
                         is_date = True
@@ -7010,6 +7141,7 @@ def index(action_argument=None, refer=None):
                         except:
                             validated = False
                             field_error[orig_key] = word("You need to enter a valid time.")
+                            new_values[key] = repr(data)
                             continue
                         test_data = data
                         is_date = True
@@ -7055,6 +7187,7 @@ def index(action_argument=None, refer=None):
                     except DAValidationError as err:
                         validated = False
                         field_error[orig_key] = word(str(err))
+                        new_values[key] = repr(data)
                         continue
                     test_data = info['class'].transform(data)
                     data = repr(test_data)
@@ -7229,6 +7362,7 @@ def index(action_argument=None, refer=None):
                     error_messages.append(("error", "Error: " + str(errMess)))
                 if should_assemble_now and not already_assembled:
                     interview.assemble(user_dict, interview_status)
+                    already_assembled = True
                 for orig_file_field_raw in file_fields:
                     if orig_file_field_raw in known_varnames:
                         orig_file_field_raw = known_varnames[orig_file_field_raw]
@@ -7380,6 +7514,7 @@ def index(action_argument=None, refer=None):
                     error_messages.append(("error", "Error: " + str(errMess)))
                 if not already_assembled:
                     interview.assemble(user_dict, interview_status)
+                    already_assembled = True
                 for orig_file_field_raw in file_fields:
                     if orig_file_field_raw not in raw_visible_fields:
                         continue
@@ -7560,7 +7695,12 @@ def index(action_argument=None, refer=None):
                 steps, user_dict, is_encrypted = fetch_user_dict(user_code, yaml_filename, secret=secret)
     if validated:
         for var_name in vars_set:
-            if var_name in interview.invalidation_todo or var_name in interview.onchange_todo:
+            if var_name in interview.invalidation_todo:
+                interview.invalidate_dependencies(var_name, user_dict, old_values)
+            elif var_name in interview.onchange_todo:
+                if not already_assembled:
+                    interview.assemble(user_dict, interview_status)
+                    already_assembled = True
                 interview.invalidate_dependencies(var_name, user_dict, old_values)
             try:
                 del user_dict['_internal']['dirty'][var_name]
@@ -7585,7 +7725,9 @@ def index(action_argument=None, refer=None):
         user_dict = fresh_dictionary()
         user_dict['url_args'] = url_args
         user_dict['_internal']['referer'] = referer
-        interview_status = docassemble.base.parse.InterviewStatus(current_info=current_info(yaml=yaml_filename, req=request, interface=the_interface, session_info=session_info, secret=secret, device_id=device_id))
+        the_current_info = current_info(yaml=yaml_filename, req=request, interface=the_interface, session_info=session_info, secret=secret, device_id=device_id)
+        docassemble.base.functions.this_thread.current_info = the_current_info
+        interview_status = docassemble.base.parse.InterviewStatus(current_info=the_current_info)
         reset_user_dict(user_code, yaml_filename)
         if 'visitor_secret' not in request.cookies:
             save_user_dict_key(user_code, yaml_filename)
@@ -7597,7 +7739,9 @@ def index(action_argument=None, refer=None):
         manual_checkout(manual_filename=yaml_filename)
         url_args = user_dict['url_args']
         referer = user_dict['_internal'].get('referer', None)
-        interview_status = docassemble.base.parse.InterviewStatus(current_info=current_info(yaml=yaml_filename, req=request, interface=the_interface, session_info=session_info, secret=secret, device_id=device_id))
+        the_current_info = current_info(yaml=yaml_filename, req=request, interface=the_interface, session_info=session_info, secret=secret, device_id=device_id)
+        docassemble.base.functions.this_thread.current_info = the_current_info
+        interview_status = docassemble.base.parse.InterviewStatus(current_info=the_current_info)
         release_lock(user_code, yaml_filename)
         user_code, user_dict = reset_session(yaml_filename, secret)
         user_dict['url_args'] = url_args
@@ -7608,8 +7752,12 @@ def index(action_argument=None, refer=None):
         steps = 1
         changed = False
         interview.assemble(user_dict, interview_status)
-    title_info = interview_status.question.interview.get_title(user_dict, status=interview_status, converter=lambda content, part: title_converter(content, part, interview_status))
+    title_info = interview.get_title(user_dict, status=interview_status, converter=lambda content, part: title_converter(content, part, interview_status))
     save_status = docassemble.base.functions.this_thread.misc.get('save_status', 'new')
+    if interview_status.question.question_type == "interview_exit":
+        exit_link = title_info.get('exit link', 'exit')
+        if exit_link in ('exit', 'leave', 'logout'):
+            interview_status.question.question_type = exit_link
     if interview_status.question.question_type == "exit":
         manual_checkout(manual_filename=yaml_filename)
         reset_user_dict(user_code, yaml_filename)
@@ -7687,12 +7835,12 @@ def index(action_argument=None, refer=None):
         if response_wrapper:
             response_wrapper(response)
         return response
-    if interview_status.question.interview.use_progress_bar and interview_status.question.progress is not None:
+    if interview.use_progress_bar and interview_status.question.progress is not None:
         if interview_status.question.progress == -1:
             user_dict['_internal']['progress'] = None
         elif user_dict['_internal']['progress'] is None or interview_status.question.interview.options.get('strict progress', False) or interview_status.question.progress > user_dict['_internal']['progress']:
             user_dict['_internal']['progress'] = interview_status.question.progress
-    if interview_status.question.interview.use_navigation and interview_status.question.section is not None:
+    if interview.use_navigation and interview_status.question.section is not None:
         user_dict['nav'].set_section(interview_status.question.section)
     if interview_status.question.question_type == "response":
         if is_ajax:
@@ -7755,9 +7903,9 @@ def index(action_argument=None, refer=None):
         if save_status == 'new':
             steps += 1
             user_dict['_internal']['steps'] = steps
-    if changed and interview_status.question.interview.use_progress_bar and interview_status.question.progress is None and save_status == 'new':
+    if changed and interview.use_progress_bar and interview_status.question.progress is None and save_status == 'new':
         advance_progress(user_dict, interview)
-    title_info = interview_status.question.interview.get_title(user_dict, status=interview_status, converter=lambda content, part: title_converter(content, part, interview_status))
+    title_info = interview.get_title(user_dict, status=interview_status, converter=lambda content, part: title_converter(content, part, interview_status))
     if save_status != 'ignore':
         if save_status == 'overwrite':
             changed = False
@@ -7797,7 +7945,7 @@ def index(action_argument=None, refer=None):
     else:
         question_id = None
     question_id_dict = dict(id=question_id)
-    if interview_status.question.interview.options.get('analytics on', True):
+    if interview.options.get('analytics on', True):
         if 'segment' in interview_status.extras:
             question_id_dict['segment'] = interview_status.extras['segment']
         if 'ga_id' in interview_status.extras:
@@ -7808,8 +7956,8 @@ def index(action_argument=None, refer=None):
         scripts = standard_scripts(interview_language=current_language) + additional_scripts(interview_status, yaml_filename)
         if is_js:
             append_javascript += additional_scripts(interview_status, yaml_filename, as_javascript=True)
-        if 'javascript' in interview_status.question.interview.external_files:
-            for packageref, fileref in interview_status.question.interview.external_files['javascript']:
+        if 'javascript' in interview.external_files:
+            for packageref, fileref in interview.external_files['javascript']:
                 the_url = get_url_from_file_reference(fileref, _package=packageref)
                 if the_url is not None:
                     scripts += "\n" + '    <script src="' + get_url_from_file_reference(fileref, _package=packageref) + '"></script>'
@@ -7866,7 +8014,7 @@ def index(action_argument=None, refer=None):
         else:
             debug_readability_help = ''
             debug_readability_question = ''
-        if interview_status.question.interview.force_fullscreen is True or (re.search(r'mobile', str(interview_status.question.interview.force_fullscreen).lower()) and is_mobile_or_tablet()):
+        if interview.force_fullscreen is True or (re.search(r'mobile', str(interview.force_fullscreen).lower()) and is_mobile_or_tablet()):
             forceFullScreen = """
           if (data.steps > 1 && window != top) {
             top.location.href = location.href;
@@ -7875,8 +8023,8 @@ def index(action_argument=None, refer=None):
 """
         else:
             forceFullScreen = ''
-        the_checkin_interval = interview_status.question.interview.options.get('checkin interval', CHECKIN_INTERVAL)
-        if interview_status.question.interview.options.get('analytics on', True):
+        the_checkin_interval = interview.options.get('checkin interval', CHECKIN_INTERVAL)
+        if interview.options.get('analytics on', True):
             if ga_configured:
                 ga_id = google_config.get('analytics id')
             else:
@@ -8122,6 +8270,18 @@ def index(action_argument=None, refer=None):
       }
       function daatob(str) {
         return window.atob(str);
+      }
+      function hideTablist() {
+        var anyTabs = $("#daChatAvailable").is(":visible")
+            || $("daPhoneAvailable").is(":visible")
+            || $("#dahelptoggle").is(":visible");
+        if (anyTabs) {
+          $("#nav-bar-tab-list").removeClass("dainvisible");
+          $("#daquestionlabel").parent().removeClass("dainvisible");
+        } else {
+          $("#nav-bar-tab-list").addClass("dainvisible");
+          $("#daquestionlabel").parent().addClass("dainvisible");
+        }
       }
       function getFields(){
         var allFields = [];
@@ -9305,7 +9465,7 @@ def index(action_argument=None, refer=None):
         }
         $(daTargetDiv).html(data);
       }
-      function daProcessAjax(data, form, doScroll){
+      function daProcessAjax(data, form, doScroll, actionURL){
         daInformedChanged = false;
         if (daDisable != null){
           clearTimeout(daDisable);
@@ -9411,6 +9571,9 @@ def index(action_argument=None, refer=None):
           location.reload(true);
         }
         else if (data.action == 'resubmit'){
+          if (form == null){
+            window.location = actionURL;
+          }
           $("input[name='ajax']").remove();
           if (daSubmitter != null){
             var input = $("<input>")
@@ -9437,18 +9600,19 @@ def index(action_argument=None, refer=None):
           $(this).blur();
           return false;
         }
-        var data = decodeURIComponent($(this).data('embaction'));
+        var actionData = decodeURIComponent($(this).data('embaction'));
+        var theURL = $(this).attr("href");
         $.ajax({
           type: "POST",
           url: daInterviewUrl,
-          data: $.param({_action: data, csrf_token: daCsrf, ajax: 1}),
+          data: $.param({_action: actionData, csrf_token: daCsrf, ajax: 1}),
           beforeSend: addCsrfHeader,
           xhrFields: {
             withCredentials: true
           },
           success: function(data){
             setTimeout(function(){
-              daProcessAjax(data, $("#daform"), 1);
+              daProcessAjax(data, null, 1, theURL);
             }, 0);
           },
           error: function(xhr, status, error){
@@ -9560,6 +9724,7 @@ def index(action_argument=None, refer=None):
           $("#daSend").prop('disabled', false);
           daInformAbout('chat');
         }
+        hideTablist();
       }
       function daChatLogCallback(data){
         if (data.action && data.action == 'reload'){
@@ -9740,6 +9905,7 @@ def index(action_argument=None, refer=None):
             }
           }
         }
+        hideTablist();
       }
       function daCheckoutCallback(data){
       }
@@ -10227,6 +10393,7 @@ def index(action_argument=None, refer=None):
             }
           }
         });
+        // iOS will truncate text in `select` options. Adding an empty optgroup fixes that
         if (navigator.userAgent.match(/(iPad|iPhone|iPod touch);/i)) {
           var selects = document.querySelectorAll("select");
           for (var i = 0; i < selects.length; i++){
@@ -10317,7 +10484,7 @@ def index(action_argument=None, refer=None):
         $("input.dainput-embedded").each(daAdjustInputWidth);
         var daPopoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
         var daPopoverList = daPopoverTriggerList.map(function (daPopoverTriggerEl) {
-          return new bootstrap.Popover(daPopoverTriggerEl, {trigger: """ + json.dumps(interview_status.question.interview.options.get('popover trigger', 'focus')) + """, html: true});
+          return new bootstrap.Popover(daPopoverTriggerEl, {trigger: """ + json.dumps(interview.options.get('popover trigger', 'focus')) + """, html: true});
         });
         $('label a[data-bs-toggle="popover"]').on('click', function(event){
           event.preventDefault();
@@ -11046,6 +11213,7 @@ def index(action_argument=None, refer=None):
         if (daUsingSegment){
           daSegmentEvent();
         }
+        hideTablist();
         $(document).trigger('daPageLoad');
       }
       $(document).ready(function(){
@@ -11313,10 +11481,11 @@ def index(action_argument=None, refer=None):
         } catch (e) {}
         return false;
       });"""
-        for info in docassemble.base.functions.custom_types.values():
+        for custom_type in interview.custom_data_types:
+            info = docassemble.base.functions.custom_types[custom_type]
             if isinstance(info['javascript'], str):
                 the_js += "\n      try {\n" + indent_by(info['javascript'].strip(), 8).rstrip() + "\n      }\n      catch {\n        console.log('Error with JavaScript code of CustomDataType " + info['class'].__name__ + "');\n      }"
-        if interview_status.question.interview.options.get('send question data', False):
+        if interview.options.get('send question data', False):
             the_js += "\n      daQuestionData = " + json.dumps(interview_status.as_data(user_dict))
         scripts += """
     <script type="text/javascript" charset="utf-8">
@@ -11349,20 +11518,20 @@ def index(action_argument=None, refer=None):
     interview_status.submit = title_info.get('submit', the_main_page_parts['main page submit'])
     interview_status.back = title_info.get('back button label', the_main_page_parts['main page back button label'] or interview_status.question.back())
     interview_status.cornerback = title_info.get('corner back button label', the_main_page_parts['main page corner back button label'] or interview_status.question.back())
-    bootstrap_theme = interview_status.question.interview.get_bootstrap_theme()
+    bootstrap_theme = interview.get_bootstrap_theme()
     if not is_ajax:
         social = copy.deepcopy(daconfig['social'])
-        if 'social' in interview_status.question.interview.consolidated_metadata and isinstance(interview_status.question.interview.consolidated_metadata['social'], dict):
-            populate_social(social, interview_status.question.interview.consolidated_metadata['social'])
+        if 'social' in interview.consolidated_metadata and isinstance(interview.consolidated_metadata['social'], dict):
+            populate_social(social, interview.consolidated_metadata['social'])
         standard_header_start = standard_html_start(interview_language=interview_language, debug=debug_mode, bootstrap_theme=bootstrap_theme, page_title=interview_status.title, social=social, yaml_filename=yaml_filename)
     if interview_status.question.question_type == "signature":
         interview_status.extra_scripts.append('<script>$( document ).ready(function() {daInitializeSignature();});</script>')
-        if interview_status.question.interview.options.get('hide navbar', False):
+        if interview.options.get('hide navbar', False):
             bodyclass="dasignature navbarhidden"
         else:
             bodyclass="dasignature"
     else:
-        if interview_status.question.interview.options.get('hide navbar', False):
+        if interview.options.get('hide navbar', False):
             bodyclass="dabody"
         else:
             bodyclass="dabody da-pad-for-navbar"
@@ -11429,41 +11598,41 @@ def index(action_argument=None, refer=None):
                 break
         if not already_there:
             user_dict['_internal']['event_stack'][session_uid].insert(0, next_action_to_set)
-    if interview_status.question.interview.use_progress_bar and (interview_status.question.progress is None or interview_status.question.progress >= 0):
-        the_progress_bar = progress_bar(user_dict['_internal']['progress'], interview_status.question.interview)
+    if interview.use_progress_bar and (interview_status.question.progress is None or interview_status.question.progress >= 0):
+        the_progress_bar = progress_bar(user_dict['_internal']['progress'], interview)
     else:
         the_progress_bar = None
-    if interview_status.question.interview.use_navigation and user_dict['nav'].visible():
-        if interview_status.question.interview.use_navigation_on_small_screens == 'dropdown':
+    if interview.use_navigation and user_dict['nav'].visible():
+        if interview.use_navigation_on_small_screens == 'dropdown':
             current_dict = {}
-            dropdown_nav_bar = navigation_bar(user_dict['nav'], interview_status.question.interview, wrapper=False, a_class='dropdown-item', hide_inactive_subs=False, always_open=True, return_dict=current_dict)
+            dropdown_nav_bar = navigation_bar(user_dict['nav'], interview, wrapper=False, a_class='dropdown-item', hide_inactive_subs=False, always_open=True, return_dict=current_dict)
             if dropdown_nav_bar != '':
                 dropdown_nav_bar = '        <div class="col d-md-none text-end">\n          <div class="dropdown">\n            <button class="btn btn-primary dropdown-toggle" type="button" id="daDropdownSections" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">' + current_dict.get('title', word("Sections")) + '</button>\n            <div class="dropdown-menu" aria-labelledby="daDropdownSections">' + dropdown_nav_bar + '\n          </div>\n          </div>\n        </div>\n'
         else:
             dropdown_nav_bar = ''
-        if interview_status.question.interview.use_navigation == 'horizontal':
-            if interview_status.question.interview.use_navigation_on_small_screens is not True:
+        if interview.use_navigation == 'horizontal':
+            if interview.use_navigation_on_small_screens is not True:
                 nav_class = ' d-none d-md-block'
             else:
                 nav_class = ''
-            the_nav_bar = navigation_bar(user_dict['nav'], interview_status.question.interview, wrapper=False, inner_div_class='nav flex-row justify-content-center align-items-center nav-pills danav danavlinks danav-horiz danavnested-horiz')
+            the_nav_bar = navigation_bar(user_dict['nav'], interview, wrapper=False, inner_div_class='nav flex-row justify-content-center align-items-center nav-pills danav danavlinks danav-horiz danavnested-horiz')
             if the_nav_bar != '':
                 the_nav_bar = dropdown_nav_bar + '        <div class="col' + nav_class + '">\n          <div class="nav flex-row justify-content-center align-items-center nav-pills danav danavlinks danav-horiz">\n            ' + the_nav_bar + '\n          </div>\n        </div>\n      </div>\n      <div class="row tab-content">\n'
         else:
-            if interview_status.question.interview.use_navigation_on_small_screens == 'dropdown':
+            if interview.use_navigation_on_small_screens == 'dropdown':
                 if dropdown_nav_bar:
                     horiz_nav_bar = dropdown_nav_bar + '\n      </div>\n      <div class="row tab-content">\n'
                 else:
                     horiz_nav_bar = ''
-            elif interview_status.question.interview.use_navigation_on_small_screens:
-                horiz_nav_bar = navigation_bar(user_dict['nav'], interview_status.question.interview, wrapper=False, inner_div_class='nav flex-row justify-content-center align-items-center nav-pills danav danavlinks danav-horiz danavnested-horiz')
+            elif interview.use_navigation_on_small_screens:
+                horiz_nav_bar = navigation_bar(user_dict['nav'], interview, wrapper=False, inner_div_class='nav flex-row justify-content-center align-items-center nav-pills danav danavlinks danav-horiz danavnested-horiz')
                 if horiz_nav_bar != '':
                     horiz_nav_bar = dropdown_nav_bar + '        <div class="col d-md-none">\n          <div class="nav flex-row justify-content-center align-items-center nav-pills danav danavlinks danav-horiz">\n            ' + horiz_nav_bar + '\n          </div>\n        </div>\n      </div>\n      <div class="row tab-content">\n'
             else:
                 horiz_nav_bar = ''
-            the_nav_bar = navigation_bar(user_dict['nav'], interview_status.question.interview)
+            the_nav_bar = navigation_bar(user_dict['nav'], interview)
         if the_nav_bar != '':
-            if interview_status.question.interview.use_navigation == 'horizontal':
+            if interview.use_navigation == 'horizontal':
                 interview_status.using_navigation = 'horizontal'
             else:
                 interview_status.using_navigation = 'vertical'
@@ -11534,8 +11703,8 @@ def index(action_argument=None, refer=None):
     append_css_urls = []
     if not is_ajax:
         start_output = standard_header_start
-        if 'css' in interview_status.question.interview.external_files:
-            for packageref, fileref in interview_status.question.interview.external_files['css']:
+        if 'css' in interview.external_files:
+            for packageref, fileref in interview.external_files['css']:
                 the_url = get_url_from_file_reference(fileref, _package=packageref)
                 if is_js:
                     append_css_urls.append(the_url)
@@ -11547,10 +11716,10 @@ def index(action_argument=None, refer=None):
         if is_js:
             append_javascript += additional_css(interview_status, js_only=True)
         start_output += '\n    <title>' + interview_status.tabtitle + '</title>\n  </head>\n  <body class="' + bodyclass + '">\n  <div id="dabody">\n'
-    if interview_status.question.interview.options.get('hide navbar', False):
-        output = make_navbar(interview_status, (steps - user_dict['_internal']['steps_offset']), interview_status.question.interview.consolidated_metadata.get('show login', SHOW_LOGIN), user_dict['_internal']['livehelp'], debug_mode, index_params, extra_class='dainvisible')
+    if interview.options.get('hide navbar', False):
+        output = make_navbar(interview_status, (steps - user_dict['_internal']['steps_offset']), interview.consolidated_metadata.get('show login', SHOW_LOGIN), user_dict['_internal']['livehelp'], debug_mode, index_params, extra_class='dainvisible')
     else:
-        output = make_navbar(interview_status, (steps - user_dict['_internal']['steps_offset']), interview_status.question.interview.consolidated_metadata.get('show login', SHOW_LOGIN), user_dict['_internal']['livehelp'], debug_mode, index_params)
+        output = make_navbar(interview_status, (steps - user_dict['_internal']['steps_offset']), interview.consolidated_metadata.get('show login', SHOW_LOGIN), user_dict['_internal']['livehelp'], debug_mode, index_params)
     output += flash_content + '    <div class="container">' + "\n      " + '<div class="row tab-content">' + "\n"
     if the_nav_bar != '':
         if interview_status.using_navigation == 'vertical':
@@ -11561,7 +11730,7 @@ def index(action_argument=None, refer=None):
         if interview_status.using_navigation == 'vertical':
             output += '          <section id="daright" role="complementary" class="d-none d-lg-block col-lg-3 col-xl-2 daright">\n'
         else:
-            if interview_status.question.interview.flush_left:
+            if interview.flush_left:
                 output += '          <section id="daright" role="complementary" class="d-none d-lg-block col-lg-6 col-xl-5 daright">\n'
             else:
                 output += '          <section id="daright" role="complementary" class="d-none d-lg-block col-lg-3 col-xl-3 daright">\n'
@@ -11573,7 +11742,7 @@ def index(action_argument=None, refer=None):
         if interview_status.using_navigation == 'vertical':
             output += '        <div class="offset-xl-3 offset-lg-3 offset-md-3 col-lg-6 col-md-9 col-sm-12 daattributions" id="daattributions">\n'
         else:
-            if interview_status.question.interview.flush_left:
+            if interview.flush_left:
                 output += '        <div class="offset-xl-1 col-xl-5 col-lg-6 col-md-8 col-sm-12 daattributions" id="daattributions">\n'
             else:
                 output += '        <div class="offset-xl-3 offset-lg-3 col-xl-6 col-lg-6 offset-md-2 col-md-8 col-sm-12 daattributions" id="daattributions">\n'
@@ -11585,7 +11754,7 @@ def index(action_argument=None, refer=None):
         if interview_status.using_navigation == 'vertical':
             output += '        <div class="offset-xl-3 offset-lg-3 offset-md-3 col-lg-6 col-md-9 col-sm-12 daattributions" id="daattributions">\n'
         else:
-            if interview_status.question.interview.flush_left:
+            if interview.flush_left:
                 output += '        <div class="offset-xl-1 col-xl-5 col-lg-6 col-md-8 col-sm-12 daattributions" id="daattributions">\n'
             else:
                 output += '        <div class="offset-xl-3 offset-lg-3 col-xl-6 col-lg-6 offset-md-2 col-md-8 col-sm-12 daattributions" id="daattributions">\n'
@@ -11657,7 +11826,7 @@ def index(action_argument=None, refer=None):
             do_action = interview_status.question.checkin
         else:
             do_action = None
-        if interview_status.question.interview.options.get('send question data', False):
+        if interview.options.get('send question data', False):
             response = jsonify(action='body', body=output, extra_scripts=interview_status.extra_scripts, extra_css=interview_status.extra_css, browser_title=interview_status.tabtitle, lang=interview_language, bodyclass=bodyclass, reload_after=reload_after, livehelp=user_dict['_internal']['livehelp'], csrf_token=generate_csrf(), do_action=do_action, steps=steps, allow_going_back=allow_going_back, message_log=docassemble.base.functions.get_message_log(), id_dict=question_id_dict, question_data=interview_status.as_data(user_dict))
         else:
             response = jsonify(action='body', body=output, extra_scripts=interview_status.extra_scripts, extra_css=interview_status.extra_css, browser_title=interview_status.tabtitle, lang=interview_language, bodyclass=bodyclass, reload_after=reload_after, livehelp=user_dict['_internal']['livehelp'], csrf_token=generate_csrf(), do_action=do_action, steps=steps, allow_going_back=allow_going_back, message_log=docassemble.base.functions.get_message_log(), id_dict=question_id_dict)
@@ -12157,7 +12326,7 @@ def do_serve_stored_file(uid, number, filename, extension, download=False):
     else:
         if not os.path.isfile(file_info['path']):
             return ('File not found', 404)
-        response = send_file(file_info['path'], mimetype=file_info['mimetype'])
+        response = send_file(file_info['path'], mimetype=file_info['mimetype'], download_name=filename + '.' + extension)
         if download:
             response.headers['Content-Disposition'] = 'attachment; filename=' + json.dumps(filename + '.' + extension)
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
@@ -12182,7 +12351,7 @@ def do_serve_temporary_file(code, filename, extension, download=False):
     if not os.path.isfile(the_path):
         return ('File not found', 404)
     (extension, mimetype) = get_ext_and_mimetype(filename + '.' + extension)
-    response = send_file(the_path, mimetype=mimetype)
+    response = send_file(the_path, mimetype=mimetype, download_name=filename + '.' + extension)
     if download:
         response.headers['Content-Disposition'] = 'attachment; filename=' + json.dumps(filename + '.' + extension)
     return response
@@ -12206,8 +12375,8 @@ def download_zip_package():
         file_info = get_info_from_file_number(package.upload, privileged=True)
     except:
         return ('File not found', 404)
-    response = send_file(file_info['path'] + '.zip', mimetype='application/zip')
     filename = re.sub(r'\.', '-', package_name) + '.zip'
+    response = send_file(file_info['path'] + '.zip', mimetype='application/zip', download_name=filename)
     response.headers['Content-Disposition'] = 'attachment; filename=' + json.dumps(filename)
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
@@ -12245,7 +12414,7 @@ def do_serve_uploaded_file_with_filename_and_extension(number, filename, extensi
             if os.path.isfile(file_info['path'] + '.' + extension):
                 #logmessage("Using " + file_info['path'] + '.' + extension)
                 extension, mimetype = get_ext_and_mimetype(file_info['path'] + '.' + extension)
-                response = send_file(file_info['path'] + '.' + extension, mimetype=mimetype)
+                response = send_file(file_info['path'] + '.' + extension, mimetype=mimetype, download_name=filename + '.' + extension)
                 if download:
                     response.headers['Content-Disposition'] = 'attachment; filename=' + json.dumps(filename + '.' + extension)
                 response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
@@ -12253,7 +12422,7 @@ def do_serve_uploaded_file_with_filename_and_extension(number, filename, extensi
             if os.path.isfile(os.path.join(os.path.dirname(file_info['path']), filename + '.' + extension)):
                 #logmessage("Using " + os.path.join(os.path.dirname(file_info['path']), filename + '.' + extension))
                 extension, mimetype = get_ext_and_mimetype(filename + '.' + extension)
-                response = send_file(os.path.join(os.path.dirname(file_info['path']), filename + '.' + extension), mimetype=mimetype)
+                response = send_file(os.path.join(os.path.dirname(file_info['path']), filename + '.' + extension), mimetype=mimetype, download_name=filename + '.' + extension)
                 if download:
                     response.headers['Content-Disposition'] = 'attachment; filename=' + json.dumps(filename + '.' + extension)
                 response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
@@ -12290,7 +12459,7 @@ def do_serve_uploaded_file_with_extension(number, extension, download=False):
         else:
             if os.path.isfile(file_info['path'] + '.' + extension):
                 extension, mimetype = get_ext_and_mimetype(file_info['path'] + '.' + extension)
-                response = send_file(file_info['path'] + '.' + extension, mimetype=mimetype)
+                response = send_file(file_info['path'] + '.' + extension, mimetype=mimetype, download_name=str(number) + '.' + extension)
                 if download:
                     response.headers['Content-Disposition'] = 'attachment; filename=' + json.dumps(str(number) + '.' + extension)
                 response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
@@ -12315,7 +12484,7 @@ def do_serve_uploaded_file(number, download=False):
     else:
         if not os.path.isfile(file_info['path']):
             return ('File not found', 404)
-        response = send_file(file_info['path'], mimetype=file_info['mimetype'])
+        response = send_file(file_info['path'], mimetype=file_info['mimetype'], download_name=os.path.basename(file_info['path']))
         if download:
             response.headers['Content-Disposition'] = 'attachment; filename=' + json.dumps(os.path.basename(file_info['path']))
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
@@ -12359,11 +12528,11 @@ def do_serve_uploaded_page(number, page, download=False, size='page'):
     if filename is None:
         logmessage("do_serve_uploaded_page: sending blank image")
         the_file = docassemble.base.functions.package_data_filename('docassemble.base:data/static/blank_page.png')
-        response = send_file(the_file, mimetype='image/png')
+        response = send_file(the_file, mimetype='image/png', download_name='blank_page.png')
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
         return response
     if os.path.isfile(filename):
-        response = send_file(filename, mimetype='image/png')
+        response = send_file(filename, mimetype='image/png', download_name=os.path.basename(filename))
         if download:
             response.headers['Content-Disposition'] = 'attachment; filename=' + json.dumps(os.path.basename(filename))
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
@@ -16007,14 +16176,14 @@ class Fruit(DAObject):
         zf = zipfile.ZipFile(saved_file.path, mode='w')
         trimlength = len(directory) + 1
         if current_user.timezone:
-            the_timezone = pytz.timezone(current_user.timezone)
+            the_timezone = zoneinfo.ZoneInfo(current_user.timezone)
         else:
-            the_timezone = pytz.timezone(get_default_timezone())
+            the_timezone = zoneinfo.ZoneInfo(get_default_timezone())
         for root, dirs, files in os.walk(packagedir):
             for the_file in files:
                 thefilename = os.path.join(root, the_file)
                 info = zipfile.ZipInfo(thefilename[trimlength:])
-                info.date_time = datetime.datetime.utcfromtimestamp(os.path.getmtime(thefilename)).replace(tzinfo=pytz.utc).astimezone(the_timezone).timetuple()
+                info.date_time = datetime.datetime.utcfromtimestamp(os.path.getmtime(thefilename)).replace(tzinfo=datetime.timezone.utc).astimezone(the_timezone).timetuple()
                 info.compress_type = zipfile.ZIP_DEFLATED
                 info.external_attr = 0o644 << 16
                 with open(thefilename, 'rb') as fp:
@@ -17355,7 +17524,7 @@ def playground_static(current_project, userid, filename):
     if os.path.isfile(path):
         filename = os.path.basename(filename)
         extension, mimetype = get_ext_and_mimetype(filename)
-        response = send_file(path, mimetype=str(mimetype))
+        response = send_file(path, mimetype=str(mimetype), download_name=filename)
         if attach:
             response.headers['Content-Disposition'] = 'attachment; filename=' + json.dumps(filename)
         return response
@@ -17382,7 +17551,7 @@ def playground_modules(current_project, userid, filename):
     if os.path.isfile(path):
         filename = os.path.basename(filename)
         extension, mimetype = get_ext_and_mimetype(filename)
-        response = send_file(path, mimetype=str(mimetype))
+        response = send_file(path, mimetype=str(mimetype), download_name=filename)
         if attach:
             response.headers['Content-Disposition'] = 'attachment; filename=' + json.dumps(filename)
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
@@ -17411,7 +17580,7 @@ def playground_sources(current_project, userid, filename):
     if os.path.isfile(path):
         filename = os.path.basename(filename)
         extension, mimetype = get_ext_and_mimetype(filename)
-        response = send_file(path, mimetype=str(mimetype))
+        response = send_file(path, mimetype=str(mimetype), download_name=filename)
         if attach:
             response.headers['Content-Disposition'] = 'attachment; filename=' + json.dumps(filename)
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
@@ -17439,7 +17608,7 @@ def playground_template(current_project, userid, filename):
     if os.path.isfile(path):
         filename = os.path.basename(filename)
         extension, mimetype = get_ext_and_mimetype(filename)
-        response = send_file(path, mimetype=str(mimetype))
+        response = send_file(path, mimetype=str(mimetype), download_name=filename)
         if attach:
             response.headers['Content-Disposition'] = 'attachment; filename=' + json.dumps(filename)
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
@@ -17545,13 +17714,15 @@ def playground_office_addin():
             interview_source.set_testing(True)
         else:
             #logmessage("playground_office_addin: file " + str(pg_var_file) + " was not found")
-            if pg_var_file == '':
+            if pg_var_file == '' and current_project == 'default':
                 pg_var_file = 'test.yml'
             content = "modules:\n  - docassemble.base.util\n---\nmandatory: True\nquestion: hi"
             interview_source = docassemble.base.parse.InterviewSourceString(content=content, directory=the_directory, package="docassemble.playground" + str(current_user.id) + project_name(current_project), path="docassemble.playground" + str(current_user.id) + project_name(current_project) + ":" + pg_var_file, testing=True)
         interview = interview_source.get_interview()
         ensure_ml_file_exists(interview, pg_var_file, current_project)
-        interview_status = docassemble.base.parse.InterviewStatus(current_info=current_info(yaml='docassemble.playground' + str(current_user.id) + project_name(current_project) + ':' + pg_var_file, req=request, action=None, device_id=request.cookies.get('ds', None)))
+        the_current_info = current_info(yaml='docassemble.playground' + str(current_user.id) + project_name(current_project) + ':' + pg_var_file, req=request, action=None, device_id=request.cookies.get('ds', None))
+        docassemble.base.functions.this_thread.current_info = the_current_info
+        interview_status = docassemble.base.parse.InterviewStatus(current_info=the_current_info)
         if use_html:
             variables_html, vocab_list, vocab_dict = get_vars_in_use(interview, interview_status, debug_mode=False, show_messages=False, show_jinja_help=True, current_project=current_project)
             return jsonify({'success': True, 'current_project': current_project, 'variables_html': variables_html, 'vocab_list': list(vocab_list), 'vocab_dict': vocab_dict})
@@ -17775,7 +17946,7 @@ def playground_files():
     for a_file in files:
         extension, mimetype = get_ext_and_mimetype(a_file)
         if (mimetype and mimetype in ok_mimetypes) or (extension and extension in ok_extensions) or (mimetype and mimetype.startswith('text')):
-            if section == 'sources' and re.match(r'ml-.*\.json', a_file):
+            if section == 'sources' and re.match(r'ml-.*\.json$', a_file):
                 trainable_files[a_file] = re.sub(r'^ml-|\.json$', '', a_file)
             else:
                 editable_files.append(dict(name=a_file, modtime=os.path.getmtime(os.path.join(the_directory, a_file))))
@@ -18490,22 +18661,22 @@ def do_playground_pull(area, current_project, github_url=None, branch=None, pypi
         package_file = tempfile.NamedTemporaryFile(suffix='.tar.gz')
         try:
             http = httplib2.Http()
-            resp, content = http.request("https://pypi.python.org/pypi/" + str(pypi_package) + "/json", "GET")
-            pypi_url = None
+            resp, content = http.request(pypi_url + "/" + str(pypi_package) + "/json", "GET")
+            the_pypi_url = None
             if int(resp['status']) == 200:
                 pypi_response = json.loads(content.decode())
                 for file_option in pypi_response['releases'][pypi_response['info']['version']]:
                     if file_option['packagetype'] == 'sdist':
-                        pypi_url = file_option['url']
+                        the_pypi_url = file_option['url']
                         break
             else:
                 return dict(action='fail', message=word("The package you specified could not be downloaded from PyPI."))
-            if pypi_url is None:
+            if the_pypi_url is None:
                 return dict(action='fail', message=word("The package you specified could not be downloaded from PyPI as a tar.gz file."))
         except Exception as err:
             return dict(action='error', message="error getting information about PyPI package.  " + str(err))
         try:
-            urlretrieve(pypi_url, package_file.name)
+            urlretrieve(the_pypi_url, package_file.name)
         except Exception as err:
             return dict(action='error', message="error downloading PyPI package.  " + str(err))
         try:
@@ -18872,10 +19043,10 @@ def playground_packages():
         the_files = request.files.getlist('uploadfile')
         need_to_restart = False
         if current_user.timezone:
-            the_timezone = pytz.timezone(current_user.timezone)
+            the_timezone = zoneinfo.ZoneInfo(current_user.timezone)
         else:
-            the_timezone = pytz.timezone(get_default_timezone())
-        epoch_date = datetime.datetime(1970, 1, 1).replace(tzinfo=pytz.utc)
+            the_timezone = zoneinfo.ZoneInfo(get_default_timezone())
+        epoch_date = datetime.datetime(1970, 1, 1).replace(tzinfo=datetime.timezone.utc)
         if the_files:
             for up_file in the_files:
                 zip_filename = werkzeug.utils.secure_filename(up_file.filename)
@@ -19298,10 +19469,10 @@ def playground_packages():
             with open(current_commit_file, 'r', encoding='utf-8') as fp:
                 commit_code = fp.read().strip()
             if current_user.timezone:
-                the_timezone = pytz.timezone(current_user.timezone)
+                the_timezone = zoneinfo.ZoneInfo(current_user.timezone)
             else:
-                the_timezone = pytz.timezone(get_default_timezone())
-            commit_code_date = datetime.datetime.utcfromtimestamp(os.path.getmtime(current_commit_file)).replace(tzinfo=pytz.utc).astimezone(the_timezone).strftime("%Y-%m-%d %H:%M:%S %Z")
+                the_timezone = zoneinfo.ZoneInfo(get_default_timezone())
+            commit_code_date = datetime.datetime.utcfromtimestamp(os.path.getmtime(current_commit_file)).replace(tzinfo=datetime.timezone.utc).astimezone(the_timezone).strftime("%Y-%m-%d %H:%M:%S %Z")
         if commit_code:
             github_message += '  ' + word('The current branch is %s and the current commit is %s.') % ('<a target="_blank" href="' + html_url + '/tree/' + old_info['github_branch'] + '">' + old_info['github_branch'] + '</a>', '<a target="_blank" href="' + html_url + '/commit/' + commit_code + '"><code>' + commit_code[0:7] + '</code></a>') + '  ' + word('The commit was saved locally at %s.') % commit_code_date
         else:
@@ -19763,7 +19934,9 @@ def variables_report():
     interview = interview_source.get_interview()
     ensure_ml_file_exists(interview, the_file, current_project)
     yaml_file = 'docassemble.playground' + str(current_user.id) + project_name(current_project) + ':' + the_file
-    interview_status = docassemble.base.parse.InterviewStatus(current_info=current_info(yaml=yaml_file, req=request, action=None, device_id=request.cookies.get('ds', None)))
+    the_current_info = current_info(yaml=yaml_file, req=request, action=None, device_id=request.cookies.get('ds', None))
+    docassemble.base.functions.this_thread.current_info = the_current_info
+    interview_status = docassemble.base.parse.InterviewStatus(current_info=the_current_info)
     variables_html, vocab_list, vocab_dict = get_vars_in_use(interview, interview_status, debug_mode=False, current_project=current_project)
     results = []
     result_dict = {}
@@ -19823,7 +19996,7 @@ def playground_variables():
             interview_source = docassemble.base.parse.interview_source_from_string('docassemble.playground' + str(current_user.id) + project_name(current_project) + ':' + active_file)
             interview_source.set_testing(True)
         else:
-            if active_file == '':
+            if active_file == '' and current_project == 'default':
                 active_file = 'test.yml'
             content = ''
             if 'playground_content' in post_data:
@@ -19831,7 +20004,9 @@ def playground_variables():
             interview_source = docassemble.base.parse.InterviewSourceString(content=content, directory=the_directory, package="docassemble.playground" + str(current_user.id) + project_name(current_project), path="docassemble.playground" + str(current_user.id) + project_name(current_project) + ":" + active_file, testing=True)
         interview = interview_source.get_interview()
         ensure_ml_file_exists(interview, active_file, current_project)
-        interview_status = docassemble.base.parse.InterviewStatus(current_info=current_info(yaml='docassemble.playground' + str(current_user.id) + project_name(current_project) + ':' + active_file, req=request, action=None, device_id=request.cookies.get('ds', None)))
+        the_current_info = current_info(yaml='docassemble.playground' + str(current_user.id) + project_name(current_project) + ':' + active_file, req=request, action=None, device_id=request.cookies.get('ds', None))
+        docassemble.base.functions.this_thread.current_info = the_current_info
+        interview_status = docassemble.base.parse.InterviewStatus(current_info=the_current_info)
         variables_html, vocab_list, vocab_dict = get_vars_in_use(interview, interview_status, debug_mode=False, current_project=current_project)
         return jsonify(success=True, variables_html=variables_html, vocab_list=vocab_list, current_project=current_project)
     return jsonify(success=False, reason=2)
@@ -19966,6 +20141,7 @@ def playground_project():
                 create_project(current_user.id, form.name.data)
                 current_project = set_current_project(form.name.data)
                 mode = 'standard'
+                return redirect(url_for('playground_page', project=current_project))
     elif request.args.get('delete'):
         form = DeleteProject(request.form)
         mode = 'delete'
@@ -19997,7 +20173,8 @@ def playground_project():
         mode = 'standard'
         page_title = word("Projects")
         description = word("You can divide up your Playground into multiple separate areas, apart from your default Playground area.  Each Project has its own question files and Folders.")
-    response = make_response(render_template('pages/manage_projects.html', version_warning=None, bodyclass='daadminbody', tab_title=word("Projects"), description=description, page_title=page_title, projects=get_list_of_projects(current_user.id), current_project=current_project, mode=mode, form=form), 200)
+    back_button = Markup('<span class="navbar-brand navbar-nav dabackicon me-3"><a href="' + url_for('playground_page', project=current_project) + '" class="dabackbuttoncolor nav-link" title=' + json.dumps(word("Go back to the main Playground page")) + '><i class="fas fa-chevron-left"></i><span class="daback">' + word('Back') + '</span></a></span>')
+    response = make_response(render_template('pages/manage_projects.html', version_warning=None, bodyclass='daadminbody', back_button=back_button, tab_title=word("Projects"), description=description, page_title=page_title, projects=get_list_of_projects(current_user.id), current_project=current_project, mode=mode, form=form), 200)
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
 
@@ -20131,7 +20308,7 @@ def playground_page():
                     flash("Error of type " + str(type(errMess)) + " processing upload: " + str(errMess), "error")
         return redirect(url_for('playground_page', project=current_project))
     if request.method == 'POST' and (form.submit.data or form.run.data or form.delete.data):
-        if form.validate() and form.playground_name.data:
+        if valid_form and form.playground_name.data:
             the_file = secure_filename_spaces_ok(form.playground_name.data)
             #the_file = re.sub(r'[^A-Za-z0-9\_\-\. ]', '', the_file)
             if the_file != '':
@@ -20156,6 +20333,9 @@ def playground_page():
     else:
         content = ''
     if the_file and not is_new and the_file not in file_listing:
+        if request.method == 'GET':
+            delete_current_file(current_project, 'questions')
+            return redirect(url_for('playground_page', project=current_project))
         the_file = ''
     is_default = False
     if request.method == 'GET' and not the_file and not is_new:
@@ -20166,7 +20346,7 @@ def playground_page():
             delete_current_file(current_project, 'questions')
             if len(files) > 0:
                 the_file = sorted(files, key=lambda x: x['modtime'])[-1]['name']
-            else:
+            elif current_project == 'default':
                 the_file = 'test.yml'
                 is_default = True
                 if daconfig.get('default playground yaml', True):
@@ -20184,12 +20364,12 @@ def playground_page():
             delete_variable_file(current_project)
     if the_file != '':
         filename = os.path.join(the_directory, the_file)
-        if not os.path.isfile(filename):
+        if (valid_form or is_default) and not os.path.isfile(filename):
             with open(filename, 'w', encoding='utf-8') as fp:
                 fp.write(content)
             playground.finalize()
     console_messages = []
-    if request.method == 'POST' and the_file != '' and form.validate():
+    if request.method == 'POST' and the_file != '' and valid_form:
         if form.delete.data:
             filename_to_del = os.path.join(the_directory, form.playground_name.data)
             if os.path.isfile(filename_to_del):
@@ -20203,10 +20383,11 @@ def playground_page():
                 current_variable_file = get_variable_file(current_project)
                 if current_variable_file == the_file or current_variable_file == form.playground_name.data:
                     delete_variable_file(current_project)
+                delete_current_file(current_project, 'questions')
                 return redirect(url_for('playground_page', project=current_project))
             else:
                 flash(word('File not deleted.  There was an error.'), 'error')
-        if (form.submit.data or form.run.data) and form.playground_content.data:
+        if (form.submit.data or form.run.data):
             if form.original_playground_name.data and form.original_playground_name.data != the_file:
                 old_filename = os.path.join(the_directory, form.original_playground_name.data)
                 if not is_ajax:
@@ -20254,7 +20435,9 @@ def playground_page():
                 interview_source.set_testing(True)
                 interview = interview_source.get_interview()
                 ensure_ml_file_exists(interview, active_file, current_project)
-                interview_status = docassemble.base.parse.InterviewStatus(current_info=current_info(yaml='docassemble.playground' + str(current_user.id) + project_name(current_project) + ':' + active_file, req=request, action=None, device_id=request.cookies.get('ds', None)))
+                the_current_info = current_info(yaml='docassemble.playground' + str(current_user.id) + project_name(current_project) + ':' + active_file, req=request, action=None, device_id=request.cookies.get('ds', None))
+                docassemble.base.functions.this_thread.current_info = the_current_info
+                interview_status = docassemble.base.parse.InterviewStatus(current_info=the_current_info)
                 variables_html, vocab_list, vocab_dict = get_vars_in_use(interview, interview_status, debug_mode=debug_mode, current_project=current_project)
                 if form.submit.data:
                     flash_message = flash_as_html(word('Saved at') + ' ' + the_time + '.', 'success', is_ajax=is_ajax)
@@ -20272,7 +20455,7 @@ def playground_page():
         else:
             flash(word('Playground not saved.  There was an error.'), 'error')
     interview_path = None
-    if the_file != '':
+    if valid_form is not False and the_file != '':
         with open(filename, 'r', encoding='utf-8') as fp:
             form.original_playground_name.data = the_file
             form.playground_name.data = the_file
@@ -20289,7 +20472,10 @@ def playground_page():
             interview_source.set_testing(True)
     else:
         is_fictitious = True
-        active_file = 'test.yml'
+        if current_project == 'default':
+            active_file = 'test.yml'
+        else:
+            is_new = True
         if form.playground_content.data:
             content = re.sub(r'\r', '', form.playground_content.data)
             interview_source = docassemble.base.parse.InterviewSourceString(content=content, directory=the_directory, package="docassemble.playground" + str(current_user.id) + project_name(current_project), path="docassemble.playground" + str(current_user.id) + project_name(current_project) + ":" + active_file, testing=True)
@@ -20298,7 +20484,9 @@ def playground_page():
     interview = interview_source.get_interview()
     if hasattr(interview, 'mandatory_id_issue') and interview.mandatory_id_issue:
         console_messages.append(word("Note: it is a best practice to tag every mandatory block with an id."))
-    interview_status = docassemble.base.parse.InterviewStatus(current_info=current_info(yaml='docassemble.playground' + str(current_user.id) + project_name(current_project) + ':' + active_file, req=request, action=None, device_id=request.cookies.get('ds', None)))
+    the_current_info = current_info(yaml='docassemble.playground' + str(current_user.id) + project_name(current_project) + ':' + active_file, req=request, action=None, device_id=request.cookies.get('ds', None))
+    docassemble.base.functions.this_thread.current_info = the_current_info
+    interview_status = docassemble.base.parse.InterviewStatus(current_info=the_current_info)
     variables_html, vocab_list, vocab_dict = get_vars_in_use(interview, interview_status, debug_mode=debug_mode, current_project=current_project)
     pulldown_files = [x['name'] for x in files]
     define_examples()
@@ -20312,6 +20500,7 @@ def playground_page():
 var exampleData;
 var originalFileName = """ + json.dumps(the_file) + """;
 var isNew = """ + json.dumps(is_new) + """;
+var validForm = """ + json.dumps(valid_form) + """;
 var vocab = """ + json.dumps(vocab_list) + """;
 var existingFiles = """ + json.dumps(file_listing) + """;
 var currentProject = """ + json.dumps(current_project) + """;
@@ -20637,7 +20826,7 @@ $( document ).ready(function() {
     return;
   });
   $("#daRun").click(function(event){
-    if (originalFileName != $("#playground_name").val()){
+    if (originalFileName != $("#playground_name").val() || $("#playground_name").val() == ''){
       $("#form button[name='submit']").click();
       event.preventDefault();
       return false;
@@ -20669,6 +20858,11 @@ $( document ).ready(function() {
       event.preventDefault();
       return false;
     }
+    if ($("#playground_name").val() == ''){
+      $("#form button[name='submit']").click();
+      event.preventDefault();
+      return false;
+    }
     thisWindow.location.replace('""" + url_for('sync_with_google_drive', project=current_project, auto_next=url_for('playground_page_run', file=the_file, project=current_project)) + """');
     return true;
   });
@@ -20679,11 +20873,16 @@ $( document ).ready(function() {
       event.preventDefault();
       return false;
     }
+    if ($("#playground_name").val() == ''){
+      $("#form button[name='submit']").click();
+      event.preventDefault();
+      return false;
+    }
     thisWindow.location.replace('""" + url_for('sync_with_onedrive', project=current_project, auto_next=url_for('playground_page_run', file=the_file, project=current_project)) + """');
   });
   $("#form button[name='submit']").click(function(event){
     daCodeMirror.save();
-    if (isNew == "True" || originalFileName != $("#playground_name").val() || $("#playground_name").val().trim() == ""){
+    if (validForm == false || isNew == true || originalFileName != $("#playground_name").val() || $("#playground_name").val().trim() == ""){
       return true;
     }
     disableButtonsUntilCallback();
@@ -20827,7 +21026,7 @@ $( document ).ready(function() {
     page_title = word("Playground")
     if current_project != 'default':
         page_title += " / " + current_project
-    response = make_response(render_template('pages/playground.html', projects=get_list_of_projects(current_user.id), current_project=current_project, version_warning=None, bodyclass='daadminbody', use_gd=use_gd, use_od=use_od, userid=current_user.id, page_title=Markup(page_title), tab_title=word("Playground"), extra_css=Markup('\n    <link href="' + url_for('static', filename='app/playgroundbundle.css', v=da_version) + '" rel="stylesheet">'), extra_js=Markup('\n    <script src="' + url_for('static', filename="app/playgroundbundle.js", v=da_version) + '"></script>\n    ' + kbLoad + cm_setup + '<script>\n      var daConsoleMessages = ' + json.dumps(console_messages) + ';\n      $("#daDelete").click(function(event){if(!confirm("' + word("Are you sure that you want to delete this playground file?") + '")){event.preventDefault();}});\n      daTextArea = document.getElementById("playground_content");\n      var daCodeMirror = CodeMirror.fromTextArea(daTextArea, {specialChars: /[\\u00a0\\u0000-\\u001f\\u007f-\\u009f\\u00ad\\u061c\\u200b-\\u200f\\u2028\\u2029\\ufeff]/, mode: "' + ('yamlmixed' if daconfig.get('test yamlmixed mode') else 'yamlmixed') + '", ' + kbOpt + 'tabSize: 2, tabindex: 70, autofocus: false, lineNumbers: true, matchBrackets: true, lineWrapping: ' + ('true' if daconfig.get('wrap lines in playground', True) else 'false') + '});\n      $(window).bind("beforeunload", function(){daCodeMirror.save(); $("#form").trigger("checkform.areYouSure");});\n      $("#form").areYouSure(' + json.dumps({'message': word("There are unsaved changes.  Are you sure you wish to leave this page?")}) + ');\n      $("#form").bind("submit", function(){daCodeMirror.save(); $("#form").trigger("reinitialize.areYouSure"); return true;});\n      daCodeMirror.setSize(null, null);\n      daCodeMirror.setOption("extraKeys", { Tab: function(cm) { var spaces = Array(cm.getOption("indentUnit") + 1).join(" "); cm.replaceSelection(spaces); }, "Ctrl-Space": "autocomplete", "F11": function(cm) { cm.setOption("fullScreen", !cm.getOption("fullScreen")); }, "Esc": function(cm) { if (cm.getOption("fullScreen")) cm.setOption("fullScreen", false); }});\n      daCodeMirror.setOption("coverGutterNextToScrollbar", true);\n' + indent_by(ajax, 6) + '\n      exampleData = JSON.parse(atob("' + pg_ex['encoded_data_dict'] + '"));\n      activateExample("' + str(pg_ex['pg_first_id'][0]) + '", false);\n    $("#my-form").trigger("reinitialize.areYouSure");\n      $("#daVariablesReport").on("shown.bs.modal", function () { daFetchVariableReport(); })\n    </script>'), form=form, fileform=fileform, files=sorted(files, key=lambda y: y['name'].lower()), any_files=any_files, pulldown_files=sorted(pulldown_files, key=lambda y: y.lower()), current_file=the_file, active_file=active_file, content=content, variables_html=Markup(variables_html), example_html=pg_ex['encoded_example_html'], interview_path=interview_path, is_new=str(is_new)), 200)
+    response = make_response(render_template('pages/playground.html', projects=get_list_of_projects(current_user.id), current_project=current_project, version_warning=None, bodyclass='daadminbody', use_gd=use_gd, use_od=use_od, userid=current_user.id, page_title=Markup(page_title), tab_title=word("Playground"), extra_css=Markup('\n    <link href="' + url_for('static', filename='app/playgroundbundle.css', v=da_version) + '" rel="stylesheet">'), extra_js=Markup('\n    <script src="' + url_for('static', filename="app/playgroundbundle.js", v=da_version) + '"></script>\n    ' + kbLoad + cm_setup + '<script>\n      var daConsoleMessages = ' + json.dumps(console_messages) + ';\n      $("#daDelete").click(function(event){if (originalFileName != $("#playground_name").val() || $("#playground_name").val() == \'\'){ $("#form button[name=\'submit\']").click(); event.preventDefault(); return false; } if(!confirm("' + word("Are you sure that you want to delete this playground file?") + '")){event.preventDefault();}});\n      daTextArea = document.getElementById("playground_content");\n      var daCodeMirror = CodeMirror.fromTextArea(daTextArea, {specialChars: /[\\u00a0\\u0000-\\u001f\\u007f-\\u009f\\u00ad\\u061c\\u200b-\\u200f\\u2028\\u2029\\ufeff]/, mode: "' + ('yamlmixed' if daconfig.get('test yamlmixed mode') else 'yamlmixed') + '", ' + kbOpt + 'tabSize: 2, tabindex: 70, autofocus: false, lineNumbers: true, matchBrackets: true, lineWrapping: ' + ('true' if daconfig.get('wrap lines in playground', True) else 'false') + '});\n      $(window).bind("beforeunload", function(){daCodeMirror.save(); $("#form").trigger("checkform.areYouSure");});\n      $("#form").areYouSure(' + json.dumps({'message': word("There are unsaved changes.  Are you sure you wish to leave this page?")}) + ');\n      $("#form").bind("submit", function(){daCodeMirror.save(); $("#form").trigger("reinitialize.areYouSure"); return true;});\n      daCodeMirror.setSize(null, null);\n      daCodeMirror.setOption("extraKeys", { Tab: function(cm) { var spaces = Array(cm.getOption("indentUnit") + 1).join(" "); cm.replaceSelection(spaces); }, "Ctrl-Space": "autocomplete", "F11": function(cm) { cm.setOption("fullScreen", !cm.getOption("fullScreen")); }, "Esc": function(cm) { if (cm.getOption("fullScreen")) cm.setOption("fullScreen", false); }});\n      daCodeMirror.setOption("coverGutterNextToScrollbar", true);\n' + indent_by(ajax, 6) + '\n      exampleData = JSON.parse(atob("' + pg_ex['encoded_data_dict'] + '"));\n      activateExample("' + str(pg_ex['pg_first_id'][0]) + '", false);\n    $("#my-form").trigger("reinitialize.areYouSure");\n      $("#daVariablesReport").on("shown.bs.modal", function () { daFetchVariableReport(); })\n    </script>'), form=form, fileform=fileform, files=sorted(files, key=lambda y: y['name'].lower()), any_files=any_files, pulldown_files=sorted(pulldown_files, key=lambda y: y.lower()), current_file=the_file, active_file=active_file, content=content, variables_html=Markup(variables_html), example_html=pg_ex['encoded_example_html'], interview_path=interview_path, is_new=str(is_new), valid_form=str(valid_form)), 200)
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
 
@@ -20965,7 +21164,7 @@ def server_error(the_error):
       });
     </script>"""
     error_notification(the_error, message=errmess, history=the_history, trace=the_trace, the_request=request, the_vars=the_vars)
-    if request.path.endswith('/interview') and 'in error' not in session and docassemble.base.functions.this_thread.interview is not None and 'error action' in docassemble.base.functions.this_thread.interview.consolidated_metadata and docassemble.base.functions.interview_path() is not None:
+    if (request.path.endswith('/interview') or request.path.endswith('/start') or request.path.endswith('/run')) and 'in error' not in session and docassemble.base.functions.this_thread.interview is not None and 'error action' in docassemble.base.functions.this_thread.interview.consolidated_metadata and docassemble.base.functions.interview_path() is not None:
         session['in error'] = True
         #session['action'] = docassemble.base.functions.myb64quote(json.dumps({'action': docassemble.base.functions.this_thread.interview.consolidated_metadata['error action'], 'arguments': dict(error_message=orig_errmess)}))
         return index(action_argument={'action': docassemble.base.functions.this_thread.interview.consolidated_metadata['error action'], 'arguments': dict(error_message=orig_errmess)}, refer=['error'])
@@ -20980,7 +21179,7 @@ def server_error(the_error):
         yaml_filename = docassemble.base.functions.interview_path()
     except:
         yaml_filename = None
-    show_retry = request.path.endswith('/interview')
+    show_retry = request.path.endswith('/interview') or request.path.endswith('/start') or request.path.endswith('/run')
     return render_template(the_template, verbose=daconfig.get('verbose error messages', True), version_warning=None, tab_title=word("Error"), page_title=word("Error"), error=errmess, historytext=str(the_history), logtext=str(the_trace), extra_js=Markup(script), special_error=special_error_html, show_debug=show_debug, yaml_filename=yaml_filename, show_retry=show_retry), error_code
 
 @app.route('/bundle.css', methods=['GET'])
@@ -21076,7 +21275,7 @@ def package_static(package, filename):
     if not os.path.isfile(the_file):
         return ('File not found', 404)
     extension, mimetype = get_ext_and_mimetype(the_file)
-    response = send_file(the_file, mimetype=str(mimetype))
+    response = send_file(the_file, mimetype=str(mimetype), download_name=filename)
     if attach:
         filename = os.path.basename(filename)
         response.headers['Content-Disposition'] = 'attachment; filename=' + json.dumps(filename)
@@ -21120,7 +21319,7 @@ def logs():
             info = zipfile.ZipInfo(f)
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o644 << 16
-            info.date_time = datetime.datetime.utcfromtimestamp(os.path.getmtime(zip_path)).replace(tzinfo=pytz.utc).astimezone(pytz.timezone(timezone)).timetuple()
+            info.date_time = datetime.datetime.utcfromtimestamp(os.path.getmtime(zip_path)).replace(tzinfo=datetime.timezone.utc).astimezone(zoneinfo.ZoneInfo(timezone)).timetuple()
             with open(zip_path, 'rb') as fp:
                 zf.writestr(info, fp.read())
         zf.close()
@@ -21230,7 +21429,7 @@ def request_developer():
             body += "Reason given: " + str(form.reason.data) + "\n\n"
         body += "Go to " + url_for('edit_user_profile_page', id=current_user.id, _external=True) + " to change the user's privileges."
         msg = Message("Request for developer account from " + str(current_user.email), recipients=recipients, body=body)
-        if not len(recipients):
+        if len(recipients) == 0:
             flash(word('No administrators could be found.'), 'error')
         else:
             try:
@@ -21410,7 +21609,7 @@ def utilities():
                 wrapping = workbook.add_format({'num_format': '@'})
                 wrapping.set_align('top')
                 wrapping.set_text_wrap()
-                wrapping.set_locked(False)
+                # wrapping.set_locked(False)
                 numb = workbook.add_format()
                 numb.set_align('top')
                 worksheet.write('A1', 'orig_lang', bold)
@@ -21573,6 +21772,7 @@ def needs_to_change_password():
         return False
     #logmessage("needs_to_change_password: starting")
     if app.user_manager.verify_password('password', current_user):
+        session.pop('_flashes', None)
         flash(word("Your password is insecure and needs to be changed"), "warning")
         return True
     #logmessage("needs_to_change_password: ending")
@@ -21599,7 +21799,7 @@ def ensure_training_loaded(interview):
     #logmessage("Source filename is " + source_filename)
     source_filename = interview.get_ml_store()
     parts = source_filename.split(':')
-    if len(parts) == 3 and parts[0].startswith('docassemble.') and re.match(r'data/sources/.*\.json', parts[1]):
+    if len(parts) == 3 and parts[0].startswith('docassemble.') and re.match(r'data/sources/.*\.json$', parts[1]):
         the_file = docassemble.base.functions.package_data_filename(source_filename)
         if the_file is not None:
             record = db.session.execute(select(MachineLearning.group_id).where(MachineLearning.group_id.like(source_filename + ':%'))).first()
@@ -21616,7 +21816,11 @@ def ensure_training_loaded(interview):
                                     if isinstance(train_list, list):
                                         for entry in train_list:
                                             if 'independent' in entry:
-                                                new_entry = MachineLearning(group_id=source_filename + ':' + group_id, independent=codecs.encode(pickle.dumps(entry['independent']), 'base64').decode(), dependent=codecs.encode(pickle.dumps(entry.get('dependent', None)), 'base64').decode(), modtime=nowtime, create_time=nowtime, active=True, key=entry.get('key', None))
+                                                depend = entry.get('dependent', None)
+                                                if depend is not None:
+                                                    new_entry = MachineLearning(group_id=source_filename + ':' + group_id, independent=codecs.encode(pickle.dumps(entry['independent']), 'base64').decode(), dependent=codecs.encode(pickle.dumps(depend), 'base64').decode(), modtime=nowtime, create_time=nowtime, active=True, key=entry.get('key', None))
+                                                else:
+                                                    new_entry = MachineLearning(group_id=source_filename + ':' + group_id, independent=codecs.encode(pickle.dumps(entry['independent']), 'base64').decode(), modtime=nowtime, create_time=nowtime, active=False, key=entry.get('key', None))
                                                 db.session.add(new_entry)
                                 db.session.commit()
                             else:
@@ -21666,10 +21870,16 @@ def train():
     setup_translation()
     the_package = request.args.get('package', None)
     if the_package is not None:
-        the_package = werkzeug.utils.secure_filename(the_package)
+        if the_package.startswith('_'):
+            the_package = '_' + werkzeug.utils.secure_filename(the_package)
+        else:
+            the_package = werkzeug.utils.secure_filename(the_package)
     the_file = request.args.get('file', None)
     if the_file is not None:
-        the_file = secure_filename_spaces_ok(the_file)
+        if the_file.startswith('_'):
+            the_file = '_' + secure_filename_spaces_ok(the_file)
+        else:
+            the_file = secure_filename_spaces_ok(the_file)
     the_group_id = request.args.get('group_id', None)
     show_all = int(request.args.get('show_all', 0))
     form = TrainingForm(request.form)
@@ -21710,15 +21920,25 @@ def train():
                     db.session.commit()
                     for entry in train_list:
                         if 'independent' in entry:
-                            new_entry = MachineLearning(group_id=the_prefix + ':' + group_id, independent=codecs.encode(pickle.dumps(entry['independent']), 'base64').decode(), dependent=codecs.encode(pickle.dumps(entry.get('dependent', None)), 'base64').decode(), modtime=nowtime, create_time=nowtime, active=True, key=entry.get('key', None))
+                            depend = entry.get('dependent', None)
+                            if depend is not None:
+                                new_entry = MachineLearning(group_id=the_prefix + ':' + group_id, independent=codecs.encode(pickle.dumps(entry['independent']), 'base64').decode(), dependent=codecs.encode(pickle.dumps(depend), 'base64').decode(), modtime=nowtime, create_time=nowtime, active=True, key=entry.get('key', None))
+                            else:
+                                new_entry = MachineLearning(group_id=the_prefix + ':' + group_id, independent=codecs.encode(pickle.dumps(entry['independent']), 'base64').decode(), modtime=nowtime, create_time=nowtime, active=False, key=entry.get('key', None))
                             db.session.add(new_entry)
                 elif uploadform.importtype.data == 'merge':
                     indep_in_use = set()
                     for record in db.session.execute(select(MachineLearning).filter_by(group_id=the_prefix + ':' + group_id)).scalars():
-                        indep_in_use.add(fix_pickle_obj(codecs.decode(bytearray(record.independent, encoding='utf-8'), 'base64')))
+                        indep = fix_pickle_obj(codecs.decode(bytearray(record.independent, encoding='utf-8'), 'base64'))
+                        if indep is not None:
+                            indep_in_use.add(indep)
                     for entry in train_list:
                         if 'independent' in entry and entry['independent'] not in indep_in_use:
-                            new_entry = MachineLearning(group_id=the_prefix + ':' + group_id, independent=codecs.encode(pickle.dumps(entry['independent']), 'base64').decode(), dependent=codecs.encode(pickle.dumps(entry.get('dependent', None)), 'base64').decode(), modtime=nowtime, create_time=nowtime, active=True, key=entry.get('key', None))
+                            depend = entry.get('dependent', None)
+                            if depend is not None:
+                                new_entry = MachineLearning(group_id=the_prefix + ':' + group_id, independent=codecs.encode(pickle.dumps(entry['independent']), 'base64').decode(), dependent=codecs.encode(pickle.dumps(depend), 'base64').decode(), modtime=nowtime, create_time=nowtime, active=True, key=entry.get('key', None))
+                            else:
+                                new_entry = MachineLearning(group_id=the_prefix + ':' + group_id, independent=codecs.encode(pickle.dumps(entry['independent']), 'base64').decode(), modtime=nowtime, create_time=nowtime, active=False, key=entry.get('key', None))
                             db.session.add(new_entry)
             db.session.commit()
             flash(word("Training data were successfully imported."), 'success')
@@ -21762,7 +21982,7 @@ def train():
         show_cond = MachineLearning.id != None
     else:
         show_all = 0
-        show_cond = MachineLearning.dependent is None
+        show_cond = MachineLearning.dependent == None
     package_list = {}
     file_list = {}
     group_id_list = {}
@@ -21808,7 +22028,7 @@ def train():
             #logmessage("Group id is " + str(parts))
             if not is_package_ml(parts):
                 continue
-            if re.match(r'data/sources/ml-.*\.json', parts[1]):
+            if re.match(r'data/sources/ml-.*\.json$', parts[1]):
                 parts[1] = re.sub(r'^data/sources/ml-|\.json$', '', parts[1])
             if parts[1] not in file_list:
                 file_list[parts[1]] = 0
@@ -21819,7 +22039,7 @@ def train():
                 #logmessage("Other group id is " + str(parts))
                 if not is_package_ml(parts):
                     continue
-                if re.match(r'data/sources/ml-.*\.json', parts[1]):
+                if re.match(r'data/sources/ml-.*\.json$', parts[1]):
                     parts[1] = re.sub(r'^data/sources/ml-|\.json$', '', parts[1])
                 if parts[1] not in file_list:
                     file_list[parts[1]] = 0
@@ -21827,7 +22047,7 @@ def train():
             area = SavedFile(current_user.id, fix=False, section='playgroundsources')
             for filename in area.list_of_files():
                 #logmessage("hey file is " + str(filename))
-                if re.match(r'ml-.*\.json', filename):
+                if re.match(r'ml-.*\.json$', filename):
                     short_file_name = re.sub(r'^ml-|\.json$', '', filename)
                     if short_file_name not in file_list:
                         file_list[short_file_name] = 0
@@ -21968,6 +22188,8 @@ def train():
         model = docassemble.base.util.SimpleTextMachineLearner(group_id=group_id_to_use)
         for record in db.session.execute(select(MachineLearning.id, MachineLearning.group_id, MachineLearning.key, MachineLearning.info, MachineLearning.independent, MachineLearning.dependent, MachineLearning.create_time, MachineLearning.modtime, MachineLearning.active).where(and_(MachineLearning.group_id == group_id_to_use, show_cond))):
             new_entry = dict(id=record.id, group_id=record.group_id, key=record.key, independent=fix_pickle_obj(codecs.decode(bytearray(record.independent, encoding='utf-8'), 'base64')) if record.independent is not None else None, dependent=fix_pickle_obj(codecs.decode(bytearray(record.dependent, encoding='utf-8'), 'base64')) if record.dependent is not None else None, info=fix_pickle_obj(codecs.decode(bytearray(record.info, encoding='utf-8'), 'base64')) if record.info is not None else None, create_type=record.create_time, modtime=record.modtime, active=MachineLearning.active)
+            if new_entry['dependent'] is None and new_entry['active'] is True:
+                new_entry['active'] = False
             if isinstance(new_entry['independent'], DADict) or isinstance(new_entry['independent'], dict):
                 new_entry['independent_display'] = '<div class="damldatacontainer">' + '<br>'.join(['<span class="damldatakey">' + str(key) + '</span>: <span class="damldatavalue">' + str(val) + ' (' + str(val.__class__.__name__) + ')</span>' for key, val in new_entry['independent'].items()]) + '</div>'
                 new_entry['type'] = 'data'
@@ -22024,7 +22246,8 @@ def train():
             if record.dependent is None:
                 continue
             key = fix_pickle_obj(codecs.decode(bytearray(record.dependent, encoding='utf-8'), 'base64'))
-            choices[key] = record.cnt
+            if key is not None:
+                choices[key] = record.cnt
         if len(choices) > 0:
             #logmessage("There are choices")
             choices = [(x, choices[x]) for x in sorted(choices, key=operator.itemgetter(0), reverse=False)]
@@ -22065,50 +22288,119 @@ def train():
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
         return response
 
-def user_interviews(user_id=None, secret=None, exclude_invalid=True, action=None, filename=None, session=None, tag=None, include_dict=True, delete_shared=False, admin=False, start_id=None, temp_user_id=None):
+def user_interviews_filter(obj):
+    if isinstance(obj, docassemble.base.DA.Condition):
+        leftside = user_interviews_filter(obj.leftside)
+        rightside = user_interviews_filter(obj.rightside)
+        if obj.operator == 'and':
+            return leftside & rightside
+        if obj.operator == 'xor':
+            return leftside ^ rightside
+        if obj.operator == 'or':
+            return leftside | rightside
+        if obj.operator == 'not':
+            return not_(leftside)
+        if obj.operator == 'le':
+            return leftside <= rightside
+        if obj.operator == 'ge':
+            return leftside >= rightside
+        if obj.operator == 'gt':
+            return leftside > rightside
+        if obj.operator == 'lt':
+            return leftside < rightside
+        if obj.operator == 'eq':
+            return leftside == rightside
+        if obj.operator == 'ne':
+            return leftside != rightside
+        if obj.operator == 'like':
+            return leftside.like(rightside)
+        if obj.operator == 'in':
+            return leftside.in_(rightside)
+        raise Exception("Operator not recognized")
+    if isinstance(obj, docassemble.base.DA.Group):
+        items = [user_interviews_filter(item) for item in obj.items]
+        if obj.group_type == 'and':
+            return and_(*items)
+        if obj.group_type == 'or':
+            return or_(*items)
+        raise Exception("Group type not recognized")
+    if isinstance(obj, docassemble.base.DA.Column):
+        if obj.name == 'indexno':
+            return UserDict.indexno
+        if obj.name == 'modtime':
+            return UserDict.modtime
+        if obj.name == 'filename':
+            return UserDictKeys.filename
+        if obj.name == 'key':
+            return UserDictKeys.key
+        if obj.name == 'encrypted':
+            return UserDict.encrypted
+        if obj.name == 'user_id':
+            return UserDictKeys.user_id
+        if obj.name == 'email':
+            return UserModel.email
+        if obj.name == 'first_name':
+            return UserModel.first_name
+        if obj.name == 'last_name':
+            return UserModel.last_name
+        if obj.name == 'country':
+            return UserModel.country
+        if obj.name == 'subdivisionfirst':
+            return UserModel.subdivisionfirst
+        if obj.name == 'subdivisionsecond':
+            return UserModel.subdivisionsecond
+        if obj.name == 'subdivisionthird':
+            return UserModel.subdivisionthird
+        if obj.name == 'organization':
+            return UserModel.organization
+        if obj.name == 'timezone':
+            return UserModel.timezone
+        if obj.name == 'language':
+            return UserModel.language
+        if obj.name == 'last_login':
+            return UserModel.last_login
+        raise Exception("Column " + repr(obj.name) + " not available")
+    return obj
+
+def user_interviews(user_id=None, secret=None, exclude_invalid=True, action=None, filename=None, session=None, tag=None, include_dict=True, delete_shared=False, admin=False, start_id=None, temp_user_id=None, query=None):
     # logmessage("user_interviews: user_id is " + str(user_id) + " and secret is " + str(secret))
-    if user_id is None and (current_user.is_anonymous or not current_user.has_role('admin', 'advocate')):
-        raise Exception('user_interviews: only administrators and advocates can access information about other users')
-    if user_id is not None and admin is False and not current_user.is_anonymous and current_user.id != user_id and not current_user.has_role('admin', 'advocate'):
-        raise Exception('user_interviews: only administrators and advocates can access information about other users')
-    if action is not None and admin is False and not current_user.has_role('admin', 'advocate'):
+    if session is not None and user_id is None and temp_user_id is None and current_user.is_authenticated and not current_user.has_role_or_permission('admin', 'advocate', permissions=['access_sessions']):
+        user_id = current_user.id
+    elif user_id is None and (current_user.is_anonymous or not current_user.has_role_or_permission('admin', 'advocate', permissions=['access_sessions'])):
+        raise Exception('user_interviews: you do not have sufficient privileges to access information about other users')
+    if user_id is not None and admin is False and not (current_user.is_authenticated and (current_user.same_as(user_id) or current_user.has_role_or_permission('admin', 'advocate', permissions=['access_sessions']))):
+        raise Exception('user_interviews: you do not have sufficient privileges to access information about other users')
+    if action is not None and admin is False and not current_user.has_role_or_permission('admin', 'advocate', permissions=['edit_sessions']):
         if user_id is None:
             raise Exception("user_interviews: no user_id provided")
         the_user = get_person(int(user_id), {})
         if the_user is None:
             raise Exception("user_interviews: user_id " + str(user_id) + " not valid")
+    if query is not None:
+        the_query = user_interviews_filter(query)
     if action == 'delete_all':
         sessions_to_delete = set()
-        if tag:
+        if tag or query is not None:
             start_id = None
             while True:
-                (the_list, start_id) = user_interviews(user_id=user_id, secret=secret, tag=tag, include_dict=False, start_id=start_id, temp_user_id=temp_user_id)
+                (the_list, start_id) = user_interviews(user_id=user_id, secret=secret, filename=filename, session=session, tag=tag, include_dict=False, start_id=start_id, temp_user_id=temp_user_id, query=query)
                 for interview_info in the_list:
                     sessions_to_delete.add((interview_info['session'], interview_info['filename'], interview_info['user_id'], interview_info['temp_user_id']))
                 if start_id is None:
                     break
         else:
+            where_clause = []
             if temp_user_id is not None:
-                if filename is None:
-                    interview_query = db.session.execute(select(UserDictKeys.filename, UserDictKeys.key).where(UserDictKeys.temp_user_id == temp_user_id).group_by(UserDictKeys.filename, UserDictKeys.key))
-                else:
-                    interview_query = db.session.execute(select(UserDictKeys.filename, UserDictKeys.key).where(UserDictKeys.temp_user_id == temp_user_id, UserDictKeys.filename == filename).group_by(UserDictKeys.filename, UserDictKeys.key))
-                for interview_info in interview_query:
-                    sessions_to_delete.add((interview_info.key, interview_info.filename, None, temp_user_id))
+                where_clause.append(UserDictKeys.temp_user_id == temp_user_id)
             elif user_id is not None:
-                if filename is None:
-                    interview_query = db.session.execute(select(UserDictKeys.filename, UserDictKeys.key).where(UserDictKeys.user_id == user_id).group_by(UserDictKeys.filename, UserDictKeys.key))
-                else:
-                    interview_query = db.session.execute(select(UserDictKeys.filename, UserDictKeys.key).where(UserDictKeys.user_id == user_id, UserDictKeys.filename == filename).group_by(UserDictKeys.filename, UserDictKeys.key))
-                for interview_info in interview_query:
-                    sessions_to_delete.add((interview_info.key, interview_info.filename, user_id, None))
-            else:
-                if filename is None:
-                    interview_query = db.session.execute(select(UserDict.filename, UserDict.key).group_by(UserDict.filename, UserDict.key))
-                else:
-                    interview_query = db.session.execute(select(UserDict.filename, UserDict.key).where(UserDict.filename == filename).group_by(UserDict.filename, UserDict.key))
-                for interview_info in interview_query:
-                    sessions_to_delete.add((interview_info.key, interview_info.filename, None, None))
+                where_clause.append(UserDictKeys.user_id == user_id)
+            if filename is not None:
+                where_clause.append(UserDictKeys.filename == filename)
+            if session is not None:
+                where_clause.append(UserDictKeys.key == session)
+            interview_query = db.session.execute(select(UserDictKeys.filename, UserDictKeys.key, UserDictKeys.user_id, UserDictKeys.temp_user_id).where(*where_clause).group_by(UserDictKeys.filename, UserDictKeys.key, UserDictKeys.user_id, UserDictKeys.temp_user_id))
+            for interview_info in interview_query:
+                sessions_to_delete.add((interview_info.key, interview_info.filename, interview_info.user_id, interview_info.temp_user_id))
             if user_id is not None:
                 if filename is None:
                     interview_query = db.session.execute(select(UserDict.filename, UserDict.key).where(UserDict.user_id == user_id).group_by(UserDict.filename, UserDict.key))
@@ -22136,9 +22428,9 @@ def user_interviews(user_id=None, secret=None, exclude_invalid=True, action=None
         #release_lock(session, filename)
         return True
     if admin is False and current_user and current_user.is_authenticated and current_user.timezone:
-        the_timezone = pytz.timezone(current_user.timezone)
+        the_timezone = zoneinfo.ZoneInfo(current_user.timezone)
     else:
-        the_timezone = pytz.timezone(get_default_timezone())
+        the_timezone = zoneinfo.ZoneInfo(get_default_timezone())
 
     interviews_length = 0
     interviews = []
@@ -22149,7 +22441,7 @@ def user_interviews(user_id=None, secret=None, exclude_invalid=True, action=None
             query_elements = [UserDict.indexno, UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDictKeys.filename, UserDictKeys.key, UserModel.email]
             subq_filter_elements = [UserDictKeys.temp_user_id == temp_user_id]
             if include_dict:
-                query_elements.extend([UserDict.dictionary, UserDict.encrypted, UserModel.email])
+                query_elements.extend([UserDict.dictionary, UserDict.encrypted])
             else:
                 query_elements.append(UserDict.modtime)
             if filename is not None:
@@ -22162,12 +22454,15 @@ def user_interviews(user_id=None, secret=None, exclude_invalid=True, action=None
             if len(subq_filter_elements) > 0:
                 subq = subq.where(and_(*subq_filter_elements))
             subq = subq.group_by(UserDictKeys.filename, UserDictKeys.key).subquery()
-            interview_query = select(*query_elements).select_from(subq.join(UserDict, subq.c.indexno == UserDict.indexno).join(UserDictKeys, and_(UserDict.filename == UserDictKeys.filename, UserDict.key == UserDictKeys.key)).outerjoin(UserModel, 0 == 1)).order_by(UserDict.indexno)
+            interview_query = select(*query_elements).select_from(subq.join(UserDict, subq.c.indexno == UserDict.indexno).join(UserDictKeys, and_(UserDict.filename == UserDictKeys.filename, UserDict.key == UserDictKeys.key, UserDictKeys.temp_user_id == temp_user_id)).outerjoin(UserModel, 0 == 1))
+            if query is not None:
+                interview_query = interview_query.where(the_query)
+            interview_query = interview_query.order_by(UserDict.indexno)
         elif user_id is not None:
             query_elements = [UserDict.indexno, UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDictKeys.filename, UserDictKeys.key, UserModel.email]
             subq_filter_elements = [UserDictKeys.user_id == user_id]
             if include_dict:
-                query_elements.extend([UserDict.dictionary, UserDict.encrypted, UserModel.email])
+                query_elements.extend([UserDict.dictionary, UserDict.encrypted])
             else:
                 query_elements.append(UserDict.modtime)
             if filename is not None:
@@ -22180,12 +22475,15 @@ def user_interviews(user_id=None, secret=None, exclude_invalid=True, action=None
             if len(subq_filter_elements) > 0:
                 subq = subq.where(and_(*subq_filter_elements))
             subq = subq.group_by(UserDictKeys.filename, UserDictKeys.key).subquery()
-            interview_query = select(*query_elements).select_from(subq.join(UserDict, subq.c.indexno == UserDict.indexno).join(UserDictKeys, and_(UserDict.filename == UserDictKeys.filename, UserDict.key == UserDictKeys.key)).join(UserModel, UserDictKeys.user_id == UserModel.id)).order_by(UserDict.indexno)
+            interview_query = select(*query_elements).select_from(subq.join(UserDict, subq.c.indexno == UserDict.indexno).join(UserDictKeys, and_(UserDict.filename == UserDictKeys.filename, UserDict.key == UserDictKeys.key, UserDictKeys.user_id == user_id)).join(UserModel, UserDictKeys.user_id == UserModel.id))
+            if query is not None:
+                interview_query = interview_query.where(the_query)
+            interview_query = interview_query.order_by(UserDict.indexno)
         else:
             query_elements = [UserDict.indexno, UserDictKeys.user_id, UserDictKeys.temp_user_id, UserDict.filename, UserDict.key, UserModel.email]
             subq_filter_elements = []
             if include_dict:
-                query_elements.extend([UserDict.dictionary, UserDict.encrypted, UserModel.email])
+                query_elements.extend([UserDict.dictionary, UserDict.encrypted])
             else:
                 query_elements.append(UserDict.modtime)
             if filename is not None:
@@ -22198,7 +22496,10 @@ def user_interviews(user_id=None, secret=None, exclude_invalid=True, action=None
             if len(subq_filter_elements) > 0:
                 subq = subq.where(and_(*subq_filter_elements))
             subq = subq.group_by(UserDict.filename, UserDict.key).subquery()
-            interview_query = select(*query_elements).select_from(subq.join(UserDict, subq.c.indexno == UserDict.indexno).join(UserDictKeys, and_(UserDict.filename == UserDictKeys.filename, UserDict.key == UserDictKeys.key)).outerjoin(UserModel, and_(UserDictKeys.user_id == UserModel.id, UserModel.active == True))).order_by(UserDict.indexno)
+            interview_query = select(*query_elements).select_from(subq.join(UserDict, subq.c.indexno == UserDict.indexno).join(UserDictKeys, and_(UserDict.filename == UserDictKeys.filename, UserDict.key == UserDictKeys.key)).outerjoin(UserModel, and_(UserDictKeys.user_id == UserModel.id, UserModel.active == True)))
+            if query is not None:
+                interview_query = interview_query.where(the_query)
+            interview_query = interview_query.order_by(UserDict.indexno)
         interview_query = interview_query.limit(PAGINATION_LIMIT_PLUS_ONE)
         stored_info = []
         results_in_query = 0
@@ -22341,11 +22642,14 @@ def user_interviews(user_id=None, secret=None, exclude_invalid=True, action=None
 @login_required
 def interview_list():
     setup_translation()
+    form = InterviewsListForm(request.form)
     is_json = bool(('json' in request.form and as_int(request.form['json'])) or ('json' in request.args and as_int(request.args['json'])))
     if 'lang' in request.form:
         session['language'] = request.form['lang']
         docassemble.base.functions.set_language(session['language'])
     tag = request.args.get('tag', None)
+    if request.method == 'POST':
+        tag = form.tags.data
     if tag is not None:
         tag = werkzeug.utils.secure_filename(tag)
     if 'newsecret' in session:
@@ -22371,22 +22675,23 @@ def interview_list():
     if secret is not None:
         secret = str(secret)
     #logmessage("interview_list: secret is " + repr(secret))
-    if 'action' in request.args and request.args.get('action') == 'delete_all':
-        num_deleted = user_interviews(user_id=current_user.id, secret=secret, action='delete_all', tag=tag)
-        if num_deleted > 0:
-            flash(word("Deleted interviews"), 'success')
-        if is_json:
-            return redirect(url_for('interview_list', json='1'))
-        return redirect(url_for('interview_list'))
-    elif 'action' in request.args and request.args.get('action') == 'delete':
-        yaml_file = request.args.get('filename', None)
-        session_id = request.args.get('session', None)
-        if yaml_file is not None and session_id is not None:
-            user_interviews(user_id=current_user.id, secret=secret, action='delete', session=session_id, filename=yaml_file)
-            flash(word("Deleted interview"), 'success')
-        if is_json:
-            return redirect(url_for('interview_list', json='1'))
-        return redirect(url_for('interview_list'))
+    if request.method == 'POST':
+        if form.delete_all.data:
+            num_deleted = user_interviews(user_id=current_user.id, secret=secret, action='delete_all', tag=tag)
+            if num_deleted > 0:
+                flash(word("Deleted interviews"), 'success')
+            if is_json:
+                return redirect(url_for('interview_list', json='1'))
+            return redirect(url_for('interview_list'))
+        elif form.delete.data:
+            yaml_file = form.i.data
+            session_id = form.session.data
+            if yaml_file is not None and session_id is not None:
+                user_interviews(user_id=current_user.id, secret=secret, action='delete', session=session_id, filename=yaml_file)
+                flash(word("Deleted interview"), 'success')
+            if is_json:
+                return redirect(url_for('interview_list', json='1'))
+            return redirect(url_for('interview_list'))
     #if daconfig.get('resume interview after login', False) and 'i' in session and 'uid' in session and (request.args.get('from_login', False) or (re.search(r'user/(register|sign-in)', str(request.referrer)) and 'next=' not in str(request.referrer))):
     #    if is_json:
     #        return redirect(url_for('index', i=session['i'], json='1'))
@@ -22404,10 +22709,15 @@ def interview_list():
             return redirect(url_for('index', i=daconfig.get('session list interview'), from_list='1', json='1'))
         else:
             return redirect(url_for('index', i=daconfig.get('session list interview'), from_list='1'))
-    exclude_invalid = not bool(current_user.has_role('admin', 'developer'))
+    exclude_invalid = not current_user.has_role('admin', 'developer')
     resume_interview = request.args.get('resume', None)
     if resume_interview is None and daconfig.get('auto resume interview', None) is not None and (request.args.get('from_login', False) or (re.search(r'user/(register|sign-in)', str(request.referrer)) and 'next=' not in str(request.referrer))):
         resume_interview = daconfig['auto resume interview']
+    device_id = request.cookies.get('ds', None)
+    if device_id is None:
+        device_id = random_string(16)
+    the_current_info = current_info(yaml=None, req=request, interface='web', session_info=None, secret=secret, device_id=device_id)
+    docassemble.base.functions.this_thread.current_info = the_current_info
     if resume_interview is not None:
         (interviews, start_id) = user_interviews(user_id=current_user.id, secret=secret, exclude_invalid=True, filename=resume_interview, include_dict=True)
         if len(interviews) > 0:
@@ -22442,7 +22752,19 @@ def interview_list():
         return jsonify(action="interviews", interviews=interviews, next_id=next_id)
     script = """
     <script>
-      $("#deleteall").on('click', function(event){
+      $(".dadeletebutton").on('click', function(event){
+        console.log("Doing click");
+        var yamlFilename = $("<input>")
+          .attr("type", "hidden")
+          .attr("name", "i").val($(this).data('i'));
+        $("#daform").append($(yamlFilename));
+        var session = $("<input>")
+          .attr("type", "hidden")
+          .attr("name", "session").val($(this).data('session'));
+        $("#daform").append($(session));
+        return true;
+      });
+      $("#delete_all").on('click', function(event){
         if (confirm(""" + json.dumps(word("Are you sure you want to delete all saved interviews?")) + """)){
           return true;
         }
@@ -22450,7 +22772,6 @@ def interview_list():
         return false;
       });
     </script>"""
-    script += global_js
     if re.search(r'user/register', str(request.referrer)) and len(interviews) == 1:
         return redirect(url_for('index', i=interviews[0]['filename'], session=interviews[0]['session'], from_list=1))
     tags_used = set()
@@ -22460,7 +22781,7 @@ def interview_list():
                 tags_used.add(the_tag)
     #interview_page_title = word(daconfig.get('interview page title', 'Interviews'))
     #title = word(daconfig.get('interview page heading', 'Resume an interview'))
-    argu = dict(version_warning=version_warning, tags_used=sorted(tags_used) if len(tags_used) > 0 else None, numinterviews=len([y for y in interviews if not y['metadata'].get('hidden', False)]), interviews=sorted(interviews, key=valid_date_key), tag=tag, next_id=next_id, show_back=show_back) # extra_css=Markup(global_css), extra_js=Markup(script), tab_title=interview_page_title, page_title=interview_page_title, title=title
+    argu = dict(version_warning=version_warning, tags_used=sorted(tags_used) if len(tags_used) > 0 else None, numinterviews=len([y for y in interviews if not y['metadata'].get('hidden', False)]), interviews=sorted(interviews, key=valid_date_key), tag=tag, next_id=next_id, show_back=show_back, form=form, page_js=Markup(script)) # extra_css=Markup(global_css), extra_js=Markup(script), tab_title=interview_page_title, page_title=interview_page_title, title=title
     if 'interview page template' in daconfig and daconfig['interview page template']:
         the_page = docassemble.base.functions.package_template_filename(daconfig['interview page template'])
         if the_page is None:
@@ -22591,7 +22912,7 @@ def fax_callback():
 @app.route("/clicksend_fax_callback", methods=['POST'])
 @csrf.exempt
 def clicksend_fax_callback():
-    if clicksend_config is None:
+    if clicksend_config is None or fax_provider != 'clicksend':
         logmessage("clicksend_fax_callback: Clicksend not enabled")
         return ('', 204)
     post_data = request.form.copy()
@@ -22603,10 +22924,51 @@ def clicksend_fax_callback():
     try:
         params = json.loads(the_json)
     except:
-        logmessage("clicksend_fax_callback: message_id not found")
+        logmessage("clicksend_fax_callback: existing fax record could not be found")
         return ('', 204)
     for param in ('timestamp_send', 'timestamp', 'message_id', 'status', 'status_code', 'status_text', 'error_code', 'error_text', 'custom_string', 'user_id', 'subaccount_id', 'message_type'):
         params[param] = post_data.get(param, None)
+    pipe = r.pipeline()
+    pipe.set(the_key, json.dumps(params))
+    pipe.expire(the_key, 86400)
+    pipe.execute()
+    return ('', 204)
+
+@app.route("/telnyx_fax_callback", methods=['POST'])
+@csrf.exempt
+def telnyx_fax_callback():
+    if telnyx_config is None:
+        logmessage("telnyx_fax_callback: Telnyx not enabled")
+        return ('', 204)
+    data = request.get_json(silent=True)
+    try:
+        the_id = data['data']['payload']['fax_id']
+    except:
+        logmessage("telnyx_fax_callback: fax_id not found")
+        return ('', 204)
+    the_key = 'da:faxcallback:sid:' + str(the_id)
+    the_json = r.get(the_key)
+    try:
+        params = json.loads(the_json)
+    except:
+        logmessage("telnyx_fax_callback: existing fax record could not be found")
+        return ('', 204)
+    try:
+        params['status'] = data['data']['payload']['status']
+        if params['status'] == 'failed' and 'failure_reason' in data['data']['payload']:
+            params['status'] += ': ' + data['data']['payload']['failure_reason']
+            logmessage("telnyx_fax_callback: failure because " + data['data']['payload']['failure_reason'])
+    except:
+        logmessage("telnyx_fax_callback: could not find status")
+    try:
+        params['latest_update_time'] = data['data']['occurred_at']
+    except:
+        logmessage("telnyx_fax_callback: could not update latest_update_time")
+    if 'status' in params and params['status'] == 'delivered':
+        try:
+            params['page_count'] = data['data']['payload']['page_count']
+        except:
+            logmessage("telnyx_fax_callback: could not update page_count")
     pipe = r.pipeline()
     pipe.set(the_key, json.dumps(params))
     pipe.expire(the_key, 86400)
@@ -22701,17 +23063,35 @@ def sms_body(phone_number, body='question', config='default'):
         return None
     return resp.verbs[0].verbs[0].body
 
-def favicon_file(filename):
+def favicon_file(filename, alt=None):
     the_dir = docassemble.base.functions.package_data_filename(daconfig.get('favicon', 'docassemble.webapp:data/static/favicon'))
     if the_dir is None or not os.path.isdir(the_dir):
         logmessage("favicon_file: could not find favicon directory")
         return ('File not found', 404)
     the_file = os.path.join(the_dir, filename)
     if not os.path.isfile(the_file):
-        return ('File not found', 404)
-    extension, mimetype = get_ext_and_mimetype(the_file)
-    response = send_file(the_file, mimetype=mimetype)
+        if alt is not None:
+            the_file = os.path.join(the_dir, alt)
+        if not os.path.isfile(the_file):
+            return ('File not found', 404)
+    if filename == 'site.webmanifest':
+        mimetype = 'application/manifest+json'
+    else:
+        extension, mimetype = get_ext_and_mimetype(the_file)
+    response = send_file(the_file, mimetype=mimetype, download_name=filename)
     return response
+
+def test_favicon_file(filename, alt=None):
+    the_dir = docassemble.base.functions.package_data_filename(daconfig.get('favicon', 'docassemble.webapp:data/static/favicon'))
+    if the_dir is None or not os.path.isdir(the_dir):
+        return False
+    the_file = os.path.join(the_dir, filename)
+    if not os.path.isfile(the_file):
+        if alt is not None:
+            the_file = os.path.join(the_dir, alt)
+        if not os.path.isfile(the_file):
+            return False
+    return True
 
 @app.route("/favicon.ico", methods=['GET'])
 def favicon():
@@ -22725,9 +23105,12 @@ def favicon_md():
 @app.route("/favicon-16x16.png", methods=['GET'])
 def favicon_sm():
     return favicon_file('favicon-16x16.png')
+@app.route("/site.webmanifest", methods=['GET'])
+def favicon_site_webmanifest():
+    return favicon_file('site.webmanifest', alt='manifest.json')
 @app.route("/manifest.json", methods=['GET'])
 def favicon_manifest_json():
-    return favicon_file('manifest.json')
+    return favicon_file('manifest.json', alt='site.webmanifest')
 @app.route("/safari-pinned-tab.svg", methods=['GET'])
 def favicon_safari_pinned_tab():
     return favicon_file('safari-pinned-tab.svg')
@@ -22755,7 +23138,7 @@ def robots():
         return ('File not found', 404)
     if not os.path.isfile(the_file):
         return ('File not found', 404)
-    response = send_file(the_file, mimetype='text/plain')
+    response = send_file(the_file, mimetype='text/plain', download_name='robots.txt')
     return response
 
 @app.route("/sms", methods=['POST'])
@@ -22793,6 +23176,8 @@ def do_sms(form, base_url, url_root, config='default', save=True):
     inp = form['Body'].strip()
     #logmessage("do_sms: received >" + inp + "<")
     key = 'da:sms:client:' + form["From"] + ':server:' + tconfig['number']
+    action = None
+    action_performed = False
     for try_num in (0, 1):
         sess_contents = r.get(key)
         if sess_contents is None:
@@ -22830,6 +23215,17 @@ def do_sms(form, base_url, url_root, config='default', save=True):
                 reset_user_dict(sess_info['uid'], sess_info['yaml_filename'], temp_user_id=sess_info['tempuser'])
             r.delete(key)
             return resp
+        user = None
+        if sess_info['user_id'] is not None:
+            user = load_user(sess_info['user_id'])
+        if user is None:
+            ci = dict(user=dict(is_anonymous=True, is_authenticated=False, email=None, theid=sess_info['tempuser'], the_user_id='t' + str(sess_info['tempuser']), roles=['user'], firstname='SMS', lastname='User', nickname=None, country=None, subdivisionfirst=None, subdivisionsecond=None, subdivisionthird=None, organization=None, timezone=None, location=None, session_uid=sess_info['session_uid'], device_id=form["From"]), session=sess_info['uid'], secret=sess_info['secret'], yaml_filename=sess_info['yaml_filename'], interface='sms', url=base_url, url_root=url_root, encrypted=encrypted, headers={}, clientip=None, method=None, skip=user_dict['_internal']['skip'], sms_sender=form["From"])
+        else:
+            ci = dict(user=dict(is_anonymous=False, is_authenticated=True, email=user.email, theid=user.id, the_user_id=user.id, roles=user.roles, firstname=user.first_name, lastname=user.last_name, nickname=user.nickname, country=user.country, subdivisionfirst=user.subdivisionfirst, subdivisionsecond=user.subdivisionsecond, subdivisionthird=user.subdivisionthird, organization=user.organization, timezone=user.timezone, location=None, session_uid=sess_info['session_uid'], device_id=form["From"]), session=sess_info['uid'], secret=sess_info['secret'], yaml_filename=sess_info['yaml_filename'], interface='sms', url=base_url, url_root=url_root, encrypted=encrypted, headers={}, clientip=None, method=None, skip=user_dict['_internal']['skip'])
+        if action is not None:
+            logmessage("do_sms: setting action to " + str(action))
+            ci.update(action)
+        docassemble.base.functions.this_thread.current_info = ci
         obtain_lock(sess_info['uid'], sess_info['yaml_filename'])
         steps, user_dict, is_encrypted = fetch_user_dict(sess_info['uid'], sess_info['yaml_filename'], secret=sess_info['secret'])
         if user_dict is None:
@@ -22837,8 +23233,6 @@ def do_sms(form, base_url, url_root, config='default', save=True):
             continue
         break
     encrypted = sess_info['encrypted']
-    action = None
-    action_performed = False
     while True:
         if user_dict.get('multi_user', False) is True and encrypted is True:
             encrypted = False
@@ -22937,6 +23331,7 @@ def do_sms(form, base_url, url_root, config='default', save=True):
             if steps > 1 and interview_status.can_go_back:
                 old_user_dict = user_dict
                 steps, user_dict, is_encrypted = fetch_previous_user_dict(sess_info['uid'], sess_info['yaml_filename'], secret=sess_info['secret'])
+                ci['encrypted'] = is_encrypted
                 if 'question' in sess_info:
                     del sess_info['question']
                     r.set(key, pickle.dumps(sess_info))
@@ -23512,12 +23907,12 @@ def get_api_key():
         api_key = request.headers['X-API-Key']
     return api_key
 
-def api_verify(req, roles=None):
+def api_verify(req, roles=None, permissions=None):
     api_key = get_api_key()
     if api_key is None:
         logmessage("api_verify: no API key provided")
         return False
-    api_key = encrypt_api_key(api_key)
+    api_key = encrypt_api_key(api_key, app.secret_key)
     rkeys = r.keys('da:apikey:userid:*:key:' + api_key + ':info')
     if len(rkeys) == 0:
         logmessage("api_verify: API key not found")
@@ -23570,7 +23965,19 @@ def api_verify(req, roles=None):
         return False
     login_user(user, remember=False)
     update_last_login(user)
-    if roles:
+    if current_user.has_role('admin') and 'permissions' in info and len(info['permissions']) > 0:
+        current_user.limited_api = True
+        current_user.limits = info['permissions']
+    ok_permission = False
+    if permissions:
+        for permission in permissions:
+            if current_user.can_do(permission):
+                ok_permission = True
+                break
+        if current_user.limited_api and not ok_permission:
+            logmessage("api_verify: user did not have correct privileges for resource")
+            return False
+    if roles and not ok_permission:
         ok_role = False
         for role in roles:
             if current_user.has_role(role):
@@ -23593,8 +24000,8 @@ def true_or_false(text):
     return True
 
 def get_user_list(include_inactive=False, start_id=None):
-    if not (current_user.is_authenticated and current_user.has_role('admin', 'advocate')):
-        raise Exception("You cannot call get_user_list() unless you are an administrator or advocate")
+    if not (current_user.is_authenticated and current_user.has_role_or_permission('admin', 'advocate', permissions=['access_user_info', 'create_user'])):
+        raise Exception("You do not have sufficient privileges to access information about other users")
     user_length = 0
     user_list = []
     while True:
@@ -23646,7 +24053,7 @@ def translation_file():
     if yaml_filename is None or not re.search(r'\S', yaml_filename):
         flash(word("You must provide an interview filename"), 'error')
         return redirect(url_for('utilities'))
-    tr_lang = form.language.data
+    tr_lang = form.tr_language.data
     if tr_lang is None or not re.search(r'\S', tr_lang):
         flash(word("You must provide a language"), 'error')
         return redirect(url_for('utilities'))
@@ -23780,7 +24187,7 @@ def translation_file():
         fixedunlockedcell = workbook.add_format()
         fixedunlockedcell.set_align('top')
         fixedunlockedcell.set_text_wrap()
-        fixedunlockedcell.set_locked(False)
+        # fixedunlockedcell.set_locked(False)
         fixed = workbook.add_format()
         fixedone = workbook.add_format()
         fixedone.set_bold()
@@ -23811,19 +24218,19 @@ def translation_file():
         wholefixedunlocked = workbook.add_format()
         wholefixedunlocked.set_align('top')
         wholefixedunlocked.set_text_wrap()
-        wholefixedunlocked.set_locked(False)
+        # wholefixedunlocked.set_locked(False)
         wholefixedunlockedone = workbook.add_format()
         wholefixedunlockedone.set_bold()
         wholefixedunlockedone.set_font_color('green')
         wholefixedunlockedone.set_align('top')
         wholefixedunlockedone.set_text_wrap()
-        wholefixedunlockedone.set_locked(False)
+        # wholefixedunlockedone.set_locked(False)
         wholefixedunlockedtwo = workbook.add_format()
         wholefixedunlockedtwo.set_bold()
         wholefixedunlockedtwo.set_font_color('blue')
         wholefixedunlockedtwo.set_align('top')
         wholefixedunlockedtwo.set_text_wrap()
-        wholefixedunlockedtwo.set_locked(False)
+        # wholefixedunlockedtwo.set_locked(False)
         numb = workbook.add_format()
         numb.set_align('top')
         worksheet.write('A1', 'interview', bold)
@@ -23834,24 +24241,24 @@ def translation_file():
         worksheet.write('F1', 'tr_lang', bold)
         worksheet.write('G1', 'orig_text', bold)
         worksheet.write('H1', 'tr_text', bold)
-        options = {
-            'objects':               False,
-            'scenarios':             False,
-            'format_cells':          False,
-            'format_columns':        False,
-            'format_rows':           False,
-            'insert_columns':        False,
-            'insert_rows':           True,
-            'insert_hyperlinks':     False,
-            'delete_columns':        False,
-            'delete_rows':           True,
-            'select_locked_cells':   True,
-            'sort':                  True,
-            'autofilter':            True,
-            'pivot_tables':          False,
-            'select_unlocked_cells': True,
-        }
-        worksheet.protect('', options)
+        # options = {
+        #     'objects':               False,
+        #     'scenarios':             False,
+        #     'format_cells':          False,
+        #     'format_columns':        False,
+        #     'format_rows':           False,
+        #     'insert_columns':        False,
+        #     'insert_rows':           True,
+        #     'insert_hyperlinks':     False,
+        #     'delete_columns':        False,
+        #     'delete_rows':           True,
+        #     'select_locked_cells':   True,
+        #     'sort':                  True,
+        #     'autofilter':            True,
+        #     'pivot_tables':          False,
+        #     'select_unlocked_cells': True,
+        # }
+        # worksheet.protect('', options)
         worksheet.set_column(0, 0, 25)
         worksheet.set_column(1, 1, 15)
         worksheet.set_column(2, 2, 12)
@@ -23864,9 +24271,9 @@ def translation_file():
                 continue
             language = question.language
             if language == '*':
-                language = interview_source.language
+                language = question.from_source.get_language()
             if language == '*':
-                language = DEFAULT_LANGUAGE
+                language = interview.default_language
             if language == tr_lang:
                 continue
             indexno = 0
@@ -24185,7 +24592,7 @@ def translation_file():
 @app.route('/api/user_list', methods=['GET'])
 @cross_origin(origins='*', methods=['GET', 'HEAD'], automatic_options=True)
 def api_user_list():
-    if not api_verify(request, roles=['admin', 'advocate']):
+    if not api_verify(request, roles=['admin', 'advocate'], permissions=['access_user_info']):
         return jsonify_with_status("Access denied.", 403)
     include_inactive = true_or_false(request.args.get('include_inactive', False))
     next_id_code = request.args.get('next_id', None)
@@ -24197,16 +24604,17 @@ def api_user_list():
             start_id = None
     else:
         start_id = None
-    (user_list, start_id) = get_user_list(include_inactive=include_inactive, start_id=start_id)
+    try:
+        (user_list, start_id) = get_user_list(include_inactive=include_inactive, start_id=start_id)
+    except Exception as err:
+        return jsonify_with_status(str(err), 400)
     if start_id is None:
         next_id = None
     else:
         next_id = safeid(str(start_id))
     return jsonify(dict(next_id=next_id, items=user_list))
 
-def get_user_info(user_id=None, email=None, case_sensitive=False):
-    if current_user.is_anonymous:
-        raise Exception("You cannot call get_user_info() unless you are logged in")
+def get_user_info(user_id=None, email=None, case_sensitive=False, admin=False):
     if user_id is not None:
         assert isinstance(user_id, int)
     if user_id is None and email is None:
@@ -24214,9 +24622,6 @@ def get_user_info(user_id=None, email=None, case_sensitive=False):
     if email is not None:
         assert isinstance(email, str)
         email = email.strip()
-    if not (current_user.has_role('admin', 'advocate')):
-        if (user_id is not None and current_user.id != user_id) or (email is not None and current_user.email != email):
-            raise Exception("You cannot call get_user_info() unless you are an administrator or advocate")
     user_info = dict(privileges=[])
     if user_id is not None:
         user = db.session.execute(select(UserModel).options(db.joinedload(UserModel.roles)).where(UserModel.id == user_id)).scalar()
@@ -24228,6 +24633,8 @@ def get_user_info(user_id=None, email=None, case_sensitive=False):
             user = db.session.execute(select(UserModel).options(db.joinedload(UserModel.roles)).where(UserModel.email.ilike(email))).scalar()
     if user is None or user.social_id.startswith('disabled$'):
         return None
+    if not admin and not current_user.has_role_or_permission('admin', 'advocate', permissions=['access_user_info']) and not current_user.same_as(user_id):
+        raise Exception("You do not have sufficient privileges to access information about other users")
     for role in user.roles:
         user_info['privileges'].append(role.name)
     for attrib in ('id', 'email', 'first_name', 'last_name', 'country', 'subdivisionfirst', 'subdivisionsecond', 'subdivisionthird', 'organization', 'timezone', 'language', 'active'):
@@ -24236,12 +24643,10 @@ def get_user_info(user_id=None, email=None, case_sensitive=False):
     return user_info
 
 def make_user_inactive(user_id=None, email=None):
-    if current_user.is_anonymous:
-        raise Exception("You cannot call make_user_inactive() unless you are logged in")
-    if not (current_user.has_role('admin')):
-        raise Exception("You cannot call make_user_inactive() unless you are an administrator")
+    if not current_user.has_role_or_permission('admin', permissions=['edit_user_active_status']):
+        raise Exception("You do not have sufficient privileges to make a user inactive")
     if user_id is None and email is None:
-        raise Exception("You must call make_user_inactive() with a user ID or an e-mail address")
+        raise Exception("You must supply a user ID or an e-mail address to make a user inactive")
     if user_id is not None:
         user = db.session.execute(select(UserModel).filter_by(id=user_id)).scalar()
     else:
@@ -24259,6 +24664,8 @@ def make_user_inactive(user_id=None, email=None):
 def api_user():
     if not api_verify(request):
         return jsonify_with_status("Access denied.", 403)
+    if current_user.limited_api and not current_user.can_do('access_user_info'):
+        return jsonify_with_status("You do not have sufficient privileges to access user information", 403)
     try:
         user_info = get_user_info(user_id=current_user.id)
     except Exception as err:
@@ -24268,6 +24675,8 @@ def api_user():
     if request.method == 'GET':
         return jsonify(user_info)
     if request.method == 'POST':
+        if current_user.limited_api and not current_user.can_do('edit_user_info'):
+            return jsonify_with_status("You do not have sufficient privileges to edit a user's information", 403)
         post_data = request.get_json(silent=True)
         if post_data is None:
             post_data = request.form.copy()
@@ -24275,9 +24684,12 @@ def api_user():
         for key in ('first_name', 'last_name', 'country', 'subdivisionfirst', 'subdivisionsecond', 'subdivisionthird', 'organization', 'timezone', 'language', 'password'):
             if key in post_data:
                 info[key] = post_data[key]
-        if 'password' in info and not current_user.has_role('admin'):
-            return jsonify_with_status("You must have admin privileges to change a password.", 403)
-        set_user_info(user_id=current_user.id, **info)
+        if 'password' in info and not current_user.has_role_or_permission('admin', permissions='edit_user_password'):
+            return jsonify_with_status("You do not have sufficient privileges to change a user's password.", 403)
+        try:
+            set_user_info(user_id=current_user.id, **info)
+        except Exception as err:
+            return jsonify_with_status(str(err), 400)
         return ('', 204)
     return ('', 204)
 
@@ -24300,7 +24712,7 @@ def api_user_privileges():
 @csrf.exempt
 @cross_origin(origins='*', methods=['POST', 'HEAD'], automatic_options=True)
 def api_create_user():
-    if not api_verify(request, roles=['admin']):
+    if not api_verify(request, roles=['admin'], permissions=['create_user']):
         return jsonify_with_status("Access denied.", 403)
     post_data = request.get_json(silent=True)
     if post_data is None:
@@ -24330,7 +24742,7 @@ def api_create_user():
         valid_role_names.add(rol.name)
     for role_name in role_list:
         if role_name not in valid_role_names:
-            return jsonify_with_status("Invalid privilege name.  " + role_name + " is not an existing privilege.", 400)
+            return jsonify_with_status("Invalid privilege name.  " + str(role_name) + " is not an existing privilege.", 400)
     password = post_data.get('password', random_alphanumeric(10)).strip()
     if len(password) < 4 or len(password) > 254:
         return jsonify_with_status("Password too short or too long", 400)
@@ -24341,10 +24753,88 @@ def api_create_user():
         return jsonify_with_status(str(err), 400)
     return jsonify_with_status(dict(user_id=user_id, password=password), 200)
 
+@app.route('/api/user_invite', methods=['POST'])
+@csrf.exempt
+@cross_origin(origins='*', methods=['POST', 'HEAD'], automatic_options=True)
+def api_invite_user():
+    if not api_verify(request, roles=['admin'], permissions=['create_user']):
+        return jsonify_with_status("Access denied.", 403)
+    is_admin = current_user.has_role('admin')
+    post_data = request.get_json(silent=True)
+    if post_data is None:
+        post_data = request.form.copy()
+    send_emails = true_or_false(request.args.get('send_emails', True))
+    role_name = str(post_data.get('privilege', 'user')).strip() or 'user'
+    valid_role_names = set()
+    for rol in db.session.execute(select(Role).where(Role.name != 'cron').order_by(Role.id)).scalars():
+        if not is_admin and rol.name in ('admin', 'developer', 'advocate'):
+            continue
+        valid_role_names.add(rol.name)
+    if role_name not in valid_role_names:
+        return jsonify_with_status("Invalid privilege name.", 400)
+    raw_email_addresses = post_data.get('email_addresses', post_data.get('email_address', []))
+    if raw_email_addresses.startswith('[') or raw_email_addresses.startswith('"'):
+        try:
+            raw_email_addresses = json.loads(raw_email_addresses)
+        except:
+            return jsonify_with_status("The email_addresses field did not contain valid JSON.", 400)
+    if not isinstance(raw_email_addresses, list):
+        raw_email_addresses = [str(raw_email_addresses)]
+    email_addresses = []
+    for email_address in raw_email_addresses:
+        (part_one, part_two) = email.utils.parseaddr(str(email_address))
+        if not re.match(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', part_two):
+            return jsonify_with_status("Invalid e-mail address.", 400)
+        email_addresses.append(part_two)
+    if len(email_addresses) == 0:
+        return jsonify_with_status("One or more 'email_addresses' must be supplied.", 400)
+    the_role_id = None
+    for role in db.session.execute(select(Role).order_by('id')).scalars():
+        if role.name == role_name:
+            the_role_id = role.id
+            break
+    if the_role_id is None:
+        return jsonify_with_status("Invalid privilege name.", 400)
+    for email_address in email_addresses:
+        user, user_email = app.user_manager.find_user_by_email(email_address)
+        if user:
+            return jsonify_with_status("That e-mail address is already being used.", 400)
+    invite_info = []
+    for email_address in email_addresses:
+        user_invite = MyUserInvitation(email=email_address, role_id=the_role_id, invited_by_user_id=current_user.id)
+        db.session.add(user_invite)
+        db.session.commit()
+        token = app.user_manager.generate_token(user_invite.id)
+        accept_invite_link = url_for('user.register',
+                                     token=token,
+                                     _external=True)
+        user_invite.token = token
+        db.session.commit()
+        info = dict(email=email_address)
+        if send_emails:
+            try:
+                logmessage("Trying to send invite e-mail to " + str(user_invite.email))
+                docassemble_flask_user.emails.send_invite_email(user_invite, accept_invite_link)
+                logmessage("Sent e-mail invite to " + str(user_invite.email))
+                info['invitation_sent'] = True
+                info['url'] = accept_invite_link
+            except Exception as e:
+                try:
+                    logmessage("Failed to send invite e-mail: " + e.__class__.__name__ + ': ' + str(e))
+                except:
+                    logmessage("Failed to send invite e-mail")
+                db.session.delete(user_invite)
+                db.session.commit()
+                info['invitation_sent'] = False
+        else:
+            info['url'] = accept_invite_link
+        invite_info.append(info)
+    return jsonify(invite_info)
+
 @app.route('/api/user_info', methods=['GET'])
 @cross_origin(origins='*', methods=['GET', 'HEAD'], automatic_options=True)
 def api_user_info():
-    if not api_verify(request, roles=['admin', 'advocate']):
+    if not api_verify(request, roles=['admin', 'advocate'], permissions=['access_user_info']):
         return jsonify_with_status("Access denied.", 403)
     if 'username' not in request.args:
         return jsonify_with_status("An e-mail address must be supplied.", 400)
@@ -24368,6 +24858,8 @@ def api_user_by_id(user_id):
         user_id = int(user_id)
     except:
         return jsonify_with_status("User ID must be an integer.", 400)
+    if not (current_user.same_as(user_id) or current_user.has_role_or_permission('admin', 'advocate', permissions=['access_user_info'])):
+        return jsonify_with_status("You do not have sufficient privileges to access user information", 403)
     try:
         user_info = get_user_info(user_id=user_id)
     except Exception as err:
@@ -24377,26 +24869,26 @@ def api_user_by_id(user_id):
     if request.method == 'GET':
         return jsonify(user_info)
     if request.method == 'DELETE':
-        if user_id == 1:
+        if user_id == 1 or user_id == current_user.id:
             return jsonify_with_status("This user account cannot be deleted or deactivated.", 403)
         if request.args.get('remove', None) == 'account':
-            if not (current_user.id == user_id or current_user.has_role('admin')):
-                return jsonify_with_status("You must have admin privileges to delete user accounts.", 403)
+            if not (current_user.id == user_id or current_user.has_role_or_permission('admin', permissions=['delete_user'])):
+                return jsonify_with_status("You do not have sufficient privileges to delete user accounts.", 403)
             user_interviews(user_id=user_id, secret=None, exclude_invalid=False, action='delete_all', delete_shared=False)
             delete_user_data(user_id, r, r_user)
         elif request.args.get('remove', None) == 'account_and_shared':
-            if not (current_user.id == user_id or current_user.has_role('admin')):
-                return jsonify_with_status("You must have admin privileges to delete user accounts.", 403)
+            if not current_user.has_role_or_permission('admin', permissions=['delete_user']):
+                return jsonify_with_status("You do not have sufficient privileges to delete user accounts.", 403)
             user_interviews(user_id=user_id, secret=None, exclude_invalid=False, action='delete_all', delete_shared=True)
             delete_user_data(user_id, r, r_user)
         else:
-            if not (current_user.id == user_id or current_user.has_role('admin')):
-                return jsonify_with_status("You must have admin privileges to inactivate user accounts.", 403)
+            if not current_user.has_role_or_permission('admin', permissions=['edit_user_active_status']):
+                return jsonify_with_status("You do not have sufficient privileges to inactivate user accounts.", 403)
             make_user_inactive(user_id=user_id)
         return ('', 204)
     if request.method == 'POST':
-        if not (current_user.has_role('admin', 'advocate') or current_user.id != user_id):
-            return jsonify_with_status("You must have admin or advocate privileges to edit user information.", 403)
+        if not (current_user.has_role_or_permission('admin', permissions=['edit_user_info']) or current_user.same_as(user_id)):
+            return jsonify_with_status("You do not have sufficient privileges to edit user information.", 403)
         post_data = request.get_json(silent=True)
         if post_data is None:
             post_data = request.form.copy()
@@ -24404,7 +24896,7 @@ def api_user_by_id(user_id):
         for key in ('first_name', 'last_name', 'country', 'subdivisionfirst', 'subdivisionsecond', 'subdivisionthird', 'organization', 'timezone', 'language', 'password'):
             if key in post_data:
                 info[key] = post_data[key]
-        if 'password' in info and not current_user.has_role('admin'):
+        if 'password' in info and not current_user.has_role_or_permission('admin', permissions=['edit_user_password']):
             return jsonify_with_status("You must have admin privileges to change a password.", 403)
         try:
             set_user_info(user_id=user_id, **info)
@@ -24417,7 +24909,7 @@ def api_user_by_id(user_id):
 @csrf.exempt
 @cross_origin(origins='*', methods=['POST', 'HEAD'], automatic_options=True)
 def api_fields():
-    if not api_verify(request, roles=['admin', 'developer']):
+    if not api_verify(request, roles=['admin', 'developer'], permissions=['template_parse']):
         return jsonify_with_status("Access denied.", 403)
     post_data = request.get_json(silent=True)
     if post_data is None:
@@ -24466,9 +24958,12 @@ def api_privileges():
     if not api_verify(request):
         return jsonify_with_status("Access denied.", 403)
     if request.method == 'GET':
-        return jsonify(get_privileges_list())
+        try:
+            return jsonify(get_privileges_list())
+        except Exception as err:
+            return jsonify_with_status(str(err), 400)
     if request.method == 'DELETE':
-        if not (current_user.has_role('admin')):
+        if not current_user.has_role_or_permission('admin', permissions=['edit_privileges']):
             return jsonify_with_status("Access denied.", 403)
         if 'privilege' not in request.args:
             return jsonify_with_status("A privilege name must be provided.", 400)
@@ -24478,7 +24973,7 @@ def api_privileges():
             return jsonify_with_status(str(err), 400)
         return ('', 204)
     if request.method == 'POST':
-        if not (current_user.has_role('admin')):
+        if not current_user.has_role_or_permission('admin', permissions=['edit_privileges']):
             return jsonify_with_status("Access denied.", 403)
         post_data = request.get_json(silent=True)
         if post_data is None:
@@ -24491,17 +24986,32 @@ def api_privileges():
             return jsonify_with_status(str(err), 400)
         return ('', 204)
 
-def get_privileges_list():
-    if not (current_user.has_role('admin', 'developer')):
-        raise Exception('You must have admin or developer privileges to call get_privileges_list().')
+def get_privileges_list(admin=False):
+    if admin is False and not current_user.has_role_or_permission('admin', 'developer', permissions=['access_privileges']):
+        raise Exception('You do not have sufficient privileges to see the list of privileges.')
     role_names = []
     for role in db.session.execute(select(Role.name).order_by(Role.name)):
         role_names.append(role.name)
     return role_names
 
+def get_permissions_of_privilege(privilege):
+    if not current_user.has_role_or_permission('admin', 'developer', permissions=['access_privileges']):
+        raise Exception('You do not have sufficient privileges to inspect privileges.')
+    if privilege == 'admin':
+        return copy.copy(PERMISSIONS_LIST)
+    if privilege == 'developer':
+        return ['demo_interviews', 'template_parse', 'interview_data']
+    if privilege == 'advocate':
+        return ['access_user_info', 'access_sessions', 'edit_sessions']
+    if privilege == 'cron':
+        return []
+    if privilege in docassemble.base.config.allowed:
+        return list(docassemble.base.config.allowed[privilege])
+    return []
+
 def add_privilege(privilege):
-    if not (current_user.has_role('admin')):
-        raise Exception('You must have admin privileges to call add_privilege().')
+    if not current_user.has_role_or_permission('admin', permissions=['edit_privileges']):
+        raise Exception('You do not have sufficient privileges to add a privilege.')
     role_names = get_privileges_list()
     if privilege in role_names:
         raise Exception("The given privilege already exists.")
@@ -24509,8 +25019,8 @@ def add_privilege(privilege):
     db.session.commit()
 
 def remove_privilege(privilege):
-    if not (current_user.has_role('admin')):
-        raise Exception('You must have admin privileges to call remove_privilege().')
+    if not current_user.has_role_or_permission('admin', permissions=['edit_privileges']):
+        raise Exception('You do not have sufficient privileges to delete a privilege.')
     if privilege in ['user', 'admin', 'developer', 'advocate', 'cron']:
         raise Exception('The specified privilege is built-in and cannot be deleted.')
     user_role = db.session.execute(select(Role).filter_by(name='user')).scalar()
@@ -24535,7 +25045,7 @@ def api_user_by_id_privileges(user_id):
     if request.method == 'GET':
         return jsonify(user_info['privileges'])
     if request.method in ('DELETE', 'POST'):
-        if not (current_user.has_role('admin')):
+        if not current_user.has_role_or_permission('admin', permissions=['edit_user_privileges']):
             return jsonify_with_status("Access denied.", 403)
         if request.method == 'DELETE':
             role_name = request.args.get('privilege', None)
@@ -24560,10 +25070,14 @@ def api_user_by_id_privileges(user_id):
         return ('', 204)
 
 def add_user_privilege(user_id, privilege):
-    if not (current_user.has_role('admin')):
-        raise Exception('You must have admin privileges to call add_user_privilege().')
-    if privilege not in get_privileges_list():
+    if not current_user.has_role_or_permission('admin', permissions=['edit_user_privileges']):
+        raise Exception('You do not have sufficient privileges to give another user a privilege.')
+    if privilege in ('admin', 'developer', 'advocate', 'cron') and not current_user.has_role_or_permission('admin'):
+        raise Exception('You do not have sufficient privileges to give the user this privilege.')
+    if privilege not in get_privileges_list(admin=True):
         raise Exception('The specified privilege does not exist.')
+    if privilege == 'cron':
+        raise Exception('You cannot give a user the cron privilege.')
     user = db.session.execute(select(UserModel).options(db.joinedload(UserModel.roles)).where(UserModel.id == user_id)).scalar()
     if user is None or user.social_id.startswith('disabled$'):
         raise Exception("The specified user did not exist")
@@ -24580,11 +25094,13 @@ def add_user_privilege(user_id, privilege):
     db.session.commit()
 
 def remove_user_privilege(user_id, privilege):
-    if not (current_user.has_role('admin')):
-        raise Exception('You must have admin privileges to call remove_user_privilege().')
+    if not current_user.has_role_or_permission('admin', permissions=['edit_user_privileges']):
+        raise Exception('You do not have sufficient privileges to take a privilege away from a user.')
     if current_user.id == user_id and privilege == 'admin':
         raise Exception('You cannot take away the admin privilege from the current user.')
-    if privilege not in get_privileges_list():
+    if privilege in ('admin', 'developer', 'advocate', 'cron') and not current_user.has_role('admin'):
+        raise Exception('You do not have sufficient privileges to take away this privilege.')
+    if privilege not in get_privileges_list(admin=True):
         raise Exception('The specified privilege does not exist.')
     user = db.session.execute(select(UserModel).options(db.joinedload(UserModel.roles)).where(UserModel.id == user_id)).scalar()
     if user is None or user.social_id.startswith('disabled$'):
@@ -24599,10 +25115,8 @@ def remove_user_privilege(user_id, privilege):
     db.session.commit()
 
 def create_user(email, password, privileges=None, info=None):
-    if current_user.is_anonymous:
-        raise Exception("You cannot call create_user() unless you are logged in")
-    if not (current_user.has_role('admin')):
-        raise Exception("You cannot call create_user() unless you are an administrator")
+    if not current_user.has_role_or_permission('admin', permissions=['create_user']):
+        raise Exception("You do not have sufficient privileges to create a user")
     email = email.strip()
     password = str(password).strip()
     if len(password) < 4 or len(password) > 254:
@@ -24650,8 +25164,9 @@ def create_user(email, password, privileges=None, info=None):
         confirmed_at = datetime.datetime.now()
     )
     num_roles = 0
+    is_admin = current_user.has_role('admin')
     for role in db.session.execute(select(Role).where(Role.name != 'cron').order_by(Role.id)).scalars():
-        if role.name in privileges:
+        if role.name in privileges and (is_admin or role.name not in ('admin', 'developer', 'advocate')):
             the_user.roles.append(role)
         num_roles +=1
     if num_roles == 0:
@@ -24663,33 +25178,45 @@ def create_user(email, password, privileges=None, info=None):
     return the_user.id
 
 def set_user_info(**kwargs):
-    if current_user.is_anonymous:
-        raise Exception("You cannot call set_user_info() unless you are logged in")
     user_id = kwargs.get('user_id', None)
     email = kwargs.get('email', None)
     if user_id is None and email is None:
-        user_id = current_user.id
-    if not (current_user.has_role('admin')):
+        user_id = int(current_user.id)
+    if not current_user.has_role_or_permission('admin', permissions=['edit_user_info']):
         if (user_id is not None and current_user.id != user_id) or (email is not None and current_user.email != email):
-            raise Exception("You cannot call set_user_info() unless you are an administrator")
+            raise Exception("You do not have sufficient privileges to edit user information")
     if user_id is not None:
         user = db.session.execute(select(UserModel).options(db.joinedload(UserModel.roles)).filter_by(id=user_id)).scalar()
     else:
         user = db.session.execute(select(UserModel).options(db.joinedload(UserModel.roles)).filter_by(email=email)).scalar()
     if user is None or user.social_id.startswith('disabled$'):
         raise Exception("User not found")
+    editing_self = current_user.same_as(user.id)
+    if not current_user.has_role_or_permission('admin'):
+        if not editing_self:
+            if user.has_role('admin', 'developer', 'advocate', 'cron'):
+                raise Exception("You do not have sufficient privileges to edit this user's information.")
+            if 'password' in kwargs and not current_user.can_do('edit_user_password'):
+                raise Exception("You do not have sufficient privileges to change this user's password.")
+        if 'privileges' in kwargs:
+            if user.has_role('admin', 'developer', 'advocate', 'cron') or not current_user.can_do('edit_user_privileges'):
+                raise Exception("You do not have sufficient privileges to edit this user's privileges.")
+    if 'active' in kwargs:
+        if not isinstance(kwargs['active'], bool):
+            raise Exception("The active parameter must be True or False")
+        if editing_self:
+            raise Exception("Cannot change active status of the current user.")
+        else:
+            if not current_user.has_role_or_permission('admin', permissions=['edit_user_active_status']):
+                raise Exception("You do not have sufficient privileges to edit this user's active status.")
     for key, val in kwargs.items():
         if key in ('first_name', 'last_name', 'country', 'subdivisionfirst', 'subdivisionsecond', 'subdivisionthird', 'organization', 'timezone', 'language'):
             setattr(user, key, val)
     if 'password' in kwargs:
-        if not (current_user.has_role('admin')):
-            raise Exception("You cannot call set_user_info() with a password unless you are an administrator.")
+        if not editing_self and not current_user.has_role_or_permission('admin', permissions=['edit_user_password']):
+            raise Exception("You do not have sufficient privileges to change a user's password.")
         user.user_auth.password = app.user_manager.hash_password(kwargs['password'])
     if 'active' in kwargs:
-        if not isinstance(kwargs['active'], bool):
-            raise Exception("The active parameter must be True or False")
-        if user.id == current_user.id:
-            raise Exception("Cannot change active status of the current user.")
         user.active = kwargs['active']
     db.session.commit()
     if 'privileges' in kwargs and isinstance(kwargs['privileges'], (list, tuple, set)):
@@ -24741,14 +25268,27 @@ def get_secret(username, password, case_sensitive=False):
         raise Exception("Incorrect password")
     return pad_to_16(MD5Hash(data=password).hexdigest())
 
+def parse_api_sessions_query(query):
+    if query is None or query.strip() == '':
+        return None
+    if illegal_sessions_query(query):
+        raise Exception("Illegal query")
+    return eval(query, {'DA': docassemble.base.DA})
+
 @app.route('/api/users/interviews', methods=['GET', 'DELETE'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['GET', 'DELETE', 'HEAD'], automatic_options=True)
 def api_users_interviews():
-    if not api_verify(request, roles=['admin', 'advocate']):
+    if not api_verify(request, roles=['admin', 'advocate'], permissions=['access_sessions']):
         return jsonify_with_status("Access denied.", 403)
     user_id = request.args.get('user_id', None)
     filename = request.args.get('i', None)
+    session_id = request.args.get('session', None)
+    query = request.args.get('query', None)
+    try:
+        query = parse_api_sessions_query(query)
+    except:
+        return jsonify_with_status("Invalid query parameter", 400)
     secret = request.args.get('secret', None)
     tag = request.args.get('tag', None)
     next_id_code = request.args.get('next_id', None)
@@ -24765,7 +25305,7 @@ def api_users_interviews():
     if request.method == 'GET':
         include_dict = true_or_false(request.args.get('include_dictionary', False))
         try:
-            (the_list, start_id) = user_interviews(user_id=user_id, secret=secret, exclude_invalid=False, tag=tag, filename=filename, include_dict=include_dict, start_id=start_id)
+            (the_list, start_id) = user_interviews(user_id=user_id, secret=secret, exclude_invalid=False, tag=tag, filename=filename, session=session_id, query=query, include_dict=include_dict, start_id=start_id)
         except Exception as err:
             return jsonify_with_status("Error getting interview list.  " + str(err), 400)
         if start_id is None:
@@ -24777,7 +25317,7 @@ def api_users_interviews():
         start_id = None
         while True:
             try:
-                (the_list, start_id) = user_interviews(user_id=user_id, exclude_invalid=False, tag=tag, filename=filename, include_dict=False, start_id=start_id)
+                (the_list, start_id) = user_interviews(user_id=user_id, exclude_invalid=False, tag=tag, filename=filename, session=session_id, query=query, include_dict=False, start_id=start_id)
             except:
                 return jsonify_with_status("Error reading interview list.", 400)
             for info in the_list:
@@ -24793,9 +25333,15 @@ def api_users_interviews():
 def api_user_user_id_interviews(user_id):
     if not api_verify(request):
         return jsonify_with_status("Access denied.", 403)
-    if not (current_user.id == user_id or current_user.has_role('admin', 'advocate')):
+    if not (current_user.id == user_id or current_user.has_role_or_permission('admin', 'advocate', permissions=['access_sessions'])):
         return jsonify_with_status("Access denied.", 403)
     filename = request.args.get('i', None)
+    session_id = request.args.get('session', None)
+    query = request.args.get('query', None)
+    try:
+        query = parse_api_sessions_query(query)
+    except:
+        return jsonify_with_status("Invalid query parameter", 400)
     secret = request.args.get('secret', None)
     tag = request.args.get('tag', None)
     next_id_code = request.args.get('next_id', None)
@@ -24812,7 +25358,7 @@ def api_user_user_id_interviews(user_id):
     include_dict = true_or_false(request.args.get('include_dictionary', False))
     if request.method == 'GET':
         try:
-            (the_list, start_id) = user_interviews(user_id=user_id, secret=secret, exclude_invalid=False, tag=tag, filename=filename, include_dict=include_dict, start_id=start_id)
+            (the_list, start_id) = user_interviews(user_id=user_id, secret=secret, exclude_invalid=False, tag=tag, filename=filename, session=session_id, query=query, include_dict=include_dict, start_id=start_id)
         except:
             return jsonify_with_status("Error reading interview list.", 400)
         if start_id is None:
@@ -24824,7 +25370,7 @@ def api_user_user_id_interviews(user_id):
         start_id = None
         while True:
             try:
-                (the_list, start_id) = user_interviews(user_id=user_id, exclude_invalid=False, tag=tag, filename=filename, include_dict=False, start_id=start_id)
+                (the_list, start_id) = user_interviews(user_id=user_id, exclude_invalid=False, tag=tag, filename=filename, session=session_id, query=query, include_dict=False, start_id=start_id)
             except:
                 return jsonify_with_status("Error reading interview list.", 400)
             for info in the_list:
@@ -24849,6 +25395,7 @@ def api_session_back():
     reply_with_question = true_or_false(post_data.get('question', True))
     if yaml_filename is None or session_id is None:
         return jsonify_with_status("Parameters i and session are required.", 400)
+    docassemble.base.functions.this_thread.current_info['yaml_filename'] = yaml_filename
     try:
         data = go_back_in_session(yaml_filename, session_id, secret=secret, return_question=reply_with_question)
     except Exception as the_err:
@@ -24861,17 +25408,21 @@ def api_session_back():
 
 def transform_json_variables(obj):
     if isinstance(obj, str):
-        if re.search(r'^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T', obj):
+        if re.search(r'^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]', obj):
             try:
                 return docassemble.base.util.as_datetime(dateutil.parser.parse(obj))
             except:
                 pass
-        else:
-            return obj
+        elif re.search(r'^[0-9][0-9]:[0-9][0-9]:[0-9][0-9]', obj):
+            try:
+                return datetime.time.fromisoformat(obj)
+            except:
+                pass
+        return obj
     if isinstance(obj, (bool, int, float)):
         return obj
     if isinstance(obj, dict):
-        if '_class' in obj and obj['_class'] == 'type' and 'name' in obj and isinstance(obj['name'], str) and valid_python_exp.match(obj['name']):
+        if '_class' in obj and obj['_class'] == 'type' and 'name' in obj and isinstance(obj['name'], str) and obj['name'].startswith('docassemble.') and not illegal_variable_name(obj['name']):
             if '.' in obj['name']:
                 the_module = re.sub(r'\.[^\.]+$', '', obj['name'])
             else:
@@ -24879,15 +25430,20 @@ def transform_json_variables(obj):
             try:
                 if the_module:
                     importlib.import_module(the_module)
-                return eval(obj['name'])
+                new_obj = eval(obj['name'])
+                if not isinstance(the_class, TypeType):
+                    raise Exception("name is not a class")
+                return new_obj
             except Exception as err:
                 logmessage("transform_json_variables: " + err.__class__.__name__ + ": " + str(err))
                 return None
-        if '_class' in obj and isinstance(obj['_class'], str) and 'instanceName' in obj and valid_python_exp.match(obj['_class']) and isinstance(obj['instanceName'], str):
+        if '_class' in obj and isinstance(obj['_class'], str) and 'instanceName' in obj and obj['_class'].startswith('docassemble.') and not illegal_variable_name(obj['_class']) and isinstance(obj['instanceName'], str):
             the_module = re.sub(r'\.[^\.]+$', '', obj['_class'])
             try:
                 importlib.import_module(the_module)
                 the_class = eval(obj['_class'])
+                if not isinstance(the_class, TypeType):
+                    raise Exception("_class was not a class")
                 new_obj = the_class(obj['instanceName'])
                 for key, val in obj.items():
                     if key == '_class':
@@ -24897,11 +25453,10 @@ def transform_json_variables(obj):
             except Exception as err:
                 logmessage("transform_json_variables: " + err.__class__.__name__ + ": " + str(err))
                 return None
-        else:
-            new_dict = {}
-            for key, val in obj.items():
-                new_dict[transform_json_variables(key)] = transform_json_variables(val)
-            return new_dict
+        new_dict = {}
+        for key, val in obj.items():
+            new_dict[transform_json_variables(key)] = transform_json_variables(val)
+        return new_dict
     if isinstance(obj, list):
         return [transform_json_variables(val) for val in obj]
     if isinstance(obj, set):
@@ -24922,6 +25477,7 @@ def api_session():
             secret = str(secret)
         if yaml_filename is None or session_id is None:
             return jsonify_with_status("Parameters i and session are required.", 400)
+        docassemble.base.functions.this_thread.current_info['yaml_filename'] = yaml_filename
         try:
             variables = get_session_variables(yaml_filename, session_id, secret=secret)
         except Exception as the_err:
@@ -24941,6 +25497,7 @@ def api_session():
         reply_with_question = true_or_false(post_data.get('question', True))
         if yaml_filename is None or session_id is None:
             return jsonify_with_status("Parameters i and session are required.", 400)
+        docassemble.base.functions.this_thread.current_info['yaml_filename'] = yaml_filename
         if 'variables' in post_data and isinstance(post_data['variables'], dict):
             variables = post_data['variables']
         else:
@@ -25074,14 +25631,18 @@ def get_session_variables(yaml_filename, session_id, secret=None, simplify=True,
     #sys.stderr.write("get_session_variables: fetch_user_dict\n")
     if secret is None:
         secret = docassemble.base.functions.this_thread.current_info.get('secret', None)
+    tbackup = docassemble.base.functions.backup_thread_variables()
+    docassemble.base.functions.this_thread.current_info['yaml_filename'] = yaml_filename
     try:
         steps, user_dict, is_encrypted = fetch_user_dict(session_id, yaml_filename, secret=str(secret))
     except Exception as the_err:
         if use_lock:
             release_lock(session_id, yaml_filename)
+        docassemble.base.functions.restore_thread_variables(tbackup)
         raise Exception("Unable to decrypt interview dictionary: " + str(the_err))
     if use_lock:
         release_lock(session_id, yaml_filename)
+    docassemble.base.functions.restore_thread_variables(tbackup)
     if user_dict is None:
         raise Exception("Unable to obtain interview dictionary.")
     if simplify:
@@ -25093,25 +25654,31 @@ def get_session_variables(yaml_filename, session_id, secret=None, simplify=True,
 def go_back_in_session(yaml_filename, session_id, secret=None, return_question=False, use_lock=False, encode=False):
     if use_lock:
         obtain_lock(session_id, yaml_filename)
+    tbackup = docassemble.base.functions.backup_thread_variables()
+    docassemble.base.functions.this_thread.current_info['yaml_filename'] = yaml_filename
     try:
         steps, user_dict, is_encrypted = fetch_user_dict(session_id, yaml_filename, secret=secret)
     except:
         if use_lock:
             release_lock(session_id, yaml_filename)
+        docassemble.base.functions.restore_thread_variables(tbackup)
         raise Exception("Unable to decrypt interview dictionary.")
     if user_dict is None:
         if use_lock:
             release_lock(session_id, yaml_filename)
+        docassemble.base.functions.restore_thread_variables(tbackup)
         raise Exception("Unable to obtain interview dictionary.")
     if steps == 1:
         if use_lock:
             release_lock(session_id, yaml_filename)
+        docassemble.base.functions.restore_thread_variables(tbackup)
         raise Exception("Cannot go back.")
     old_user_dict = user_dict
     steps, user_dict, is_encrypted = fetch_previous_user_dict(session_id, yaml_filename, secret)
     if user_dict is None:
         if use_lock:
             release_lock(session_id, yaml_filename)
+        docassemble.base.functions.restore_thread_variables(tbackup)
         raise Exception("Unable to obtain interview dictionary.")
     if return_question:
         try:
@@ -25119,32 +25686,43 @@ def go_back_in_session(yaml_filename, session_id, secret=None, return_question=F
         except Exception as the_err:
             if use_lock:
                 release_lock(session_id, yaml_filename)
+            docassemble.base.functions.restore_thread_variables(tbackup)
             raise Exception("Problem getting current question:" + str(the_err))
     else:
         data = None
     if use_lock:
         release_lock(session_id, yaml_filename)
+    docassemble.base.functions.restore_thread_variables(tbackup)
     return data
 
-def set_session_variables(yaml_filename, session_id, variables, secret=None, return_question=False, literal_variables=None, del_variables=None, question_name=None, event_list=None, advance_progress_meter=False, post_setting=True, use_lock=False, encode=False):
+def set_session_variables(yaml_filename, session_id, variables, secret=None, return_question=False, literal_variables=None, del_variables=None, question_name=None, event_list=None, advance_progress_meter=False, post_setting=True, use_lock=False, encode=False, process_objects=False):
     if use_lock:
         obtain_lock(session_id, yaml_filename)
+    tbackup = docassemble.base.functions.backup_thread_variables()
+    sbackup = backup_session()
     device_id = docassemble.base.functions.this_thread.current_info['user']['device_id']
     session_uid = docassemble.base.functions.this_thread.current_info['user']['session_uid']
     if secret is None:
         secret = docassemble.base.functions.this_thread.current_info.get('secret', None)
+    docassemble.base.functions.this_thread.current_info['yaml_filename'] = yaml_filename
     try:
         steps, user_dict, is_encrypted = fetch_user_dict(session_id, yaml_filename, secret=secret)
     except:
         if use_lock:
             release_lock(session_id, yaml_filename)
+        restore_session(sbackup)
+        docassemble.base.functions.restore_thread_variables(tbackup)
         raise Exception("Unable to decrypt interview dictionary.")
     vars_set = set()
     old_values = {}
     if user_dict is None:
         if use_lock:
             release_lock(session_id, yaml_filename)
+        restore_session(sbackup)
+        docassemble.base.functions.restore_thread_variables(tbackup)
         raise Exception("Unable to obtain interview dictionary.")
+    if process_objects:
+        variables = transform_json_variables(variables)
     pre_assembly_necessary = False
     for key, val in variables.items():
         if contains_volatile.search(key):
@@ -25162,12 +25740,33 @@ def set_session_variables(yaml_filename, session_id, variables, secret=None, ret
                 break
     if pre_assembly_necessary:
         interview = docassemble.base.interview_cache.get_interview(yaml_filename)
+        if current_user.is_anonymous:
+            if not interview.allowed_to_access(is_anonymous=True):
+                if use_lock:
+                    release_lock(session_id, yaml_filename)
+                restore_session(sbackup)
+                docassemble.base.functions.restore_thread_variables(tbackup)
+                raise Exception('Insufficient permissions to run this interview.')
+        else:
+            if not interview.allowed_to_access(has_roles=[role.name for role in current_user.roles]):
+                if use_lock:
+                    release_lock(session_id, yaml_filename)
+                restore_session(sbackup)
+                docassemble.base.functions.restore_thread_variables(tbackup)
+                raise Exception('Insufficient permissions to run this interview.')
         ci = current_info(yaml=yaml_filename, req=request, secret=secret, device_id=device_id, session_uid=session_uid)
         ci['session'] = session_id
         ci['encrypted'] = is_encrypted
         ci['secret'] = secret
         interview_status = docassemble.base.parse.InterviewStatus(current_info=ci)
-        interview.assemble(user_dict, interview_status)
+        try:
+            interview.assemble(user_dict, interview_status)
+        except Exception as err:
+            if use_lock:
+                release_lock(session_id, yaml_filename)
+            restore_session(sbackup)
+            docassemble.base.functions.restore_thread_variables(tbackup)
+            raise Exception("Error processing session: " + err.__class__.__name__ + ": " + str(err))
     try:
         for key, val in variables.items():
             if illegal_variable_name(key):
@@ -25186,6 +25785,8 @@ def set_session_variables(yaml_filename, session_id, variables, secret=None, ret
             del user_dict['_xxxtempvarxxx']
         if use_lock:
             release_lock(session_id, yaml_filename)
+        restore_session(sbackup)
+        docassemble.base.functions.restore_thread_variables(tbackup)
         raise Exception("Problem setting variables:" + str(the_err))
     if literal_variables is not None:
         exec('import docassemble.base.util', user_dict)
@@ -25193,26 +25794,46 @@ def set_session_variables(yaml_filename, session_id, variables, secret=None, ret
             if illegal_variable_name(key):
                 if use_lock:
                     release_lock(session_id, yaml_filename)
+                restore_session(sbackup)
+                docassemble.base.functions.restore_thread_variables(tbackup)
                 raise Exception("Illegal value as variable name.")
             exec(str(key) + ' = ' + val, user_dict)
             process_set_variable(str(key), user_dict, vars_set, old_values)
     if question_name is not None:
         interview = docassemble.base.interview_cache.get_interview(yaml_filename)
+        if current_user.is_anonymous:
+            if not interview.allowed_to_access(is_anonymous=True):
+                if use_lock:
+                    release_lock(session_id, yaml_filename)
+                restore_session(sbackup)
+                docassemble.base.functions.restore_thread_variables(tbackup)
+                raise Exception('Insufficient permissions to run this interview.')
+        else:
+            if not interview.allowed_to_access(has_roles=[role.name for role in current_user.roles]):
+                if use_lock:
+                    release_lock(session_id, yaml_filename)
+                restore_session(sbackup)
+                docassemble.base.functions.restore_thread_variables(tbackup)
+                raise Exception('Insufficient permissions to run this interview.')
         if question_name in interview.questions_by_name:
             interview.questions_by_name[question_name].mark_as_answered(user_dict)
         else:
+            if use_lock:
+                release_lock(session_id, yaml_filename)
+            restore_session(sbackup)
+            docassemble.base.functions.restore_thread_variables(tbackup)
             raise Exception("Problem marking question as completed")
     if del_variables is not None:
         try:
             for key in del_variables:
                 if illegal_variable_name(key):
-                    if use_lock:
-                        release_lock(session_id, yaml_filename)
                     raise Exception("Illegal value as variable name.")
                 exec('del ' + str(key), user_dict)
         except Exception as the_err:
             if use_lock:
                 release_lock(session_id, yaml_filename)
+            restore_session(sbackup)
+            docassemble.base.functions.restore_thread_variables(tbackup)
             raise Exception("Problem deleting variables: " + str(the_err))
     session_uid = docassemble.base.functions.this_thread.current_info['user']['session_uid']
     #if 'event_stack' in user_dict['_internal']:
@@ -25251,6 +25872,8 @@ def set_session_variables(yaml_filename, session_id, variables, secret=None, ret
         except Exception as the_err:
             if use_lock:
                 release_lock(session_id, yaml_filename)
+            restore_session(sbackup)
+            docassemble.base.functions.restore_thread_variables(tbackup)
             raise Exception("Problem getting current question:" + str(the_err))
     else:
         data = None
@@ -25265,6 +25888,8 @@ def set_session_variables(yaml_filename, session_id, variables, secret=None, ret
                 is_encrypted = True
     if use_lock:
         release_lock(session_id, yaml_filename)
+    restore_session(sbackup)
+    docassemble.base.functions.restore_thread_variables(tbackup)
     return data
 
 @app.route('/api/session/new', methods=['GET'])
@@ -25288,6 +25913,7 @@ def api_session_new():
             continue
         if re.match('[A-Za-z_][A-Za-z0-9_]*', argname):
             url_args[argname] = request.args[argname]
+    docassemble.base.functions.this_thread.current_info['yaml_filename'] = yaml_filename
     try:
         (encrypted, session_id) = create_new_interview(yaml_filename, secret, url_args=url_args, req=request)
     except Exception as err:
@@ -25313,9 +25939,11 @@ def create_new_interview(yaml_filename, secret, url_args=None, referer=None, req
         req = request
     if secret is None:
         secret = random_string(16)
+    tbackup = docassemble.base.functions.backup_thread_variables()
+    sbackup = backup_session()
     session_id, user_dict = reset_session(yaml_filename, secret)
     add_referer(user_dict, referer=referer)
-    if url_args:
+    if url_args and (isinstance(url_args, dict) or (hasattr(url_args, 'instanceName') and hasattr(url_args, 'elements') and isinstance(url_args.elements, dict))):
         for key, val in url_args.items():
             if isinstance(val, str):
                 val = val.encode('unicode_escape').decode()
@@ -25328,8 +25956,6 @@ def create_new_interview(yaml_filename, secret, url_args=None, referer=None, req
     ci['secret'] = secret
     interview_status = docassemble.base.parse.InterviewStatus(current_info=ci)
     interview_status.checkin = True
-    tbackup = docassemble.base.functions.backup_thread_variables()
-    sbackup = backup_session()
     try:
         interview.assemble(user_dict, interview_status)
     except DAErrorMissingVariable as err:
@@ -25363,6 +25989,7 @@ def api_session_question():
         secret = str(secret)
     if yaml_filename is None or session_id is None:
         return jsonify_with_status("Parameters i and session are required.", 400)
+    docassemble.base.functions.this_thread.current_info['yaml_filename'] = yaml_filename
     try:
         data = get_question_data(yaml_filename, session_id, secret)
     except Exception as err:
@@ -25374,6 +26001,21 @@ def api_session_question():
 def get_question_data(yaml_filename, session_id, secret, use_lock=True, user_dict=None, steps=None, is_encrypted=None, old_user_dict=None, save=True, post_setting=False, advance_progress_meter=False, action=None, encode=False):
     if use_lock:
         obtain_lock(session_id, yaml_filename)
+    tbackup = docassemble.base.functions.backup_thread_variables()
+    sbackup = backup_session()
+    interview = docassemble.base.interview_cache.get_interview(yaml_filename)
+    if current_user.is_anonymous:
+        if not interview.allowed_to_access(is_anonymous=True):
+            raise Exception('Insufficient permissions to run this interview.')
+    else:
+        if not interview.allowed_to_access(has_roles=[role.name for role in current_user.roles]):
+            raise Exception('Insufficient permissions to run this interview.')
+    device_id = docassemble.base.functions.this_thread.current_info['user']['device_id']
+    session_uid = docassemble.base.functions.this_thread.current_info['user']['session_uid']
+    ci = current_info(yaml=yaml_filename, req=request, secret=secret, device_id=device_id, action=action, session_uid=session_uid)
+    ci['session'] = session_id
+    ci['secret'] = secret
+    docassemble.base.functions.this_thread.current_info = ci
     if user_dict is None:
         try:
             steps, user_dict, is_encrypted = fetch_user_dict(session_id, yaml_filename, secret=secret)
@@ -25381,17 +26023,9 @@ def get_question_data(yaml_filename, session_id, secret, use_lock=True, user_dic
             if use_lock:
                 release_lock(session_id, yaml_filename)
             raise Exception("Unable to obtain interview dictionary: " + str(err))
-    interview = docassemble.base.interview_cache.get_interview(yaml_filename)
-    device_id = docassemble.base.functions.this_thread.current_info['user']['device_id']
-    session_uid = docassemble.base.functions.this_thread.current_info['user']['session_uid']
-    ci = current_info(yaml=yaml_filename, req=request, secret=secret, device_id=device_id, action=action, session_uid=session_uid)
-    ci['session'] = session_id
     ci['encrypted'] = is_encrypted
-    ci['secret'] = secret
     interview_status = docassemble.base.parse.InterviewStatus(current_info=ci)
     #interview_status.checkin = True
-    tbackup = docassemble.base.functions.backup_thread_variables()
-    sbackup = backup_session()
     try:
         interview.assemble(user_dict, interview_status=interview_status, old_user_dict=old_user_dict)
     except DAErrorMissingVariable as err:
@@ -25421,7 +26055,7 @@ def get_question_data(yaml_filename, session_id, secret, use_lock=True, user_dic
     if advance_progress_meter:
         if interview.use_progress_bar and interview_status.question.progress is None and save_status == 'new':
             advance_progress(user_dict, interview)
-        if interview.use_progress_bar and interview_status.question.progress is not None and (user_dict['_internal']['progress'] is None or interview_status.question.interview.options.get('strict progress', False) or interview_status.question.progress > user_dict['_internal']['progress']):
+        if interview.use_progress_bar and interview_status.question.progress is not None and (user_dict['_internal']['progress'] is None or interview.options.get('strict progress', False) or interview_status.question.progress > user_dict['_internal']['progress']):
             user_dict['_internal']['progress'] = interview_status.question.progress
     if save:
         save_user_dict(session_id, user_dict, yaml_filename, secret=secret, encrypt=is_encrypted, changed=post_setting, steps=steps)
@@ -25487,7 +26121,7 @@ def get_question_data(yaml_filename, session_id, secret, use_lock=True, user_dic
     interview_status.submit = title_info.get('submit', the_main_page_parts['main page submit'])
     interview_status.back = title_info.get('back button label', the_main_page_parts['main page back button label'] or interview_status.question.back())
     interview_status.cornerback = title_info.get('corner back button label', the_main_page_parts['main page corner back button label'] or interview_status.question.cornerback())
-    bootstrap_theme = interview_status.question.interview.get_bootstrap_theme()
+    bootstrap_theme = interview.get_bootstrap_theme()
     if steps is None:
         steps = user_dict['_internal']['steps']
     allow_going_back = bool(interview_status.question.can_go_back and (steps is None or (steps - user_dict['_internal']['steps_offset']) > 1))
@@ -25508,7 +26142,7 @@ def get_question_data(yaml_filename, session_id, secret, use_lock=True, user_dic
         reload_after = 0
     #if next_action_review:
     #    data['next_action'] = next_action_review
-    data['interview_options'] = interview_status.question.interview.options
+    data['interview_options'] = interview.options
     if reload_after and reload_after > 0:
         data['reload_after'] = reload_after
     for key in list(data.keys()):
@@ -25540,7 +26174,7 @@ def get_question_data(yaml_filename, session_id, secret, use_lock=True, user_dic
         login_url = url_for('user.login', next=url_for('index', i=yaml_filename))
     else:
         login_url = url_for('user.login')
-    if interview_status.question.interview.consolidated_metadata.get('show login', SHOW_LOGIN):
+    if interview.consolidated_metadata.get('show login', SHOW_LOGIN):
         if current_user.is_anonymous:
             if len(menu_items) > 0:
                 data['menu']['top'] = {'anchor': word("Menu")}
@@ -25548,12 +26182,12 @@ def get_question_data(yaml_filename, session_id, secret, use_lock=True, user_dic
             else:
                 data['menu']['top'] = {'href': login_url, 'anchor': sign_in_text}
         else:
-            if len(menu_items) == 0 and interview_status.question.interview.options.get('hide standard menu', False):
+            if len(menu_items) == 0 and interview.options.get('hide standard menu', False):
                 data['menu']['top'] = {'anchor': (current_user.email if current_user.email else re.sub(r'.*\$', '', current_user.social_id))}
             else:
                 data['menu']['top'] = {'anchor': current_user.email if current_user.email else re.sub(r'.*\$', '', current_user.social_id)}
-                if not interview_status.question.interview.options.get('hide standard menu', False):
-                    if current_user.has_role('admin', 'developer') and interview_status.question.interview.debug:
+                if not interview.options.get('hide standard menu', False):
+                    if current_user.has_role('admin', 'developer') and interview.debug:
                         menu_items.append({'href': '#source', 'title': word("How this question came to be asked"), 'anchor': word('Source')})
                     if current_user.has_role('admin', 'advocate') and app.config['ENABLE_MONITOR']:
                         menu_items.append({'href': url_for('monitor'), 'anchor': word('Monitor')})
@@ -25566,8 +26200,9 @@ def get_question_data(yaml_filename, session_id, secret, use_lock=True, user_dic
                         if app.config['ENABLE_PLAYGROUND']:
                             menu_items.append({'href': url_for('playground_page'), 'anchor': word('Playground')})
                         menu_items.append({'href': url_for('utilities'), 'anchor': word('Utilities')})
-                        if current_user.has_role('admin'):
+                        if current_user.has_role('admin', 'advocate') or current_user.can_do('access_user_info'):
                             menu_items.append({'href': url_for('user_list'), 'anchor': word('User List')})
+                        if current_user.has_role('admin'):
                             menu_items.append({'href': url_for('config_page'), 'anchor': word('Configuration')})
                     if app.config['SHOW_DISPATCH']:
                         menu_items.append({'href': url_for('interview_start'), 'anchor': word('Available Interviews')})
@@ -25587,7 +26222,7 @@ def get_question_data(yaml_filename, session_id, secret, use_lock=True, user_dic
     else:
         if len(menu_items) > 0:
             data['menu']['top'] = {'anchor': word("Menu")}
-            if not interview_status.question.interview.options.get('hide standard menu', False):
+            if not interview.options.get('hide standard menu', False):
                 menu_items.append({'href': exit_href(interview_status), 'anchor': interview_status.exit_label})
         else:
             data['menu']['top'] = {'href': exit_href(interview_status), 'anchor': interview_status.exit_label}
@@ -25603,58 +26238,107 @@ def api_session_action():
     post_data = request.get_json(silent=True)
     if post_data is None:
         post_data = request.form.copy()
-    yaml_filename = post_data.get('i', None)
-    session_id = post_data.get('session', None)
-    secret = post_data.get('secret', None)
-    action = post_data.get('action', None)
-    persistent = true_or_false(post_data.get('persistent', False))
+    result = run_action_in_session(**post_data)
+    if not isinstance(result, dict):
+        return result
+    if result['status'] == 'success':
+        return ('', 204)
+    return jsonify_with_status(result['message'], 400)
+
+def run_action_in_session(**kwargs):
+    yaml_filename = kwargs.get('i', None)
+    session_id = kwargs.get('session', None)
+    secret = kwargs.get('secret', None)
+    action = kwargs.get('action', None)
+    persistent = true_or_false(kwargs.get('persistent', False))
+    overwrite = true_or_false(kwargs.get('overwrite', False))
     if yaml_filename is None or session_id is None or action is None:
-        return jsonify_with_status("Parameters i, session, and action are required.", 400)
+        return {"status": "error", "message": "Parameters i, session, and action are required."}
     secret = str(secret)
-    if 'arguments' in post_data:
-        if isinstance(post_data['arguments'], dict):
-            arguments = post_data['arguments']
+    if 'arguments' in kwargs and kwargs['arguments'] is not None:
+        if isinstance(kwargs['arguments'], dict):
+            arguments = kwargs['arguments']
         else:
             try:
-                arguments = json.loads(post_data['arguments'])
+                arguments = json.loads(kwargs['arguments'])
             except:
-                return jsonify_with_status("Malformed arguments.", 400)
+                return {"status": "error", "message": "Malformed arguments."}
             if not isinstance(arguments, dict):
-                return jsonify_with_status("Arguments data is not a dict.", 400)
+                return {"status": "error", "message": "Arguments data is not a dict."}
     else:
         arguments = {}
+    device_id = docassemble.base.functions.this_thread.current_info['user']['device_id']
+    session_uid = docassemble.base.functions.this_thread.current_info['user']['session_uid']
+    ci = current_info(yaml=yaml_filename, req=request, action=dict(action=action, arguments=arguments), secret=secret, device_id=device_id, session_uid=session_uid)
+    ci['session'] = session_id
+    ci['secret'] = secret
+    interview = docassemble.base.interview_cache.get_interview(yaml_filename)
+    if current_user.is_anonymous:
+        if not interview.allowed_to_access(is_anonymous=True):
+            raise Exception('Insufficient permissions to run this interview.')
+    else:
+        if not interview.allowed_to_access(has_roles=[role.name for role in current_user.roles]):
+            raise Exception('Insufficient permissions to run this interview.')
+    tbackup = docassemble.base.functions.backup_thread_variables()
+    sbackup = backup_session()
+    docassemble.base.functions.this_thread.current_info = ci
     obtain_lock(session_id, yaml_filename)
     try:
         steps, user_dict, is_encrypted = fetch_user_dict(session_id, yaml_filename, secret=secret)
     except:
         release_lock(session_id, yaml_filename)
-        return jsonify_with_status("Unable to obtain interview dictionary.", 400)
-    interview = docassemble.base.interview_cache.get_interview(yaml_filename)
-    device_id = docassemble.base.functions.this_thread.current_info['user']['device_id']
-    session_uid = docassemble.base.functions.this_thread.current_info['user']['session_uid']
-    ci = current_info(yaml=yaml_filename, req=request, action=dict(action=action, arguments=arguments), secret=secret, device_id=device_id, session_uid=session_uid)
-    ci['session'] = session_id
+        restore_session(sbackup)
+        docassemble.base.functions.restore_thread_variables(tbackup)
+        return {"status": "error", "message": "Unable to obtain interview dictionary."}
     ci['encrypted'] = is_encrypted
-    ci['secret'] = secret
     interview_status = docassemble.base.parse.InterviewStatus(current_info=ci)
     if not persistent:
         interview_status.checkin = True
-    old_language = docassemble.base.functions.get_language()
+    changed = True
     try:
         interview.assemble(user_dict, interview_status)
     except DAErrorMissingVariable as err:
-        steps += 1
-        save_user_dict(session_id, user_dict, yaml_filename, secret=secret, encrypt=is_encrypted, changed=True, steps=steps)
+        if overwrite:
+            save_status = 'overwrite'
+            changed = False
+        else:
+            save_status = docassemble.base.functions.this_thread.misc.get('save_status', 'new')
+        if save_status == 'new':
+            steps += 1
+            user_dict['_internal']['steps'] = steps
+        if save_status != 'ignore':
+            save_user_dict(session_id, user_dict, yaml_filename, secret=secret, encrypt=is_encrypted, changed=changed, steps=steps)
+            if user_dict.get('multi_user', False) is True and is_encrypted is True:
+                is_encrypted = False
+                decrypt_session(secret, user_code=session_id, filename=yaml_filename)
+            if user_dict.get('multi_user', False) is False and is_encrypted is False:
+                encrypt_session(secret, user_code=session_id, filename=yaml_filename)
+                is_encrypted = True
         release_lock(session_id, yaml_filename)
-        docassemble.base.functions.set_language(old_language)
-        return ('', 204)
+        restore_session(sbackup)
+        docassemble.base.functions.restore_thread_variables(tbackup)
+        return {"status": "success"}
     except Exception as e:
         release_lock(session_id, yaml_filename)
-        docassemble.base.functions.set_language(old_language)
-        return jsonify_with_status("api_session_action: failure to assemble interview: " + e.__class__.__name__ + ": " + str(e), 400)
-    docassemble.base.functions.set_language(old_language)
-    steps += 1
-    save_user_dict(session_id, user_dict, yaml_filename, secret=secret, encrypt=is_encrypted, changed=True, steps=steps)
+        restore_session(sbackup)
+        docassemble.base.functions.restore_thread_variables(tbackup)
+        return {"status": "error", "message": "api_session_action: failure to assemble interview: " + e.__class__.__name__ + ": " + str(e)}
+    if overwrite:
+        save_status = 'overwrite'
+        changed = False
+    else:
+        save_status = docassemble.base.functions.this_thread.misc.get('save_status', 'new')
+    if save_status == 'new':
+        steps += 1
+        user_dict['_internal']['steps'] = steps
+    if save_status != 'ignore':
+        save_user_dict(session_id, user_dict, yaml_filename, secret=secret, encrypt=is_encrypted, changed=changed, steps=steps)
+        if user_dict.get('multi_user', False) is True and is_encrypted is True:
+            is_encrypted = False
+            decrypt_session(secret, user_code=session_id, filename=yaml_filename)
+        if user_dict.get('multi_user', False) is False and is_encrypted is False:
+            encrypt_session(secret, user_code=session_id, filename=yaml_filename)
+            is_encrypted = True
     release_lock(session_id, yaml_filename)
     if interview_status.question.question_type == "response":
         if hasattr(interview_status.question, 'all_variables'):
@@ -25668,83 +26352,111 @@ def api_session_action():
         else:
             response_to_send = make_response(interview_status.questionText.encode('utf-8'), '200 OK')
         response_to_send.headers['Content-Type'] = interview_status.extras['content_type']
+        restore_session(sbackup)
+        docassemble.base.functions.restore_thread_variables(tbackup)
         return response_to_send
     if interview_status.question.question_type == "sendfile":
         if interview_status.question.response_file is not None:
             the_path = interview_status.question.response_file.path()
         else:
+            restore_session(sbackup)
+            docassemble.base.functions.restore_thread_variables(tbackup)
             return jsonify_with_status("Could not send file because the response was None", 404)
         if not os.path.isfile(the_path):
+            restore_session(sbackup)
+            docassemble.base.functions.restore_thread_variables(tbackup)
             return jsonify_with_status("Could not send file because " + str(the_path) + " not found", 404)
         response_to_send = send_file(the_path, mimetype=interview_status.extras['content_type'])
         response_to_send.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
+        restore_session(sbackup)
+        docassemble.base.functions.restore_thread_variables(tbackup)
         return response_to_send
-    return ('', 204)
+    restore_session(sbackup)
+    docassemble.base.functions.restore_thread_variables(tbackup)
+    return {'status': 'success'}
 
 @app.route('/api/login_url', methods=['POST'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['POST', 'HEAD'], automatic_options=True)
 def api_login_url():
-    if not api_verify(request, roles=['admin']):
+    if not api_verify(request, roles=['admin'], permissions=['log_user_in']):
         return jsonify_with_status("Access denied.", 403)
     post_data = request.get_json(silent=True)
     if post_data is None:
         post_data = request.form.copy()
-    username = post_data.get('username', None)
-    password = post_data.get('password', None)
+    result = get_login_url(**post_data)
+    if result['status'] == 'error':
+        return jsonify_with_status(result['message'], 400)
+    if result['status'] == 'auth_error':
+        return jsonify_with_status(result['message'], 403)
+    if result['status'] == 'success':
+        return jsonify(result['url'])
+    return jsonify_with_status("Error", 400)
+
+def get_login_url(**kwargs):
+    username = kwargs.get('username', None)
+    password = kwargs.get('password', None)
     if username is None or password is None:
-        return jsonify_with_status("A username and password must be supplied", 400)
+        return {"status": "error", "message": "A username and password must be supplied"}
+    username = str(username)
+    password = str(password)
     try:
-        secret = get_secret(str(username), str(password))
+        secret = get_secret(username, password)
     except Exception as err:
-        return jsonify_with_status(str(err), 403)
+        return {"status": "auth_error", "message": str(err)}
     try:
-        expire = int(post_data.get('expire', 15))
+        expire = int(kwargs.get('expire', 15))
         assert expire > 0
     except:
-        return jsonify_with_status("Invalid number of seconds.", 400)
-    if 'url_args' in post_data:
-        if isinstance(post_data['url_args'], dict):
-            url_args = post_data['url_args']
+        return {"status": "error", "message": "Invalid number of seconds."}
+    if 'url_args' in kwargs:
+        if isinstance(kwargs['url_args'], dict):
+            url_args = kwargs['url_args']
         else:
             try:
-                url_args = json.loads(post_data['url_args'])
+                url_args = json.loads(kwargs['url_args'])
                 assert isinstance(url_args, dict)
             except:
-                return jsonify_with_status("Malformed URL arguments", 400)
+                return {"status": "error", "message": "Malformed URL arguments"}
     else:
         url_args = {}
     username = re.sub(r'\%', '', username)
     user = db.session.execute(select(UserModel).where(UserModel.email.ilike(username))).scalar()
     if user is None:
-        return jsonify_with_status("Username not known", 403)
+        return {"status": "auth_error", "message": "Username not known"}
     info = dict(user_id=user.id, secret=secret)
     del user
-    if 'next' in post_data:
+    if 'next' in kwargs:
         try:
-            path = get_url_from_file_reference(post_data['next'])
+            path = get_url_from_file_reference(kwargs['next'])
             assert isinstance(path, str)
             assert not path.startswith('javascript')
         except:
-            return jsonify_with_status("Unknown path for next", 400)
+            return {"status": "error", "message": "Unknown path for next"}
     for key in ['i', 'next', 'session']:
-        if key in post_data:
-            info[key] = post_data[key]
+        if key in kwargs:
+            info[key] = kwargs[key]
     if len(url_args) > 0:
         info['url_args'] = url_args
     if 'i' in info:
+        old_yaml_filename = docassemble.base.functions.this_thread.current_info.get('yaml_filename', None)
+        docassemble.base.functions.this_thread.current_info['yaml_filename'] = info['i']
         if 'session' in info:
             try:
                 steps, user_dict, is_encrypted = fetch_user_dict(info['session'], info['i'], secret=secret)
                 info['encrypted'] = is_encrypted
             except:
-                return jsonify_with_status("Could not decrypt dictionary", 400)
-        elif true_or_false(post_data.get('resume_existing', False)) or daconfig.get('auto login resume existing', False):
+                if old_yaml_filename:
+                    docassemble.base.functions.this_thread.current_info['yaml_filename'] = old_yaml_filename
+                return {"status": "error", "message": "Could not decrypt dictionary"}
+        elif true_or_false(kwargs.get('resume_existing', False)) or daconfig.get('auto login resume existing', False):
             interviews = user_interviews(user_id=info['user_id'], secret=secret, exclude_invalid=True, filename=info['i'], include_dict=True)[0]
             if len(interviews) > 0:
                 info['session'] = interviews[0]['session']
                 info['encrypted'] = interviews[0]['encrypted']
             del interviews
+        if old_yaml_filename:
+            docassemble.base.functions.this_thread.current_info['yaml_filename'] = old_yaml_filename
     encryption_key = random_string(16)
     encrypted_text = encrypt_dictionary(info, encryption_key)
     while True:
@@ -25756,7 +26468,7 @@ def api_login_url():
     pipe.set(the_key, encrypted_text)
     pipe.expire(the_key, expire)
     pipe.execute()
-    return jsonify(url_for('auto_login', key=encryption_key + code, _external=True))
+    return {"status": "success", "url": url_for('auto_login', key=encryption_key + code, _external=True)}
 
 @app.route('/api/list', methods=['GET'])
 @cross_origin(origins='*', methods=['GET', 'HEAD'], automatic_options=True)
@@ -25772,7 +26484,12 @@ def api_user_interviews():
     if not api_verify(request):
         return jsonify_with_status("Access denied.", 403)
     filename = request.args.get('i', None)
-    session = request.args.get('session', None)
+    session_id = request.args.get('session', None)
+    query = request.args.get('query', None)
+    try:
+        query = parse_api_sessions_query(query)
+    except:
+        return jsonify_with_status("Invalid query parameter", 400)
     tag = request.args.get('tag', None)
     secret = request.args.get('secret', None)
     if secret is not None:
@@ -25789,7 +26506,7 @@ def api_user_interviews():
         start_id = None
     if request.method == 'GET':
         try:
-            (the_list, start_id) = user_interviews(user_id=current_user.id, secret=secret, filename=filename, session=session, exclude_invalid=False, tag=tag, include_dict=include_dict, start_id=start_id)
+            (the_list, start_id) = user_interviews(user_id=current_user.id, secret=secret, filename=filename, session=session_id, query=query, exclude_invalid=False, tag=tag, include_dict=include_dict, start_id=start_id)
         except:
             return jsonify_with_status("Error reading interview list.", 400)
         if start_id is None:
@@ -25801,7 +26518,7 @@ def api_user_interviews():
         start_id = None
         while True:
             try:
-                (the_list, start_id) = user_interviews(user_id=current_user.id, filename=filename, session=session, exclude_invalid=False, tag=tag, include_dict=False, start_id=start_id)
+                (the_list, start_id) = user_interviews(user_id=current_user.id, filename=filename, session=session_id, query=query, exclude_invalid=False, tag=tag, include_dict=False, start_id=start_id)
             except:
                 return jsonify_with_status("Error reading interview list.", 400)
             for info in the_list:
@@ -25815,10 +26532,15 @@ def api_user_interviews():
 @csrf.exempt
 @cross_origin(origins='*', methods=['GET', 'DELETE', 'HEAD'], automatic_options=True)
 def api_interviews():
-    if not api_verify(request, roles=['admin', 'advocate']):
+    if not api_verify(request, roles=['admin', 'advocate'], permissions=['access_sessions']):
         return jsonify_with_status("Access denied.", 403)
     filename = request.args.get('i', None)
-    session = request.args.get('session', None)
+    session_id = request.args.get('session', None)
+    query = request.args.get('query', None)
+    try:
+        query = parse_api_sessions_query(query)
+    except:
+        return jsonify_with_status("Invalid query parameter", 400)
     tag = request.args.get('tag', None)
     secret = request.args.get('secret', None)
     if secret is not None:
@@ -25835,7 +26557,7 @@ def api_interviews():
         start_id = None
     if request.method == 'GET':
         try:
-            (the_list, start_id) = user_interviews(secret=secret, filename=filename, session=session, exclude_invalid=False, tag=tag, include_dict=include_dict, start_id=start_id)
+            (the_list, start_id) = user_interviews(secret=secret, filename=filename, session=session_id, query=query, exclude_invalid=False, tag=tag, include_dict=include_dict, start_id=start_id)
         except Exception as err:
             return jsonify_with_status("Error reading interview list: " + str(err), 400)
         if start_id is None:
@@ -25844,10 +26566,12 @@ def api_interviews():
             next_id = safeid(str(start_id))
         return jsonify(dict(next_id=next_id, items=docassemble.base.functions.safe_json(the_list)))
     if request.method == 'DELETE':
+        if not current_user.has_role_or_permission('admin', 'advocate', permissions=['edit_sessions']):
+            return jsonify_with_status("Access denied.", 403)
         start_id = None
         while True:
             try:
-                (the_list, start_id) = user_interviews(filename=filename, session=session, exclude_invalid=False, tag=tag, include_dict=False, start_id=start_id)
+                (the_list, start_id) = user_interviews(filename=filename, session=session_id, query=query, exclude_invalid=False, tag=tag, include_dict=False, start_id=start_id)
             except:
                 return jsonify_with_status("Error reading interview list.", 400)
             for info in the_list:
@@ -25893,7 +26617,7 @@ def should_run_create(package_name):
 @csrf.exempt
 @cross_origin(origins='*', methods=['GET', 'POST', 'DELETE', 'HEAD'], automatic_options=True)
 def api_package():
-    if not api_verify(request, roles=['admin', 'developer']):
+    if not api_verify(request, roles=['admin', 'developer'], permissions=['manage_packages']):
         return jsonify_with_status("Access denied.", 403)
     if request.method == 'GET':
         package_list, package_auth = get_package_info(exclude_core=True)
@@ -25929,6 +26653,7 @@ def api_package():
             return jsonify_with_status("You are not allowed to uninstall that package.", 400)
         uninstall_package(target)
         if do_restart:
+            logmessage("Starting process of updating packages followed by restarting server")
             result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s(run_create=should_run_create(target)))
         else:
             result = docassemble.webapp.worker.update_packages.delay(restart=False)
@@ -25976,6 +26701,7 @@ def api_package():
                     install_pip_package(existing_package.name, existing_package.limitation)
             db.session.commit()
             if do_restart:
+                logmessage("Starting process of updating packages followed by restarting server")
                 result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s(run_create=should_run_create(target)))
             else:
                 result = docassemble.webapp.worker.update_packages.delay(restart=False)
@@ -25994,6 +26720,7 @@ def api_package():
             if user_can_edit_package(giturl=github_url) and user_can_edit_package(pkgname=packagename):
                 install_git_package(packagename, github_url, branch)
                 if do_restart:
+                    logmessage("Starting process of updating packages followed by restarting server")
                     result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s(run_create=should_run_create(packagename)))
                 else:
                     result = docassemble.webapp.worker.update_packages.delay(restart=False)
@@ -26012,6 +26739,7 @@ def api_package():
             if user_can_edit_package(pkgname=packagename):
                 install_pip_package(packagename, limitation)
                 if do_restart:
+                    logmessage("Starting process of updating packages followed by restarting server")
                     result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s(run_create=should_run_create(packagename)))
                 else:
                     result = docassemble.webapp.worker.update_packages.delay(restart=False)
@@ -26033,6 +26761,7 @@ def api_package():
                 if user_can_edit_package(pkgname=pkgname):
                     install_zip_package(pkgname, file_number)
                     if do_restart:
+                        logmessage("Starting process of updating packages followed by restarting server")
                         result = docassemble.webapp.worker.update_packages.apply_async(link=docassemble.webapp.worker.reset_server.s(run_create=should_run_create(pkgname)))
                     else:
                         result = docassemble.webapp.worker.update_packages.delay(restart=False)
@@ -26045,7 +26774,7 @@ def api_package():
 @csrf.exempt
 @cross_origin(origins='*', methods=['GET', 'HEAD'], automatic_options=True)
 def api_package_update_status():
-    if not api_verify(request, roles=['admin', 'developer']):
+    if not api_verify(request, roles=['admin', 'developer'], permissions=['manage_packages']):
         return jsonify_with_status("Access denied.", 403)
     code = request.args.get('task_id', None)
     if code is None:
@@ -26086,7 +26815,7 @@ def api_temporary_redirect():
     if url is None:
         return jsonify_with_status("No url supplied.", 400)
     try:
-        one_time = bool(int(request.args.get('one_time', 0)))
+        one_time = true_or_false(request.args.get('one_time', 0))
     except:
         one_time = False
     try:
@@ -26108,7 +26837,7 @@ def api_resume_url():
     filename = post_data.get('i', None)
     if filename is None:
         return jsonify_with_status("No filename supplied.", 400)
-    session = post_data.get('session', None)
+    session_id = post_data.get('session_id', None)
     if 'url_args' in post_data:
         if isinstance(post_data['url_args'], dict):
             url_args = post_data['url_args']
@@ -26130,8 +26859,8 @@ def api_resume_url():
     except:
         return jsonify_with_status("Invalid number of seconds.", 400)
     info = dict(i=filename)
-    if session:
-        info['session'] = session
+    if session_id:
+        info['session'] = session_id
     if one_time:
         info['once'] = True
     while True:
@@ -26149,7 +26878,7 @@ def api_resume_url():
 @csrf.exempt
 @cross_origin(origins='*', methods=['POST', 'HEAD'], automatic_options=True)
 def api_clear_cache():
-    if not api_verify(request, roles=['admin', 'developer']):
+    if not api_verify(request, roles=['admin', 'developer'], permissions=['playground_control']):
         return jsonify_with_status("Access denied.", 403)
     for key in r.keys('da:interviewsource:*'):
         r.incr(key.decode())
@@ -26159,7 +26888,7 @@ def api_clear_cache():
 @csrf.exempt
 @cross_origin(origins='*', methods=['GET', 'POST', 'PATCH', 'HEAD'], automatic_options=True)
 def api_config():
-    if not api_verify(request, roles=['admin']):
+    if not api_verify(request, roles=['admin'], permissions=['manage_config']):
         return jsonify_with_status("Access denied.", 403)
     if request.method == 'GET':
         try:
@@ -26228,7 +26957,7 @@ def api_config():
 @csrf.exempt
 @cross_origin(origins='*', methods=['POST', 'HEAD'], automatic_options=True)
 def api_playground_pull():
-    if not api_verify(request, roles=['admin', 'developer']):
+    if not api_verify(request, roles=['admin', 'developer'], permissions=['playground_control']):
         return jsonify_with_status("Access denied.", 403)
     post_data = request.get_json(silent=True)
     if post_data is None:
@@ -26236,7 +26965,7 @@ def api_playground_pull():
     do_restart = true_or_false(post_data.get('restart', True))
     current_project = post_data.get('project', 'default')
     try:
-        if current_user.has_role('admin'):
+        if current_user.has_role_or_permission('admin', permissions=['playground_control']):
             user_id = int(post_data.get('user_id', current_user.id))
         else:
             if 'user_id' in post_data:
@@ -26295,7 +27024,7 @@ def api_playground_pull():
 @csrf.exempt
 @cross_origin(origins='*', methods=['POST', 'HEAD'], automatic_options=True)
 def api_restart():
-    if not api_verify(request, roles=['admin', 'developer']):
+    if not api_verify(request, roles=['admin', 'developer'], permissions=['playground_control']):
         return jsonify_with_status("Access denied.", 403)
     return_val = jsonify_restart_task()
     restart_all()
@@ -26305,7 +27034,7 @@ def api_restart():
 @csrf.exempt
 @cross_origin(origins='*', methods=['GET', 'HEAD'], automatic_options=True)
 def api_restart_status():
-    if not api_verify(request, roles=['admin', 'developer']):
+    if not api_verify(request, roles=['admin', 'developer'], permissions=['playground_control']):
         return jsonify_with_status("Access denied.", 403)
     code = request.args.get('task_id', None)
     if code is None:
@@ -26324,7 +27053,7 @@ def api_restart_status():
 @csrf.exempt
 @cross_origin(origins='*', methods=['POST', 'HEAD'], automatic_options=True)
 def api_playground_install():
-    if not api_verify(request, roles=['admin', 'developer']):
+    if not api_verify(request, roles=['admin', 'developer'], permissions=['playground_control']):
         return jsonify_with_status("Access denied.", 403)
     post_data = request.get_json(silent=True)
     if post_data is None:
@@ -26332,7 +27061,7 @@ def api_playground_install():
     do_restart = true_or_false(post_data.get('restart', True))
     current_project = post_data.get('project', 'default')
     try:
-        if current_user.has_role('admin'):
+        if current_user.has_role_or_permission('admin', permissions=['playground_control']):
             user_id = int(post_data.get('user_id', current_user.id))
         else:
             if 'user_id' in post_data:
@@ -26467,11 +27196,11 @@ def api_playground_install():
 @csrf.exempt
 @cross_origin(origins='*', methods=['GET', 'POST', 'DELETE', 'HEAD'], automatic_options=True)
 def api_playground_projects():
-    if not api_verify(request, roles=['admin', 'developer']):
+    if not api_verify(request, roles=['admin', 'developer'], permissions=['playground_control']):
         return jsonify_with_status("Access denied.", 403)
     if request.method in ('GET', 'DELETE'):
         try:
-            if current_user.has_role('admin'):
+            if current_user.has_role_or_permission('admin', permissions=['playground_control']):
                 user_id = int(request.args.get('user_id', current_user.id))
             else:
                 if 'user_id' in request.args:
@@ -26494,7 +27223,7 @@ def api_playground_projects():
         if post_data is None:
             post_data = request.form.copy()
         try:
-            if current_user.has_role('admin'):
+            if current_user.has_role_or_permission('admin', permissions=['playground_control']):
                 user_id = int(post_data.get('user_id', current_user.id))
             else:
                 if 'user_id' in post_data:
@@ -26516,13 +27245,13 @@ def api_playground_projects():
 @csrf.exempt
 @cross_origin(origins='*', methods=['GET', 'POST', 'DELETE', 'HEAD'], automatic_options=True)
 def api_playground():
-    if not api_verify(request, roles=['admin', 'developer']):
+    if not api_verify(request, roles=['admin', 'developer'], permissions=['playground_control']):
         return jsonify_with_status("Access denied.", 403)
     if request.method in ('GET', 'DELETE'):
         folder = request.args.get('folder', 'static')
         project = request.args.get('project', 'default')
         try:
-            if current_user.has_role('admin'):
+            if current_user.has_role_or_permission('admin', permissions=['playground_control']):
                 user_id = int(request.args.get('user_id', current_user.id))
             else:
                 if 'user_id' in request.args:
@@ -26536,8 +27265,9 @@ def api_playground():
             post_data = request.form.copy()
         folder = post_data.get('folder', 'static')
         project = post_data.get('project', 'default')
+        do_restart = true_or_false(post_data.get('restart', True))
         try:
-            if current_user.has_role('admin'):
+            if current_user.has_role_or_permission('admin', permissions=['playground_control']):
                 user_id = int(post_data.get('user_id', current_user.id))
             else:
                 if 'user_id' in post_data:
@@ -26546,6 +27276,7 @@ def api_playground():
         except:
             return jsonify_with_status("Invalid user_id.", 400)
     if request.method == 'DELETE':
+        do_restart = true_or_false(request.args.get('restart', True))
         if 'filename' not in request.args:
             return jsonify_with_status("Missing filename.", 400)
     if folder not in ('questions', 'sources', 'static', 'templates', 'modules'):
@@ -26571,7 +27302,7 @@ def api_playground():
         return response_to_send
     if request.method == 'DELETE':
         pg_section.delete_file(secure_filename_spaces_ok(request.args['filename']))
-        if section == 'modules':
+        if section == 'modules' and do_restart:
             return_val = jsonify_restart_task()
             restart_all()
             return return_val
@@ -26594,7 +27325,7 @@ def api_playground():
             return jsonify_with_status("No file found.", 400)
         for key in r.keys('da:interviewsource:docassemble.playground' + str(user_id) + project_name(project) + ':*'):
             r.incr(key.decode())
-        if section == 'modules':
+        if section == 'modules' and do_restart:
             return_val = jsonify_restart_task()
             restart_all()
             return return_val
@@ -26640,8 +27371,8 @@ def add_api_key(user_id, name, method, allowed):
     for attempt in range(10):
         api_key = random_alphanumeric(32)
         info['last_four'] = api_key[-4:]
-        new_api_key = encrypt_api_key(api_key)
-        if not len(r.keys('da:apikey:userid:*:key:' + new_api_key + ':info')):
+        new_api_key = encrypt_api_key(api_key, app.secret_key)
+        if len(r.keys('da:apikey:userid:*:key:' + new_api_key + ':info')) == 0:
             r.set('da:apikey:userid:' + str(user_id) + ':key:' + new_api_key + ':info', json.dumps(info))
             success = True
             break
@@ -26650,7 +27381,7 @@ def add_api_key(user_id, name, method, allowed):
     return api_key
 
 def api_key_exists(user_id, api_key):
-    rkeys = r.keys('da:apikey:userid:' + str(user_id) + ':key:' + encrypt_api_key(str(api_key)) + ':info')
+    rkeys = r.keys('da:apikey:userid:' + str(user_id) + ':key:' + encrypt_api_key(str(api_key), app.secret_key) + ':info')
     if len(rkeys) > 0:
         return True
     return False
@@ -26662,7 +27393,7 @@ def existing_api_names(user_id, except_for=None):
         key = key.decode()
         if except_for is not None:
             api_key = re.sub(r'.*:key:([^:]+):.*', r'\1', key)
-            if api_key == encrypt_api_key(except_for):
+            if api_key == encrypt_api_key(except_for, app.secret_key):
                 continue
         try:
             info = json.loads(r.get(key).decode())
@@ -26675,7 +27406,7 @@ def get_api_info(user_id, name=None, api_key=None):
     result = []
     rkeys = r.keys('da:apikey:userid:' + str(user_id) + ':key:*:info')
     if api_key is not None:
-        api_key = encrypt_api_key(api_key)
+        api_key = encrypt_api_key(api_key, app.secret_key)
     for key in rkeys:
         key = key.decode()
         try:
@@ -26692,17 +27423,19 @@ def get_api_info(user_id, name=None, api_key=None):
             return info
         if name is not None or api_key is not None:
             continue
+        if 'permissions' not in info:
+            info['permissions'] = []
         result.append(info)
     if name is not None or api_key is not None:
         return None
     return result
 
 def delete_api_key(user_id, api_key):
-    key = 'da:apikey:userid:' + str(user_id) + ':key:' + encrypt_api_key(api_key) + ':info'
+    key = 'da:apikey:userid:' + str(user_id) + ':key:' + encrypt_api_key(api_key, app.secret_key) + ':info'
     r.delete(key)
 
-def update_api_key(user_id, api_key, name, method, allowed, add_to_allowed, remove_from_allowed):
-    key = 'da:apikey:userid:' + str(user_id) + ':key:' + encrypt_api_key(api_key) + ':info'
+def update_api_key(user_id, api_key, name, method, allowed, add_to_allowed, remove_from_allowed, permissions, add_to_permissions, remove_from_permissions):
+    key = 'da:apikey:userid:' + str(user_id) + ':key:' + encrypt_api_key(api_key, app.secret_key) + ':info'
     try:
         info = json.loads(r.get(key).decode())
     except:
@@ -26730,6 +27463,23 @@ def update_api_key(user_id, api_key, name, method, allowed, add_to_allowed, remo
         for item in to_remove:
             if item in info['constraints']:
                 info['constraints'].remove(item)
+    if permissions is not None:
+        info['permissions'] = permissions
+    if add_to_permissions is not None:
+        if isinstance(add_to_permissions, list):
+            info['permissions'].extend(add_to_permissions)
+        elif isinstance(add_to_permissions, str):
+            info['permissions'].append(add_to_permissions)
+    if remove_from_permissions is not None:
+        if isinstance(remove_from_permissions, list):
+            to_remove = remove_from_permissions
+        elif isinstance(remove_from_permissions, str):
+            to_remove = [remove_from_permissions]
+        else:
+            to_remove = []
+        for item in to_remove:
+            if item in info['permissions']:
+                info['permissions'].remove(item)
     r.set(key, json.dumps(info))
     return True
 
@@ -26786,6 +27536,7 @@ def do_api_user_api(user_id):
         else:
             return jsonify(new_api_key)
     if request.method == 'PATCH':
+        user = db.session.execute(select(UserModel).options(db.joinedload(UserModel.roles)).filter_by(id=user_id)).scalar()
         patch_data = request.get_json(silent=True)
         if patch_data is None:
             patch_data = request.form.copy()
@@ -26839,7 +27590,63 @@ def do_api_user_api(user_id):
                     assert isinstance(item, str)
             except:
                 return jsonify_with_status("Allowed sites list not a valid list", 400)
-        result = update_api_key(user_id, api_key, name, method, allowed, add_to_allowed, remove_from_allowed)
+        if not (user.has_role('admin') and current_user.has_role_or_permission('admin')):
+            permissions = None
+            add_to_permissions = None
+            remove_from_permissions = None
+        else:
+            permissions = patch_data.get('permissions', None)
+            add_to_permissions = patch_data.get('add_to_permissions', None)
+            if add_to_permissions is not None:
+                if add_to_permissions.startswith('['):
+                    try:
+                        add_to_permissions = json.loads(add_to_permissions)
+                        for item in add_to_permissions:
+                            assert isinstance(item, str)
+                    except:
+                        return jsonify_with_status("add_to_permissions is not a valid list", 400)
+                    try:
+                        for item in add_to_permissions:
+                            assert item in PERMISSIONS_LIST
+                    except:
+                        return jsonify_with_status("add_to_permissions contained a permission that was not recognized", 400)
+                elif add_to_permissions not in PERMISSIONS_LIST:
+                    return jsonify_with_status("add_to_permissions contained a permission that was not recognized", 400)
+            remove_from_permissions = patch_data.get('remove_from_permissions', None)
+            if remove_from_permissions is not None:
+                if remove_from_permissions.startswith('['):
+                    try:
+                        remove_from_permissions = json.loads(remove_from_permissions)
+                        for item in remove_from_permissions:
+                            assert isinstance(item, str)
+                    except:
+                        return jsonify_with_status("remove_from_permissions is not a valid list", 400)
+                    try:
+                        for item in remove_from_permissions:
+                            assert item in PERMISSIONS_LIST
+                    except:
+                        return jsonify_with_status("remove_from_permissions contained a permission that was not recognized", 400)
+                elif remove_from_permissions not in PERMISSIONS_LIST:
+                    return jsonify_with_status("remove_from_permissions contained a permission that was not recognized", 400)
+            if permissions is not None:
+                if isinstance(permissions, str):
+                    try:
+                        permissions = json.loads(permissions)
+                    except:
+                        return jsonify_with_status("Permissions list not a valid list", 400)
+                if not isinstance(permissions, list):
+                    return jsonify_with_status("Permissions list not a valid list", 400)
+                try:
+                    for item in permissions:
+                        assert isinstance(item, str)
+                except:
+                    return jsonify_with_status("Permissions list not a valid list", 400)
+                try:
+                    for item in permissions:
+                        assert item in PERMISSIONS_LIST
+                except:
+                    return jsonify_with_status("Permissions list contained a permission that was not recognized", 400)
+        result = update_api_key(user_id, api_key, name, method, allowed, add_to_allowed, remove_from_allowed, permissions, add_to_permissions, remove_from_permissions)
         if not result:
             return jsonify_with_status("Error updating API key", 400)
         return ('', 204)
@@ -26850,6 +27657,11 @@ def do_api_user_api(user_id):
 def api_user_api():
     if not api_verify(request):
         return jsonify_with_status("Access denied.", 403)
+    if current_user.limited_api:
+        if request.method == 'GET' and not current_user.can_do('access_user_api_info'):
+            return jsonify_with_status("You do not have sufficient privileges to access user API information", 403)
+        if request.method in ('PATCH', 'POST', 'DELETE') and not current_user.can_do('edit_user_api_info'):
+            return jsonify_with_status("You do not have sufficient privileges to edit user API information", 403)
     return do_api_user_api(current_user.id)
 
 @app.route('/api/user/<int:user_id>/api', methods=['GET', 'POST', 'DELETE', 'PATCH'])
@@ -26862,10 +27674,13 @@ def api_user_userid_api(user_id):
         user_id = int(user_id)
     except:
         return jsonify_with_status("User ID must be an integer.", 400)
-    if not (current_user.id == user_id or current_user.has_role('admin')):
-        return jsonify_with_status("Access denied.", 403)
+    if not current_user.same_as(user_id):
+        if request.method == 'GET' and not current_user.has_role_or_permission('admin', permissions=['access_user_api_info']):
+            return jsonify_with_status("You do not have sufficient privileges to access user API information", 403)
+        if request.method in ('POST', 'DELETE', 'PATCH') and not current_user.has_role_or_permission('admin', permissions=['edit_user_api_info']):
+            return jsonify_with_status("You do not have sufficient privileges to edit user API information", 403)
     try:
-        user_info = get_user_info(user_id=user_id)
+        user_info = get_user_info(user_id=user_id, admin=True)
     except Exception as err:
         return jsonify_with_status("Error obtaining user information: " + str(err), 400)
     if user_info is None:
@@ -26876,7 +27691,7 @@ def api_user_userid_api(user_id):
 @csrf.exempt
 @cross_origin(origins='*', methods=['GET', 'HEAD'], automatic_options=True)
 def api_interview_data():
-    if not api_verify(request, roles=['admin', 'developer']):
+    if not api_verify(request, roles=['admin', 'developer'], permissions=['interview_data']):
         return jsonify_with_status("Access denied.", 403)
     filename = request.args.get('i', None)
     if filename is None:
@@ -26968,7 +27783,8 @@ def manage_api():
     form = APIKey(request.form)
     action = request.args.get('action', None)
     api_key = request.args.get('key', None)
-    argu = {}
+    is_admin = current_user.has_role('admin')
+    argu = {'is_admin': is_admin}
     argu['mode'] = 'list'
     if action is None:
         action = 'list'
@@ -27052,6 +27868,10 @@ def manage_api():
 </script>
 """)
     form.method.choices = [('ip', 'IP Address'), ('referer', 'Referring URL'), ('none', 'No authentication')]
+    if is_admin:
+        form.permissions.choices = [(permission, permission) for permission in PERMISSIONS_LIST]
+    else:
+        form.permissions.choices = []
     ip_address = get_requester_ip(request)
     if request.method == 'POST' and form.validate():
         action = form.action.data
@@ -27065,13 +27885,14 @@ def manage_api():
             argu['title'] = word("New API Key")
             argu['tab_title'] = argu['title']
             argu['page_title'] = argu['title']
-            info = dict(name=form.name.data, method=form.method.data, constraints=constraints)
+            permissions_data = form.permissions.data if is_admin else []
+            info = dict(name=form.name.data, method=form.method.data, constraints=constraints, limits=permissions_data)
             success = False
             for attempt in range(10):
                 api_key = random_alphanumeric(32)
                 info['last_four'] = api_key[-4:]
-                new_api_key = encrypt_api_key(api_key)
-                if not len(r.keys('da:apikey:userid:*:key:' + new_api_key + ':info')):
+                new_api_key = encrypt_api_key(api_key, app.secret_key)
+                if len(r.keys('da:apikey:userid:*:key:' + new_api_key + ':info')) == 0:
                     r.set('da:apikey:userid:' + str(current_user.id) + ':key:' + new_api_key + ':info', json.dumps(info))
                     success = True
                     break
@@ -27104,6 +27925,10 @@ def manage_api():
                 if form.method.data != info['method'] and form.method.data in ('ip', 'referer'):
                     info['method'] = form.method.data
                 info['constraints'] = constraints
+                if is_admin:
+                    info['permissions'] = form.permissions.data
+                else:
+                    info['permissions'] = []
                 r.set(rkey, json.dumps(info))
         action = 'list'
     if action == 'new':
@@ -27127,6 +27952,11 @@ def manage_api():
                 form.action.data = 'edit'
                 form.key.data = api_key
                 form.name.data = info.get('name')
+                if is_admin:
+                    if 'permissions' in info:
+                        form.permissions.data = info['permissions']
+                    else:
+                        form.permissions.data = []
                 argu['constraints'] = info.get('constraints')
                 argu['display_key'] = ('*' * 28) + info.get('last_four')
         if ip_address != '127.0.0.1':
@@ -27168,6 +27998,7 @@ def html_index():
 @csrf.exempt
 @cross_origin(origins='*', methods=['GET', 'POST', 'HEAD'], automatic_options=True)
 def api_interview():
+    abort(404)
     if request.method == 'POST':
         post_data = request.get_json(silent=True)
         if post_data is None:
@@ -27351,7 +28182,7 @@ def api_interview():
     docassemble.base.functions.this_thread.current_info = current_info(req=request, interface='api', secret=secret)
     if yaml_filename not in user_info['sessions'] or need_to_reset or new_session:
         was_new = True
-        if PREVENT_DEMO and (yaml_filename.startswith('docassemble.base:') or yaml_filename.startswith('docassemble.demo:')) and (current_user.is_anonymous or not current_user.has_role('admin', 'developer')):
+        if PREVENT_DEMO and (yaml_filename.startswith('docassemble.base:') or yaml_filename.startswith('docassemble.demo:')) and (current_user.is_anonymous or not current_user.has_role_or_permission('admin', 'developer', permissions=['demo_interviews'])):
             return jsonify_with_status(word("Not authorized"), 403)
         if current_user.is_anonymous and not daconfig.get('allow anonymous access', True):
             output['redirect'] = url_for('user.login', next=url_for('index', i=yaml_filename, **url_args))
@@ -27670,7 +28501,7 @@ def get_email_obj(email, short_record, user):
     return email_obj
 
 def da_send_fax(fax_number, the_file, config, country=None):
-    if clicksend_config is not None:
+    if clicksend_config is not None and fax_provider == 'clicksend':
         if config not in clicksend_config['name']:
             raise Exception("There is no ClickSend configuration called " + str(config))
         info = docassemble.webapp.clicksend.send_fax(fax_number, the_file, clicksend_config['name'][config], country)
@@ -27680,6 +28511,16 @@ def da_send_fax(fax_number, the_file, config, country=None):
         pipe.expire(the_key, 86400)
         pipe.execute()
         return info['message_id']
+    if telnyx_config is not None and fax_provider == 'telnyx':
+        if config not in telnyx_config['name']:
+            raise Exception("There is no Telnyx configuration called " + str(config))
+        info = docassemble.webapp.telnyx.send_fax(fax_number, the_file, telnyx_config['name'][config], country)
+        the_key = 'da:faxcallback:sid:' + info['id']
+        pipe = r.pipeline()
+        pipe.set(the_key, json.dumps(info))
+        pipe.expire(the_key, 86400)
+        pipe.execute()
+        return info['id']
     if twilio_config is None:
         logmessage("da_send_fax: ignoring call to da_send_fax because Twilio not enabled")
         return None
@@ -27863,6 +28704,17 @@ def illegal_variable_name(var):
     except:
         return True
     detector = docassemble.base.astparser.detectIllegal()
+    detector.visit(t)
+    return detector.illegal
+
+def illegal_sessions_query(expr):
+    if re.search(r'[\n\r]', expr):
+        return True
+    try:
+        t = ast.parse(expr)
+    except:
+        return True
+    detector = docassemble.base.astparser.detectIllegalQuery()
     detector.visit(t)
     return detector.illegal
 
@@ -28259,6 +29111,7 @@ docassemble.base.functions.update_server(url_finder=get_url_from_file_reference,
                                          retrieve_emails=retrieve_emails,
                                          get_short_code=get_short_code,
                                          make_png_for_pdf=make_png_for_pdf,
+                                         ocr_google_in_background=ocr_google_in_background,
                                          task_ready=task_ready,
                                          wait_for_task=wait_for_task,
                                          user_interviews=user_interviews,
@@ -28277,6 +29130,7 @@ docassemble.base.functions.update_server(url_finder=get_url_from_file_reference,
                                          remove_privilege=remove_privilege,
                                          add_user_privilege=add_user_privilege,
                                          remove_user_privilege=remove_user_privilege,
+                                         get_permissions_of_privilege=get_permissions_of_privilege,
                                          create_user=create_user,
                                          file_set_attributes=file_set_attributes,
                                          file_user_access=file_user_access,
@@ -28296,7 +29150,12 @@ docassemble.base.functions.update_server(url_finder=get_url_from_file_reference,
                                          variables_snapshot_connection=variables_snapshot_connection,
                                          get_referer=get_referer,
                                          stash_data=stash_data,
-                                         retrieve_stashed_data=retrieve_stashed_data)
+                                         retrieve_stashed_data=retrieve_stashed_data,
+                                         secure_filename_spaces_ok=secure_filename_spaces_ok,
+                                         secure_filename=secure_filename,
+                                         transform_json_variables=transform_json_variables,
+                                         get_login_url=get_login_url,
+                                         run_action_in_session=run_action_in_session)
 
 #docassemble.base.util.set_user_id_function(user_id_dict)
 #docassemble.base.functions.set_generate_csrf(generate_csrf)
@@ -28306,6 +29165,7 @@ docassemble.base.functions.update_server(url_finder=get_url_from_file_reference,
 
 base_words = get_base_words()
 title_documentation = get_title_documentation()
+DOCUMENTATION_BASE = daconfig.get('documentation base url', 'https://docassemble.org/docs/')
 documentation_dict = get_documentation_dict()
 base_name_info = get_name_info()
 
@@ -28491,11 +29351,8 @@ def set_admin_interviews():
             sys.stderr.write("administrative interviews is not a list" + "\n")
     return admin_interviews
 
-def encrypt_api_key(key):
-    return codecs.encode(hashlib.pbkdf2_hmac('sha256', bytearray(key, 'utf-8'), bytearray(app.secret_key, encoding='utf-8'), 100000), 'base64').decode().strip()
-
 def fix_api_key(match):
-    return 'da:apikey:userid:' + match.group(1) + ':key:' + encrypt_api_key(match.group(2)) + ':info'
+    return 'da:apikey:userid:' + match.group(1) + ':key:' + encrypt_api_key(match.group(2), app.secret_key) + ':info'
 
 def fix_api_keys():
     to_delete = []
@@ -28516,15 +29373,6 @@ def fix_api_keys():
         to_delete.append(rkey)
     for rkey in to_delete:
         r.delete(rkey)
-
-def random_social():
-    while True:
-        new_social = 'local$' + random_alphanumeric(32)
-        existing_user = db.session.execute(select(UserModel).filter_by(social_id=new_social)).first()
-        if existing_user:
-            continue
-        break
-    return new_social
 
 class TestContext:
     def __init__(self, package):
@@ -28551,10 +29399,15 @@ def initialize():
     global global_css
     global global_js
     with app.app_context():
-        app.user_manager.random_social = random_social
         url_root = daconfig.get('url root', 'http://localhost') + daconfig.get('root', '/')
         url = url_root + 'interview'
         with app.test_request_context(base_url=url_root, path=url):
+            app.config['USE_FAVICON'] = test_favicon_file('favicon.ico')
+            app.config['USE_APPLE_TOUCH_ICON'] = test_favicon_file('apple-touch-icon.png')
+            app.config['USE_FAVICON_MD'] = test_favicon_file('favicon-32x32.png')
+            app.config['USE_FAVICON_SM'] = test_favicon_file('favicon-16x16.png')
+            app.config['USE_SITE_WEBMANIFEST'] = test_favicon_file('site.webmanifest', alt='manifest.json')
+            app.config['USE_SAFARI_PINNED_TAB'] = test_favicon_file('safari-pinned-tab.svg')
             if 'bootstrap theme' in daconfig and daconfig['bootstrap theme']:
                 try:
                     app.config['BOOTSTRAP_THEME'] = get_url_from_file_reference(daconfig['bootstrap theme'])
@@ -28610,17 +29463,17 @@ def initialize():
                     except:
                         pass
             if app.config['ENABLE_PLAYGROUND']:
-                obtain_lock('init', 'init')
+                obtain_lock('init' + hostname, 'init')
                 try:
                     copy_playground_modules()
                 except Exception as err:
                     sys.stderr.write("There was an error copying the playground modules: " + err.__class__.__name__ + "\n")
                 write_pypirc()
-                release_lock('init', 'init')
+                release_lock('init' + hostname, 'init')
             try:
                 macro_path = daconfig.get('libreoffice macro file', '/var/www/.config/libreoffice/4/user/basic/Standard/Module1.xba')
                 if os.path.isfile(macro_path) and os.path.getsize(macro_path) != 7167:
-                    sys.stderr.write("Removing " + macro_path + " because it is out of date\n")
+                    # sys.stderr.write("Removing " + macro_path + " because it is out of date\n")
                     os.remove(macro_path)
                 # else:
                 #     sys.stderr.write("File " + macro_path + " is missing or has the correct size\n")

@@ -7,8 +7,9 @@ import datetime
 from io import StringIO
 from html.parser import HTMLParser
 from docassemble.base.functions import word, get_currency_symbol, comma_and_list, server, custom_types
-from docassemble.base.util import format_date, format_datetime
-from docassemble.base.filter import markdown_to_html, get_audio_urls, get_video_urls, audio_control, video_control, noquote, to_text, my_escape
+from docassemble.base.util import format_date, format_datetime, format_time
+from docassemble.base.generate_key import random_string
+from docassemble.base.filter import markdown_to_html, get_audio_urls, get_video_urls, audio_control, video_control, noquote, to_text, my_escape, process_target
 from docassemble.base.parse import Question
 from docassemble.base.logger import logmessage
 from docassemble.base.config import daconfig
@@ -274,7 +275,7 @@ def as_sms(status, the_user_dict, links=None, menu_items=None):
                     info_message = to_text(markdown_to_html(status.extras['note'][the_field.number], status=status), terms, links)
                     continue
                 if the_field.datatype == 'html':
-                    info_message = to_text(status.extras['html'][the_field.number].rstrip(), terms, links)
+                    info_message = to_text(process_target(status.extras['html'][the_field.number].rstrip()), terms, links)
                     continue
             #logmessage("field number is " + str(the_field.number))
             if not hasattr(the_field, 'saveas'):
@@ -615,8 +616,8 @@ def as_html(status, debug, root, validation_rules, field_error, the_progress_bar
                 icon = '<i class="' + icon + '"></i> '
             else:
                 icon = ''
-            action_search = re.search(r'^\?action=([^\&]+)', item['action'])
-            if action_search:
+            action_search = re.search(r'[\?\&]action=([^\&]+)', item['action'])
+            if action_search and ('/interview' in item['action'] or '/run' in item['action'] or '/start' in item['action'] or item['action'].startswith('?')):
                 action_data = 'data-embaction="' + action_search.group(1) + '" '
             else:
                 action_data = ''
@@ -698,7 +699,7 @@ def as_html(status, debug, root, validation_rules, field_error, the_progress_bar
             output += word('Sign Your Name')
         output += '</div>\n                </div>\n              </div>\n              <div class="dasigtoppart" id="dasigtoppart">\n                <div id="daerrormess" class="dasigerrormessage dasignotshowing">' + word("You must sign your name to continue.") + '</div>\n'
         if status.pre:
-            output += '                <div class="d-none d-sm-block">' + status.pre + '</div>\n'
+            output += '                <div class="d-none d-sm-block">' + markdown_to_html(status.pre, trim=False, status=status) + '</div>\n'
         if status.questionText:
             output += '                <div class="da-page-header d-none d-sm-block"><h1 class="h3">' + decoration_text + markdown_to_html(status.questionText, trim=True, status=status, strip_newlines=True) + '</h1><div class="daclear"></div></div>\n'
         output += '              </div>'
@@ -706,12 +707,12 @@ def as_html(status, debug, root, validation_rules, field_error, the_progress_bar
             output += '                <div id="dasigmidpart" class="dasigmidpart da-subquestion">\n' + markdown_to_html(status.subquestionText, status=status) + '                </div>\n'
         else:
             output += '\n              <div id="dasigmidpart" class="dasigmidpart"></div>'
-        output += '\n              <div id="dasigcontent"><p style="text-align:center;border-style:solid;border-width:1px">' + word('Loading.  Please wait . . . ') + '</p></div>\n              <div class="dasigbottompart" id="dasigbottompart">\n                '
+        output += '\n              <div id="dasigcontent"' + (' aria-required="true"' if status.extras['required'][0] else '') + '><p style="text-align:center;border-style:solid;border-width:1px">' + word('Loading.  Please wait . . . ') + '</p></div>\n              <div class="dasigbottompart" id="dasigbottompart">\n                '
         if showUnderText:
             output += '                <div class="d-none d-sm-block">' + markdown_to_html(status.extras['underText'], trim=False, status=status) + '</div>\n                <div class="d-block d-sm-none">' + markdown_to_html(status.extras['underText'], trim=True, status=status) + '</div>'
         output += "\n              </div>"
         if status.submit:
-            output += '                <div class="d-none d-sm-block">' + status.submit + '</div>\n'
+            output += '                <div class="d-none d-sm-block">' + markdown_to_html(status.submit, trim=False, status=status) + '</div>\n'
         output += """
               <fieldset class="da-button-set d-none d-sm-block da-signature">
                 <legend class="visually-hidden">""" + word('Press one of the following buttons:') + """</legend>
@@ -843,7 +844,7 @@ def as_html(status, debug, root, validation_rules, field_error, the_progress_bar
                 if field.number in status.helptexts:
                     fieldlist.append('                <div class="row da-review da-review-help"><div class="col-md-12">' + markdown_to_html(status.helptexts[field.number], status=status, strip_newlines=True) + '</div></div>\n')
         output += status.pre
-        output += indent_by(audio_text, 12) + '            <form aria-labelledby="daMainQuestion" action="' + root + '" id="daform" class="form-horizontal" method="POST" class="daformreview">\n'
+        output += indent_by(audio_text, 12) + '            <form aria-labelledby="daMainQuestion" action="' + root + '" id="daform" class="form-horizontal daformreview" method="POST">\n'
         output += '                <div class="da-page-header"><h1 class="h3" id="daMainQuestion">' + decoration_text + markdown_to_html(status.questionText, trim=True, status=status, strip_newlines=True) + '</h1><div class="daclear"></div></div>\n'
         if status.subquestionText:
             output += '                <div class="da-subquestion">\n' + markdown_to_html(status.subquestionText, status=status) + '                </div>\n'
@@ -887,7 +888,7 @@ def as_html(status, debug, root, validation_rules, field_error, the_progress_bar
         null_question = True
         for field in field_list:
             if 'html' in status.extras and field.number in status.extras['html']:
-                note_fields[field.number] = status.extras['html'][field.number].rstrip()
+                note_fields[field.number] = process_target(status.extras['html'][field.number].rstrip())
             elif 'note' in status.extras and field.number in status.extras['note']:
                 note_fields[field.number] = markdown_to_html(status.extras['note'][field.number], status=status, embedder=embed_input)
             if hasattr(field, 'saveas'):
@@ -1337,7 +1338,7 @@ def as_html(status, debug, root, validation_rules, field_error, the_progress_bar
                     fieldlist.append('                <div ' + style_def + data_def + 'class="da-form-group row dayesnospacing ' + side_note_parent + field_class + ' da-field-container-nolabel' + class_def + '">\n                  <span class="visually-hidden">' + word("Check if applicable") + '</span>\n                  <div class="col dawidecol dafieldpart">' + input_for(status, field) + '</div>' + side_note + '\n                </div>\n')
                 elif labels_above or (hasattr(field, 'label_above_field') and field.label_above_field):
                     if hasattr(field, 'inputtype') and field.inputtype in ['yesno', 'noyes']:
-                        fieldlist.append('                <div ' + style_def + data_def + 'class="dayesnospacing' + side_note_parent + field_class + ' da-field-container-nolabel' + class_def + '">\n                  <span class="visually-hidden">' + word("Check if applicable") + '</span>\n                  <div class="dafieldpart">' + input_for(status, field) + side_note + '</div>\n                </div>\n')
+                        fieldlist.append('                <div ' + style_def + data_def + 'class="da-form-group dayesnospacing' + side_note_parent + field_class + ' da-field-container-nolabel' + class_def + '">\n                  <span class="visually-hidden">' + word("Check if applicable") + '</span>\n                  <div class="dafieldpart">' + input_for(status, field) + side_note + '</div>\n                </div>\n')
                     elif status.labels[field.number] == '':
                         fieldlist.append('                <div ' + style_def + data_def + 'class="da-form-group' + side_note_parent + req_tag + field_class + ' da-field-container-emptylabel' + class_def + '">\n                  <span class="visually-hidden">' + word("Answer here") + '</span>\n                  <div class="dafieldpart">' + input_for(status, field) + side_note + '</div>\n                </div>\n')
                     else:
@@ -1352,7 +1353,7 @@ def as_html(status, debug, root, validation_rules, field_error, the_progress_bar
             if hasattr(field, 'extras') and (('show_if_var' in field.extras and 'show_if_val' in status.extras) or 'show_if_js' in field.extras):
                 fieldlist.append('                </div>\n')
         output += status.pre
-        output += indent_by(audio_text, 12) + '            <form aria-labelledby="daMainQuestion" action="' + root + '" id="daform" class="form-horizontal" method="POST"' + enctype_string + ' class="daformfields">\n'
+        output += indent_by(audio_text, 12) + '            <form aria-labelledby="daMainQuestion" action="' + root + '" id="daform" class="form-horizontal daformfields" method="POST"' + enctype_string + '>\n'
         output += '                <div class="da-page-header"><h1 class="h3" id="daMainQuestion">' + decoration_text + markdown_to_html(status.questionText, trim=True, status=status, strip_newlines=True) + '</h1><div class="daclear"></div></div>\n'
         if status.subquestionText:
             output += '                <div class="da-subquestion">\n' + sub_question_text
@@ -1446,7 +1447,7 @@ def as_html(status, debug, root, validation_rules, field_error, the_progress_bar
         if status.question.question_variety in ["radio", "dropdown", "combobox"]:
             if status.question.question_variety == "radio":
                 verb = 'check'
-                output += '                <fieldset class="da-field-' + status.question.question_variety +'">\n                  <legend class="visually-hidden">' + word("Choices:") + "</legend>\n"
+                output += '                <fieldset class="da-field-' + status.question.question_variety +'">\n                  <legend class="visually-hidden">' + word("Choices (choose one):") + "</legend>\n"
             else:
                 verb = 'select'
                 if status.question.question_variety == "dropdown":
@@ -1456,10 +1457,32 @@ def as_html(status, debug, root, validation_rules, field_error, the_progress_bar
             if hasattr(status.question.fields[0], 'saveas'):
                 id_index = 0
                 pairlist = list(status.selectcompute[status.question.fields[0].number])
-                if hasattr(status.question.fields[0], 'shuffle') and status.question.fields[0].shuffle:
+                using_opt_groups = all(['group' in pair for pair in pairlist])
+                using_shuffle = hasattr(status.question.fields[0], 'shuffle') and status.question.fields[0].shuffle
+                if using_opt_groups:
+                    group_order = list(range(len(pairlist)))
+                    if using_shuffle:
+                        random.shuffle(group_order)
+                    groups = {}
+                    for idx, p in zip(group_order, pairlist):
+                        if not p.get('group') in groups:
+                            groups[p.get('group')] = idx
+                    if using_shuffle:
+                        pairlist = sorted(pairlist, key=lambda p: groups[p.get('group')] * 1000 + random.randint(1, 1000))
+                    else:
+                        # stable sort: keep group items in the same relative order
+                        pairlist = sorted(pairlist, key=lambda p: groups[p.get('group')])
+                elif using_shuffle:
                     random.shuffle(pairlist)
                 found_default = False
+                last_group = None
                 for pair in pairlist:
+                    if using_opt_groups and pair.get('group') != last_group:
+                        if last_group != None:
+                            inner_fieldlist.append('</optgroup>')
+                        pair_group = pair.get('group')
+                        inner_fieldlist.append(f'<optgroup label="{pair_group}">')
+                        last_group = pair_group
                     if 'image' in pair:
                         the_icon = icon_html(status, pair['image']) + ' '
                     else:
@@ -1481,7 +1504,7 @@ def as_html(status, debug, root, validation_rules, field_error, the_progress_bar
                     inner_fieldlist = inner_fieldlist[1:]
                 if status.question.question_variety in ["dropdown", "combobox"]:
                     if status.question.question_variety == 'combobox':
-                        combobox = ' combobox'
+                        combobox = ' form-control combobox'
                         daspaceafter = ' daspaceafter'
                         if defaultvalue:
                             datadefault = ' data-default=' + fix_double_quote(str(defaultvalue))
@@ -1489,11 +1512,11 @@ def as_html(status, debug, root, validation_rules, field_error, the_progress_bar
                             datadefault = ''
                         field_container_class = ' da-field-container-combobox'
                     else:
-                        combobox = ''
+                        combobox = ' form-select'
                         datadefault = ''
                         daspaceafter = ''
                         field_container_class = ' da-field-container-dropdown'
-                    output += '                <div class="row' + field_container_class + '"><div class="col-md-12' + daspaceafter + '"><select class="form-select daspaceafter' + combobox + '"' + datadefault + ' name="' + escape_id(status.question.fields[0].saveas) + '" id="' + escape_id(status.question.fields[0].saveas) + '">' + "".join(inner_fieldlist) + '</select></div></div>\n'
+                    output += '                <div class="row' + field_container_class + '"><div class="col-md-12' + daspaceafter + '"><select class="daspaceafter' + combobox + '"' + datadefault + ' name="' + escape_id(status.question.fields[0].saveas) + '" id="' + escape_id(status.question.fields[0].saveas) + '" required >' + "".join(inner_fieldlist) + '</select></div></div>\n'
                 if status.question.question_variety == 'combobox':
                     validation_rules['ignore'] = []
                     validation_rules['messages'][status.question.fields[0].saveas] = {'required': status.question.fields[0].validation_message('combobox required', status, word("You need to select one or type in a new value."))}
@@ -1530,16 +1553,16 @@ def as_html(status, debug, root, validation_rules, field_error, the_progress_bar
                     inner_fieldlist = inner_fieldlist[1:]
                 if status.question.question_variety in ["dropdown", "combobox"]:
                     if status.question.question_variety == 'combobox':
-                        combobox = ' combobox'
+                        combobox = 'form-control combobox'
                         daspaceafter = ' daspaceafter'
                     else:
-                        combobox = ' daspaceafter'
+                        combobox = 'form-select daspaceafter'
                         daspaceafter = ''
                     if defaultvalue:
                         datadefault = ' data-default=' + fix_double_quote(str(defaultvalue))
                     else:
                         datadefault = ''
-                    output += '                <div class="row"><div class="col-md-12' + daspaceafter + '"><select class="form-select ' + combobox + '"' + datadefault + ' name="X211bHRpcGxlX2Nob2ljZQ">' + "".join(inner_fieldlist) + '</select></div></div>\n'
+                    output += '                <div class="row"><div class="col-md-12' + daspaceafter + '"><select class="' + combobox + '"' + datadefault + ' name="X211bHRpcGxlX2Nob2ljZQ" required >' + "".join(inner_fieldlist) + '</select></div></div>\n'
                 if status.question.question_variety == 'combobox':
                     validation_rules['ignore'] = []
                     validation_rules['messages']['X211bHRpcGxlX2Nob2ljZQ'] = {'required': status.question.fields[0].validation_message('combobox required', status, word("You need to select one or type in a new value."))}
@@ -1655,7 +1678,7 @@ def as_html(status, debug, root, validation_rules, field_error, the_progress_bar
             output += markdown_to_html(status.extras['underText'], status=status, divclass="daundertext")
     else:
         output += status.pre
-        output += indent_by(audio_text, 12) + '            <form aria-labelledby="daMainQuestion" action="' + root + '" id="daform" class="form-horizontal" method="POST" class="daformcontinueother">\n'
+        output += indent_by(audio_text, 12) + '            <form aria-labelledby="daMainQuestion" action="' + root + '" id="daform" class="form-horizontal daformcontinueother" method="POST">\n'
         output += '                <div class="da-page-header"><h1 class="h3" id="daMainQuestion">' + decoration_text + markdown_to_html(status.questionText, trim=True, status=status, strip_newlines=True) + '</h1><div class="daclear"></div></div>\n'
         if status.subquestionText:
             output += '                <div class="da-subquestion">\n' + markdown_to_html(status.subquestionText, status=status) + '                </div>\n'
@@ -1989,11 +2012,11 @@ def as_html(status, debug, root, validation_rules, field_error, the_progress_bar
             var the_element_id = id_list[i].replace(/(:|\.|\[|\]|,|=)/g, "\\\\$1");
             if (theVal == null || theVal == ""){
               daDisableIfNotHidden("#daform [name='" + the_element_id + "']:not([type=hidden])", false);
-              $("#daform [name='" + the_element_id + "']:not([type=hidden])").parent().parent().removeClass("dagreyedout");
+              $("#daform [name='" + the_element_id + "']:not([type=hidden])").parents(".da-form-group").removeClass("dagreyedout");
             }
             else{
               daDisableIfNotHidden("#daform [name='" + the_element_id + "']:not([type=hidden])", true);
-              $("#daform [name='" + the_element_id + "']:not([type=hidden])").parent().parent().addClass("dagreyedout");
+              $("#daform [name='" + the_element_id + "']:not([type=hidden])").parents(".da-form-group").addClass("dagreyedout");
             }
           }
         }
@@ -2002,17 +2025,17 @@ def as_html(status, debug, root, validation_rules, field_error, the_progress_bar
             daDisableIfNotHidden("#daform input:not([name='"""  + element_id  + """']):not([id^='"""  + element_id  + """']):not([type=hidden])", false);
             daDisableIfNotHidden("#daform select:not([name='"""  + element_id  + """']):not([id^='"""  + element_id  + """']):not([type=hidden])", false);
             daDisableIfNotHidden("#daform textarea:not([name='"""  + element_id  + """']):not([type=hidden])", false);
-            $("#daform input:not([name='"""  + element_id  + """']):not([id^='"""  + element_id  + """']):not([type=hidden])").parent().parent().removeClass("dagreyedout");
-            $("#daform select:not([name='"""  + element_id  + """']):not([id^='"""  + element_id  + """']):not([type=hidden])").parent().parent().removeClass("dagreyedout");
-            $("#daform textarea:not([name='"""  + element_id  + """']):not([type=hidden])").parent().parent().removeClass("dagreyedout");
+            $("#daform input:not([name='"""  + element_id  + """']):not([id^='"""  + element_id  + """']):not([type=hidden])").parents(".da-form-group").removeClass("dagreyedout");
+            $("#daform select:not([name='"""  + element_id  + """']):not([id^='"""  + element_id  + """']):not([type=hidden])").parents(".da-form-group").removeClass("dagreyedout");
+            $("#daform textarea:not([name='"""  + element_id  + """']):not([type=hidden])").parents(".da-form-group").removeClass("dagreyedout");
           }
           else{
             $("#daform input:not([name='"""  + element_id  + """']):not([id^='"""  + element_id  + """']):not([type=hidden])").prop("disabled", true);
             $("#daform select:not([name='"""  + element_id  + """']):not([id^='"""  + element_id  + """']):not([type=hidden])").prop("disabled", true);
             $("#daform textarea:not([name='"""  + element_id  + """']):not([type=hidden])").prop("disabled", true);
-            $("#daform input:not([name='"""  + element_id  + """']):not([id^='"""  + element_id  + """']):not([type=hidden])").parent().parent().addClass("dagreyedout");
-            $("#daform select:not([name='"""  + element_id  + """']):not([id^='"""  + element_id  + """']):not([type=hidden])").parent().parent().addClass("dagreyedout");
-            $("#daform textarea:not([name='"""  + element_id  + """']):not([type=hidden])").parent().parent().addClass("dagreyedout");
+            $("#daform input:not([name='"""  + element_id  + """']):not([id^='"""  + element_id  + """']):not([type=hidden])").parents(".da-form-group").addClass("dagreyedout");
+            $("#daform select:not([name='"""  + element_id  + """']):not([id^='"""  + element_id  + """']):not([type=hidden])").parents(".da-form-group").addClass("dagreyedout");
+            $("#daform textarea:not([name='"""  + element_id  + """']):not([type=hidden])").parents(".da-form-group").addClass("dagreyedout");
           }
         }
       });
@@ -2142,6 +2165,12 @@ def input_for(status, field, wide=False, embedded=False):
         inline_width = status.extras['inline width'][field.number]
     else:
         inline_width = None
+    if status.extras['required'][field.number]:
+        req_attr = ' required'
+        req_aria = ' aria-required="true"'
+    else:
+        req_attr = ''
+        req_aria = ''
     if embedded:
         extra_class = ' dainput-embedded'
         if hasattr(field, 'datatype') and field.datatype == 'date':
@@ -2182,17 +2211,31 @@ def input_for(status, field, wide=False, embedded=False):
     if 'css class' in status.extras and field.number in status.extras['css class']:
         extra_class += ' ' + clean_whitespace(status.extras['css class'][field.number])
     if hasattr(field, 'choicetype'):
-        # logmessage("In a choicetype where field datatype is " + field.datatype)
-        # if hasattr(field, 'inputtype'):
-        #     logmessage("inputtype is" + field.inputtype)
-        # else:
-        #     logmessage("No inputtype")
         if field.choicetype in ['compute', 'manual']:
             pairlist = list(status.selectcompute[field.number])
         else:
             raise Exception("Unknown choicetype " + field.choicetype)
-        if hasattr(field, 'shuffle') and field.shuffle:
+        using_opt_groups = all(['group' in pair for pair in pairlist])
+        using_shuffle = hasattr(field, 'shuffle') and field.shuffle
+        # Using optgroups, each option has an associated group
+        if using_opt_groups:
+            # Keep groups and group items in same relative order they're added in interview
+            # or shuffle the groups, and items w/in groups, but keep items in same groups together
+            group_order = list(range(len(pairlist)))
+            if using_shuffle:
+                random.shuffle(group_order)
+            groups = {}
+            for idx, p in zip(group_order, pairlist):
+                if not p.get('group') in groups:
+                    groups[p.get('group')] = idx
+
+            if using_shuffle:
+                pairlist = sorted(pairlist, key=lambda p: (groups[p.get('group')], random.random()))
+            else:
+                pairlist = sorted(pairlist, key=lambda p: groups[p.get('group')])
+        elif using_shuffle:
             random.shuffle(pairlist)
+
         if field.datatype in ['multiselect', 'object_multiselect']:
             if field.datatype == 'object_multiselect':
                 daobject = ' damultiselect daobject'
@@ -2213,9 +2256,16 @@ def input_for(status, field, wide=False, embedded=False):
             emb_text += 'data-varname=' + myb64doublequote(from_safeid(field.saveas)) + ' '
             if embedded:
                 output += '<span class="da-inline-error-wrapper">'
-            output += '<select ' + emb_text + 'name="' + escape_id(saveas_string) + '" id="' + escape_id(saveas_string) + '"' + disable_others_data + ' multiple>'
+            output += '<select ' + emb_text + 'name="' + escape_id(saveas_string) + '" id="' + escape_id(saveas_string) + '"' + disable_others_data + req_attr + ' multiple>'
             the_options = ''
+            last_group = None
             for pair in pairlist:
+                if using_opt_groups and pair.get('group') != last_group:
+                    if last_group != None:
+                        the_options += '</optgroup>'
+                    pair_group = pair.get('group')
+                    the_options += f'<optgroup label="{pair_group}">'
+                    last_group = pair_group
                 if isinstance(pair['key'], str):
                     inner_field = safeid(from_safeid(saveas_string) + "[B" + myb64quote(pair['key']) + "]")
                     key_data = ' data-valname=' + myb64doublequote(pair['key'])
@@ -2242,6 +2292,8 @@ def input_for(status, field, wide=False, embedded=False):
                 else:
                     isselected = ''
                 the_options += '<option value=' + fix_double_quote(inner_field) + key_data + isselected + '>' + markdown_to_html(str(pair['label']), status=status, escape='option', trim=True, do_terms=False) + '</option>'
+            if using_opt_groups:
+                the_options += '</optgroup>'
             output += the_options
             if embedded:
                 output += '</select></span> '
@@ -2257,7 +2309,11 @@ def input_for(status, field, wide=False, embedded=False):
             if embedded:
                 output += '<span class="da-embed-checkbox-wrapper">'
             else:
-                output += '<fieldset class="da-field-checkboxes" role="group"><legend class="visually-hidden">' + word('Checkboxes:') + '</legend>'
+                if req_aria:
+                  legend_text = 'Checkboxes (select at least one):'
+                else:
+                  legend_text = 'Checkboxes:'
+                output += '<fieldset class="da-field-checkboxes" role="group"><legend class="visually-hidden">' + word(legend_text) + '</legend>'
             for pair in pairlist:
                 if 'image' in pair:
                     the_icon = icon_html(status, pair['image']) + ' '
@@ -2290,9 +2346,9 @@ def input_for(status, field, wide=False, embedded=False):
                 else:
                     ischecked = ''
                 if embedded:
-                    inner_fieldlist.append('<input aria-label="' + formatted_item + '" class="dacheckbox-embedded dafield' + str(field.number) + ' danon-nota-checkbox" id="' + escape_id(saveas_string) + '_' + str(id_index) + '" name="' + inner_field + '" type="checkbox" value="True"' + ischecked + disable_others_data + '/>&nbsp;<label class="form-label" for="' + escape_id(saveas_string) + '_' + str(id_index) + '">' + the_icon + formatted_item + '</label>')
+                    inner_fieldlist.append('<input aria-label="' + formatted_item + '" class="dacheckbox-embedded dafield' + str(field.number) + ' danon-nota-checkbox" id="' + escape_id(saveas_string) + '_' + str(id_index) + '" name="' + inner_field + '" type="checkbox" value="True"' + ischecked + disable_others_data + '/>&nbsp;<label class="form-label" for="' + escape_id(saveas_string) + '_' + str(id_index) + '" />' + the_icon + formatted_item + '</label>')
                 else:
-                    inner_fieldlist.append(help_wrap('<input aria-label="' + formatted_item + '" alt="' + formatted_item + '" data-labelauty="' + my_escape(the_icon) + formatted_item + '|' + my_escape(the_icon) + formatted_item + '" class="' + 'dafield' + str(field.number) + ' danon-nota-checkbox da-to-labelauty checkbox-icon' + extra_checkbox + '"' + title_text + ' id="' + escape_id(saveas_string) + '_' + str(id_index) + '" name="' + inner_field + '" type="checkbox" value="True"' + ischecked + disable_others_data + '/>', helptext, status))
+                    inner_fieldlist.append(help_wrap('<input aria-label="' + formatted_item + '" alt="' + formatted_item + '" data-labelauty="' + my_escape(the_icon) + formatted_item + '|' + my_escape(the_icon) + formatted_item + '" class="' + 'dafield' + str(field.number) + ' danon-nota-checkbox da-to-labelauty checkbox-icon' + extra_checkbox + '"' + title_text + ' id="' + escape_id(saveas_string) + '_' + str(id_index) + '" name="' + inner_field + '" type="checkbox" value="True"' + ischecked + disable_others_data + ' />', helptext, status))
                 id_index += 1
             if 'nota' in status.extras and field.number in status.extras['nota'] and status.extras['nota'][field.number] is not False:
                 if defaultvalue_set and defaultvalue is None:
@@ -2342,7 +2398,7 @@ def input_for(status, field, wide=False, embedded=False):
                         default_selected = True
                     else:
                         ischecked = ''
-                    inner_fieldlist.append('<input class="daradio-embedded" id="' + escape_id(saveas_string) + '_' + str(id_index) + '" name="' + escape_id(saveas_string) + '" type="radio" value=' + fix_double_quote(str(pair['key'])) + ischecked + disable_others_data + '>&nbsp;<label class="form-label" for="' + escape_id(saveas_string) + '_' + str(id_index) + '">' + the_icon + formatted_item + '</label>')
+                    inner_fieldlist.append('<input class="daradio-embedded" id="' + escape_id(saveas_string) + '_' + str(id_index) + '" name="' + escape_id(saveas_string) + '" type="radio" value=' + fix_double_quote(str(pair['key'])) + ischecked + disable_others_data + ' />&nbsp;<label class="form-label" for="' + escape_id(saveas_string) + '_' + str(id_index) + '">' + the_icon + formatted_item + '</label>')
                     id_index += 1
                 if 'nota' in status.extras and field.number in status.extras['nota'] and status.extras['nota'][field.number] is not False:
                     if status.extras['nota'][field.number] is True:
@@ -2354,13 +2410,13 @@ def input_for(status, field, wide=False, embedded=False):
                     else:
                         ischecked = ''
                     the_icon = ''
-                    inner_fieldlist.append('<input class="daradio-embedded' + daobject + '" id="' + escape_id(saveas_string) + '_' + str(id_index) + '" name="' + escape_id(saveas_string) + '" type="radio" value="" checked="checked"' + disable_others_data + '>&nbsp;<label class="form-label" for="' + escape_id(saveas_string) + '_' + str(id_index) + '">' + the_icon + formatted_item + '</label>')
+                    inner_fieldlist.append('<input class="daradio-embedded' + daobject + '" id="' + escape_id(saveas_string) + '_' + str(id_index) + '" name="' + escape_id(saveas_string) + '" type="radio" value="" checked="checked"' + disable_others_data + ' />&nbsp;<label class="form-label" for="' + escape_id(saveas_string) + '_' + str(id_index) + '">' + the_icon + formatted_item + '</label>')
                 output += '<span class="da-embed-radio-wrapper">'
                 output += " ".join(inner_fieldlist)
                 output += '</span>'
             else:
                 default_selected = False
-                output += '<fieldset class="da-field-radio" role="radiogroup"><legend class="visually-hidden">' + word('Choices:') + '</legend>'
+                output += '<fieldset class="da-field-radio" role="radiogroup"' + req_aria + '><legend class="visually-hidden">' + word('Choices:') + '</legend>'
                 for pair in pairlist:
                     if 'image' in pair:
                         the_icon = icon_html(status, pair['image']) + ' '
@@ -2374,7 +2430,7 @@ def input_for(status, field, wide=False, embedded=False):
                         default_selected = True
                     else:
                         ischecked = ''
-                    inner_fieldlist.append(help_wrap('<input aria-label="' + formatted_item + '" alt="' + formatted_item + '" data-labelauty="' + my_escape(the_icon) + formatted_item + '|' + my_escape(the_icon) + formatted_item + '" class="da-to-labelauty' + daobject + extra_radio + '" id="' + escape_id(saveas_string) + '_' + str(id_index) + '" name="' + escape_id(saveas_string) + '" type="radio" value=' + fix_double_quote(str(pair['key'])) + ischecked + disable_others_data + '/>', helptext, status))
+                    inner_fieldlist.append(help_wrap('<input aria-label="' + formatted_item + '" alt="' + formatted_item + '" data-labelauty="' + my_escape(the_icon) + formatted_item + '|' + my_escape(the_icon) + formatted_item + '" class="da-to-labelauty' + daobject + extra_radio + '" id="' + escape_id(saveas_string) + '_' + str(id_index) + '" name="' + escape_id(saveas_string) + '" type="radio" value=' + fix_double_quote(str(pair['key'])) + ischecked + disable_others_data + ' />', helptext, status))
                     id_index += 1
                 if 'nota' in status.extras and field.number in status.extras['nota'] and status.extras['nota'][field.number] is not False:
                     if status.extras['nota'][field.number] is True:
@@ -2387,7 +2443,7 @@ def input_for(status, field, wide=False, embedded=False):
                         ischecked = ''
                     the_icon = ''
                     helptext = None
-                    inner_fieldlist.append(help_wrap('<input aria-label="' + formatted_item + '" alt="' + formatted_item + '" data-labelauty="' + my_escape(the_icon) + formatted_item + '|' + my_escape(the_icon) + formatted_item + '" class="da-to-labelauty' + extra_radio + '" id="' + escape_id(saveas_string) + '_' + str(id_index) + '" name="' + escape_id(saveas_string) + '" type="radio" value=""' + ischecked + disable_others_data + '/>', helptext, status))
+                    inner_fieldlist.append(help_wrap('<input aria-label="' + formatted_item + '" alt="' + formatted_item + '" data-labelauty="' + my_escape(the_icon) + formatted_item + '|' + my_escape(the_icon) + formatted_item + '" class="da-to-labelauty' + extra_radio + '" id="' + escape_id(saveas_string) + '_' + str(id_index) + '" name="' + escape_id(saveas_string) + '" type="radio" value=""' + ischecked + disable_others_data + ' />', helptext, status))
                 if embedded:
                     output += '<span class="da-embed-radio-wrapper">' + " ".join(inner_fieldlist) + '</span>'
                 else:
@@ -2412,12 +2468,12 @@ def input_for(status, field, wide=False, embedded=False):
             else:
                 output += '<p class="visually-hidden">' + word('Select box') + '</p>'
                 if hasattr(field, 'inputtype') and field.inputtype == 'combobox':
-                    emb_text = 'class="form-select dasingleselect combobox' + daobject + '" '
+                    emb_text = 'class="form-control dasingleselect combobox' + daobject + '" '
                 else:
                     emb_text = 'class="form-select dasingleselect' + daobject + '" '
             if embedded:
                 output += '<span class="da-inline-error-wrapper">'
-            output += '<select ' + emb_text + 'name="' + escape_id(saveas_string) + '"' + datadefault + ' id="' + escape_id(saveas_string) + '" ' + disable_others_data + '>'
+            output += '<select ' + emb_text + 'name="' + escape_id(saveas_string) + '"' + datadefault + ' id="' + escape_id(saveas_string) + '" ' + disable_others_data + req_attr + '>'
             first_option = ''
             if hasattr(field, 'inputtype') and field.inputtype == 'combobox' and not embedded:
                 if placeholdertext == '':
@@ -2440,13 +2496,25 @@ def input_for(status, field, wide=False, embedded=False):
             #logmessage("defaultvalue_is_printable is " + repr(defaultvalue_is_printable))
             found_default = False
             other_options = ''
+            last_group = None
             for pair in pairlist:
-                #logmessage("Considering " + repr(pair['key']) + " and " + repr(pair['label']))
+                if using_opt_groups and pair.get('group') != last_group:
+                    if last_group != None:
+                        other_options += '</optgroup>'
+                    pair_group = pair.get('group')
+                    other_options += f'<optgroup label="{pair_group}">'
+                    last_group = pair_group
                 other_options += '<option value=' + fix_double_quote(str(pair['key']))
-                if ('default' in pair and pair['default']) or (defaultvalue is not None and isinstance(defaultvalue, (str, int, bool, float)) and str(pair['key']) == defaultvalue_printable) or (defaultvalue is not None and isinstance(defaultvalue, (str, int, bool, float)) and defaultvalue_is_printable and str(pair['label']) == defaultvalue_printable) or (hasattr(field, 'datatype') and field.datatype == 'object' and defaultvalue is not None and hasattr(defaultvalue, 'instanceName') and safeid(defaultvalue.instanceName) == pair['key']) or (defaultvalue_set and defaultvalue is None and str(pair['key']) == 'None'):
+                if ('default' in pair and pair['default']) or \
+                      (defaultvalue is not None and isinstance(defaultvalue, (str, int, bool, float)) and str(pair['key']) == defaultvalue_printable) or \
+                      (defaultvalue is not None and isinstance(defaultvalue, (str, int, bool, float)) and defaultvalue_is_printable and str(pair['label']) == defaultvalue_printable) or \
+                      (hasattr(field, 'datatype') and field.datatype == 'object' and defaultvalue is not None and hasattr(defaultvalue, 'instanceName') and safeid(defaultvalue.instanceName) == pair['key']) or \
+                      (defaultvalue_set and defaultvalue is None and str(pair['key']) == 'None'):
                     other_options += ' selected="selected"'
                     found_default = True
                 other_options += '>' + markdown_to_html(str(pair['label']), status=status, escape='option', trim=True, do_terms=False) + '</option>'
+            if using_opt_groups:
+                other_options += '</optgroup>'
             if (not status.extras['required'][field.number]) or (not found_default):
                 output += first_option
             output += other_options
@@ -2463,7 +2531,7 @@ def input_for(status, field, wide=False, embedded=False):
                 if embedded:
                     output += '<span class="da-embed-radio-wrapper">'
                 else:
-                    output += '<fieldset class="da-field-radio" role="radiogroup"><legend class="visually-hidden">' + word('Choices:') + '</legend>'
+                    output += '<fieldset class="da-field-radio" role="radiogroup"' + req_aria + '><legend class="visually-hidden">' + word('Choices:') + '</legend>'
                 if field.sign > 0:
                     for pair in [dict(key='True', label=status.question.yes()), dict(key='False', label=status.question.no())]:
                         formatted_item = markdown_to_html(str(pair['label']), status=status, trim=True, escape=(not embedded), do_terms=False)
@@ -2477,9 +2545,9 @@ def input_for(status, field, wide=False, embedded=False):
                         else:
                             ischecked = ''
                         if embedded:
-                            inner_fieldlist.append('<input class="daradio-embedded" id="' + escape_id(saveas_string) + '_' + str(id_index) + '" name="' + escape_id(saveas_string) + '" type="radio" value=' + fix_double_quote(str(pair['key'])) + ischecked + disable_others_data + '>&nbsp;<label class="form-label" for="' + escape_id(saveas_string) + '_' + str(id_index) + '">' + the_icon + formatted_item + '</label>')
+                            inner_fieldlist.append('<input class="daradio-embedded" id="' + escape_id(saveas_string) + '_' + str(id_index) + '" name="' + escape_id(saveas_string) + '" type="radio" value=' + fix_double_quote(str(pair['key'])) + ischecked + disable_others_data + ' />&nbsp;<label class="form-label" for="' + escape_id(saveas_string) + '_' + str(id_index) + '">' + the_icon + formatted_item + '</label>')
                         else:
-                            inner_fieldlist.append(help_wrap('<input aria-label="' + formatted_item + '" alt="' + formatted_item + '" data-labelauty="' + my_escape(the_icon) + formatted_item + '|' + my_escape(the_icon) + formatted_item + '" class="da-to-labelauty' + extra_radio + '" id="' + escape_id(saveas_string) + '_' + str(id_index) + '" name="' + escape_id(saveas_string) + '" type="radio" value=' + fix_double_quote(str(pair['key'])) + ischecked + disable_others_data + '/>', helptext, status))
+                            inner_fieldlist.append(help_wrap('<input aria-label="' + formatted_item + '" alt="' + formatted_item + '" data-labelauty="' + my_escape(the_icon) + formatted_item + '|' + my_escape(the_icon) + formatted_item + '" class="da-to-labelauty' + extra_radio + '" id="' + escape_id(saveas_string) + '_' + str(id_index) + '" name="' + escape_id(saveas_string) + '" type="radio" value=' + fix_double_quote(str(pair['key'])) + ischecked + disable_others_data + ' />', helptext, status))
                         id_index += 1
                 else:
                     for pair in [dict(key='False', label=status.question.yes()), dict(key='True', label=status.question.no())]:
@@ -2494,9 +2562,9 @@ def input_for(status, field, wide=False, embedded=False):
                         else:
                             ischecked = ''
                         if embedded:
-                            inner_fieldlist.append('<input class="daradio-embedded" id="' + escape_id(saveas_string) + '_' + str(id_index) + '" name="' + escape_id(saveas_string) + '" type="radio" value=' + fix_double_quote(str(pair['key'])) + ischecked + disable_others_data + '>&nbsp;<label class="form-label" for="' + escape_id(saveas_string) + '_' + str(id_index) + '">' + the_icon + formatted_item + '</label>')
+                            inner_fieldlist.append('<input class="daradio-embedded" id="' + escape_id(saveas_string) + '_' + str(id_index) + '" name="' + escape_id(saveas_string) + '" type="radio" value=' + fix_double_quote(str(pair['key'])) + ischecked + disable_others_data + ' />&nbsp;<label class="form-label" for="' + escape_id(saveas_string) + '_' + str(id_index) + '">' + the_icon + formatted_item + '</label>')
                         else:
-                            inner_fieldlist.append(help_wrap('<input aria-label="' + formatted_item + '" alt="' + formatted_item + '" data-labelauty="' + my_escape(the_icon) + formatted_item + '|' + my_escape(the_icon) + formatted_item + '" class="da-to-labelauty' + extra_radio + '" id="' + escape_id(saveas_string) + '_' + str(id_index) + '" name="' + escape_id(saveas_string) + '" type="radio" value=' + fix_double_quote(str(pair['key'])) + ischecked + disable_others_data + '/>', helptext, status))
+                            inner_fieldlist.append(help_wrap('<input aria-label="' + formatted_item + '" alt="' + formatted_item + '" data-labelauty="' + my_escape(the_icon) + formatted_item + '|' + my_escape(the_icon) + formatted_item + '" class="da-to-labelauty' + extra_radio + '" id="' + escape_id(saveas_string) + '_' + str(id_index) + '" name="' + escape_id(saveas_string) + '" type="radio" value=' + fix_double_quote(str(pair['key'])) + ischecked + disable_others_data + ' />', helptext, status))
                         id_index += 1
                 if embedded:
                     output += " ".join(inner_fieldlist) + '</span>'
@@ -2530,14 +2598,14 @@ def input_for(status, field, wide=False, embedded=False):
                     helptext = None
                 if field.sign > 0:
                     if embedded:
-                        output += '<input class="dacheckbox-embedded' + uncheck + '"' + uncheckdata + ' type="checkbox" value="True" name="' + escape_id(saveas_string) + '" id="' + escape_id(saveas_string) + '"' + docheck + disable_others_data + '/>&nbsp;<label class="form-label" for="' + escape_id(saveas_string) + '">' + label_text + '</label>'
+                        output += '<input class="dacheckbox-embedded' + uncheck + '"' + uncheckdata + ' type="checkbox" value="True" name="' + escape_id(saveas_string) + '" id="' + escape_id(saveas_string) + '"' + docheck + disable_others_data + '/>&nbsp;<label class="form-label" for="' + escape_id(saveas_string) + '" />' + label_text + '</label>'
                     else:
-                        output += help_wrap('<input aria-label="' + label_text + '" alt="' + label_text + '" class="da-to-labelauty checkbox-icon' + extra_checkbox + uncheck + '"' + title_text + uncheckdata + ' type="checkbox" value="True" data-labelauty="' + label_text + '|' + label_text + '" name="' + escape_id(saveas_string) + '" id="' + escape_id(saveas_string) + '"' + docheck + disable_others_data + '/>', helptext, status) + ' '
+                        output += help_wrap('<input aria-label="' + label_text + '" alt="' + label_text + '" class="da-to-labelauty checkbox-icon' + extra_checkbox + uncheck + '"' + title_text + uncheckdata + ' type="checkbox" value="True" data-labelauty="' + label_text + '|' + label_text + '" name="' + escape_id(saveas_string) + '" id="' + escape_id(saveas_string) + '"' + docheck + disable_others_data + ' />', helptext, status) + ' '
                 else:
                     if embedded:
-                        output += '<input class="dacheckbox-embedded' + uncheck + '"' + uncheckdata + ' type="checkbox" value="False" name="' + escape_id(saveas_string) + '" id="' + escape_id(saveas_string) + '"' + docheck + disable_others_data + '/>&nbsp;<label class="form-label" for="' + escape_id(saveas_string) + '">' + label_text + '</label>'
+                        output += '<input class="dacheckbox-embedded' + uncheck + '"' + uncheckdata + ' type="checkbox" value="False" name="' + escape_id(saveas_string) + '" id="' + escape_id(saveas_string) + '"' + docheck + disable_others_data + '/>&nbsp;<label class="form-label" for="' + escape_id(saveas_string) + '" />' + label_text + '</label>'
                     else:
-                        output += help_wrap('<input aria-label="' + label_text + '" alt="' + label_text + '" class="da-to-labelauty checkbox-icon' + extra_checkbox + uncheck + '"' + title_text + uncheckdata + ' type="checkbox" value="False" data-labelauty="' + label_text + '|' + label_text + '" name="' + escape_id(saveas_string) + '" id="' + escape_id(saveas_string) + '"' + docheck + disable_others_data + '/>', helptext, status) + ' '
+                        output += help_wrap('<input aria-label="' + label_text + '" alt="' + label_text + '" class="da-to-labelauty checkbox-icon' + extra_checkbox + uncheck + '"' + title_text + uncheckdata + ' type="checkbox" value="False" data-labelauty="' + label_text + '|' + label_text + '" name="' + escape_id(saveas_string) + '" id="' + escape_id(saveas_string) + '"' + docheck + disable_others_data + ' />', helptext, status) + ' '
                 if embedded:
                     output += '</span>'
                 else:
@@ -2548,7 +2616,7 @@ def input_for(status, field, wide=False, embedded=False):
             if embedded:
                 output += '<span class="da-embed-threestate-wrapper">'
             else:
-                output += '<fieldset class="field-radio"><legend class="visually-hidden">' + word('Choices:') + '</legend>'
+                output += '<fieldset class="field-radio" role="radiogroup"' + req_aria + '><legend class="visually-hidden">' + word('Choices:') + '</legend>'
             if field.sign > 0:
                 for pair in [dict(key='True', label=status.question.yes()), dict(key='False', label=status.question.no()), dict(key='None', label=status.question.maybe())]:
                     formatted_item = markdown_to_html(str(pair['label']), status=status, trim=True, escape=(not embedded), do_terms=False)
@@ -2562,9 +2630,9 @@ def input_for(status, field, wide=False, embedded=False):
                     else:
                         ischecked = ''
                     if embedded:
-                        inner_fieldlist.append('<input class="daradio-embedded" id="' + escape_id(saveas_string) + '_' + str(id_index) + '" name="' + escape_id(saveas_string) + '" type="radio" value=' + fix_double_quote(str(pair['key'])) + ischecked + '/>&nbsp;<label class="form-label" for="' + escape_id(saveas_string) + '_' + str(id_index) + '">' + the_icon + formatted_item + disable_others_data + '</label>')
+                        inner_fieldlist.append('<input class="daradio-embedded" id="' + escape_id(saveas_string) + '_' + str(id_index) + '" name="' + escape_id(saveas_string) + '" type="radio" value=' + fix_double_quote(str(pair['key'])) + ischecked + ' />&nbsp;<label class="form-label" for="' + escape_id(saveas_string) + '_' + str(id_index) + '">' + the_icon + formatted_item + disable_others_data + '</label>')
                     else:
-                        inner_fieldlist.append(help_wrap('<input aria-label="' + formatted_item + '" alt="' + formatted_item + '" data-labelauty="' + my_escape(the_icon) + formatted_item + '|' + my_escape(the_icon) + formatted_item + '" class="da-to-labelauty' + extra_radio + '"' + title_text + ' id="' + escape_id(saveas_string) + '_' + str(id_index) + '" name="' + escape_id(saveas_string) + '" type="radio" value=' + fix_double_quote(str(pair['key'])) + ischecked + disable_others_data + '/>', helptext, status))
+                        inner_fieldlist.append(help_wrap('<input aria-label="' + formatted_item + '" alt="' + formatted_item + '" data-labelauty="' + my_escape(the_icon) + formatted_item + '|' + my_escape(the_icon) + formatted_item + '" class="da-to-labelauty' + extra_radio + '"' + title_text + ' id="' + escape_id(saveas_string) + '_' + str(id_index) + '" name="' + escape_id(saveas_string) + '" type="radio" value=' + fix_double_quote(str(pair['key'])) + ischecked + disable_others_data + ' />', helptext, status))
                     id_index += 1
             else:
                 for pair in [dict(key='False', label=status.question.yes()), dict(key='True', label=status.question.no()), dict(key='None', label=status.question.maybe())]:
@@ -2579,9 +2647,9 @@ def input_for(status, field, wide=False, embedded=False):
                     else:
                         ischecked = ''
                     if embedded:
-                        inner_fieldlist.append('<input class="daradio-embedded" id="' + escape_id(saveas_string) + '_' + str(id_index) + '" name="' + escape_id(saveas_string) + '" type="radio" value=' + fix_double_quote(str(pair['key'])) + ischecked + disable_others_data + '/>&nbsp;<label class="form-label" for="' + escape_id(saveas_string) + '_' + str(id_index) + '">' + the_icon + formatted_item + '</label>')
+                        inner_fieldlist.append('<input class="daradio-embedded" id="' + escape_id(saveas_string) + '_' + str(id_index) + '" name="' + escape_id(saveas_string) + '" type="radio" value=' + fix_double_quote(str(pair['key'])) + ischecked + disable_others_data + ' />&nbsp;<label class="form-label" for="' + escape_id(saveas_string) + '_' + str(id_index) + '">' + the_icon + formatted_item + '</label>')
                     else:
-                        inner_fieldlist.append(help_wrap('<input aria-label="' + formatted_item + '" alt="' + formatted_item + '" data-labelauty="' + my_escape(the_icon) + formatted_item + '|' + my_escape(the_icon) + formatted_item + '" class="da-to-labelauty' + extra_radio + '"' + title_text + ' id="' + escape_id(saveas_string) + '_' + str(id_index) + '" name="' + escape_id(saveas_string) + '" type="radio" value=' + fix_double_quote(str(pair['key'])) + ischecked + disable_others_data + '/>', helptext, status))
+                        inner_fieldlist.append(help_wrap('<input aria-label="' + formatted_item + '" alt="' + formatted_item + '" data-labelauty="' + my_escape(the_icon) + formatted_item + '|' + my_escape(the_icon) + formatted_item + '" class="da-to-labelauty' + extra_radio + '"' + title_text + ' id="' + escape_id(saveas_string) + '_' + str(id_index) + '" name="' + escape_id(saveas_string) + '" type="radio" value=' + fix_double_quote(str(pair['key'])) + ischecked + disable_others_data + ' />', helptext, status))
                     id_index += 1
             if embedded:
                 output += " ".join(inner_fieldlist) + '</span>'
@@ -2625,9 +2693,9 @@ def input_for(status, field, wide=False, embedded=False):
             elif status.question.interview.image_type:
                 imagetype = 'data-imagetype="' + str(status.question.interview.image_type) + '" '
             if embedded:
-                output += '<span class="da-inline-error-wrapper"><input alt="' + word("You can upload a file here") + '" type="file" class="dafile-embedded" name="' + escape_id(saveas_string) + '"' + title_text + ' id="' + escape_id(saveas_string) + '"' + multipleflag + accept + disable_others_data + '/></span>'
+                output += '<span class="da-inline-error-wrapper"><input alt="' + word("You can upload a file here") + '" type="file" class="dafile-embedded" name="' + escape_id(saveas_string) + '"' + title_text + ' id="' + escape_id(saveas_string) + '"' + multipleflag + accept + disable_others_data + req_attr + '/></span>'
             else:
-                output += '<input aria-describedby="' + escape_id(saveas_string) + '-error" alt=' + fix_double_quote(word("You can upload a file here")) + ' type="file" tabindex="-1" class="dafile" data-show-upload="false" ' + maximagesize + imagetype + ' data-preview-file-type="text" name="' + escape_id(saveas_string) + '" id="' + escape_id(saveas_string) + '"' + multipleflag + accept + disable_others_data + '/><div class="da-has-error invalid-feedback" style="display: none;" id="' + escape_id(saveas_string) + '-error"></div>'
+                output += '<input aria-describedby="' + escape_id(saveas_string) + '-error" alt=' + fix_double_quote(word("You can upload a file here")) + ' type="file" tabindex="-1" class="dafile" data-show-upload="false" ' + maximagesize + imagetype + ' data-preview-file-type="text" name="' + escape_id(saveas_string) + '" id="' + escape_id(saveas_string) + '"' + multipleflag + accept + disable_others_data + req_attr + ' /><div class="da-has-error invalid-feedback" style="display: none;" id="' + escape_id(saveas_string) + '-error"></div>'
             #output += '<div class="fileinput fileinput-new input-group" data-provides="fileinput"><div class="form-control" data-trigger="fileinput"><i class="fas fa-file fileinput-exists"></i><span class="fileinput-filename"></span></div><span class="input-group-addon btn btn-secondary btn-file"><span class="fileinput-new">' + word('Select file') + '</span><span class="fileinput-exists">' + word('Change') + '</span><input type="file" name="' + escape_id(saveas_string) + '" id="' + escape_id(saveas_string) + '"' + multipleflag + '></span><a href="#" class="input-group-addon btn btn-secondary fileinput-exists" data-dismiss="fileinput">' + word('Remove') + '</a></div>\n'
         elif field.datatype == 'range':
             ok = True
@@ -2659,7 +2727,7 @@ def input_for(status, field, wide=False, embedded=False):
                 rows = noquote(str(status.extras['rows'][field.number]))
             else:
                 rows = '"4"'
-            output += '<textarea alt=' + fix_double_quote(word("Input box")) + ' class="form-control' + extra_class + '"' + title_text + ' rows=' + rows + ' name="' + escape_id(saveas_string) + '" id="' + escape_id(saveas_string) + '"' + placeholdertext + disable_others_data + '>'
+            output += '<textarea alt=' + fix_double_quote(word("Input box")) + ' class="form-control datextarea' + extra_class + '"' + title_text + ' rows=' + rows + ' name="' + escape_id(saveas_string) + '" id="' + escape_id(saveas_string) + '"' + placeholdertext + disable_others_data + req_attr + '>'
             if defaultvalue is not None and isinstance(defaultvalue, (str, int, bool, float)):
                 output += defaultvalue
             output += '</textarea>'
@@ -2671,6 +2739,9 @@ def input_for(status, field, wide=False, embedded=False):
                     defaultvalue = int(float(defaultvalue))
                 defaultstring = ' value=' + fix_double_quote(str(defaultvalue))
                 default_val = defaultvalue
+            elif isinstance(defaultvalue, datetime.time):
+                defaultstring = ' value="' + format_time(defaultvalue, format='HH:mm') + '"'
+                default_val = format_time(defaultvalue, format='HH:mm')
             elif isinstance(defaultvalue, datetime.datetime):
                 if field.datatype == 'datetime':
                     defaultstring = ' value="' + format_datetime(defaultvalue, format='yyyy-MM-ddTHH:mm') + '"'
@@ -2686,7 +2757,7 @@ def input_for(status, field, wide=False, embedded=False):
                 default_val = ''
             if embedded:
                 output += '<span class="da-inline-error-wrapper">'
-            output += '<select data-action=' + fix_double_quote(field.combobox_action['action']) + ' data-trig="' + str(field.combobox_action['trig']) + '" alt="' + word("Input box") + '" class="form-select da-ajax-combobox' + extra_class + '"' + extra_style + title_text + ' name="' + escape_id(saveas_string) + '" id="' + escape_id(saveas_string) + '"><option' + defaultstring + ' selected="selected">' + option_escape(default_val) + '</option></select>'
+            output += '<select data-action=' + fix_double_quote(field.combobox_action['action']) + ' data-trig="' + str(field.combobox_action['trig']) + '" alt="' + word("Input box") + '" class="form-control da-ajax-combobox' + extra_class + '"' + extra_style + title_text + ' name="' + escape_id(saveas_string) + '" id="' + escape_id(saveas_string) + '"' + req_attr + '><option' + defaultstring + ' selected="selected">' + option_escape(default_val) + '</option></select>'
             if embedded:
                 if field.datatype == 'currency':
                     output += '</span></span>'
@@ -2698,6 +2769,10 @@ def input_for(status, field, wide=False, embedded=False):
                     the_date = format_date(defaultvalue, format='yyyy-MM-dd')
                     if the_date != word("Bad date"):
                         defaultvalue = the_date
+                elif field.datatype == 'time':
+                    the_time = format_time(defaultvalue, format='HH:mm')
+                    if the_time != word("Bad date"):
+                        defaultvalue = the_time
                 elif field.datatype == 'datetime':
                     the_date = format_datetime(defaultvalue, format='yyyy-MM-ddTHH:mm')
                     if the_date != word("Bad date"):
@@ -2709,6 +2784,8 @@ def input_for(status, field, wide=False, embedded=False):
                 elif field.datatype in ('currency', 'number') and hasattr(field, 'extras') and 'step' in field.extras and 'step' in status.extras and field.number in status.extras['step'] and int(float(status.extras['step'][field.number])) == float(status.extras['step'][field.number]):
                     defaultvalue = int(float(defaultvalue))
                 defaultstring = ' value=' + fix_double_quote(str(defaultvalue))
+            elif isinstance(defaultvalue, datetime.time):
+                defaultstring = ' value="' + format_time(defaultvalue, format='HH:mm') + '"'
             elif isinstance(defaultvalue, datetime.datetime):
                 if field.datatype == 'datetime':
                     defaultstring = ' value="' + format_datetime(defaultvalue, format='yyyy-MM-ddTHH:mm') + '"'
@@ -2760,9 +2837,9 @@ def input_for(status, field, wide=False, embedded=False):
                         data_part += ' data-' + re.sub(r'[^A-Za-z0-9\-]', '-', param_name).strip('-') + '=' + fix_double_quote(str(param_val))
             output += '<input' + defaultstring + placeholdertext + ' alt="' + word("Input box") + '" class="form-control' + extra_class + '"' + extra_style + title_text + data_part + ' type="' + input_type + '"' + step_string + ' name="' + escape_id(saveas_string) + '" id="' + escape_id(saveas_string) + '"'
             if not embedded and field.datatype == 'currency':
-                output += ' aria-describedby="' + escape_id(saveas_string) + '-error"' + disable_others_data + autocomplete_off + ' /></div><div class="da-has-error invalid-feedback" style="display: none;" id="' + escape_id(saveas_string) + '-error"></div>'
+                output += ' aria-describedby="' + escape_id(saveas_string) + '-error"' + disable_others_data + autocomplete_off + req_attr + ' /></div><div class="da-has-error invalid-feedback" style="display: none;" id="' + escape_id(saveas_string) + '-error"></div>'
             else:
-                output += disable_others_data + autocomplete_off + ' />'
+                output += disable_others_data + autocomplete_off + req_attr + ' />'
             if embedded:
                 if field.datatype == 'currency':
                     output += '</span></span>'

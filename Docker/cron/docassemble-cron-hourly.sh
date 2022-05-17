@@ -15,7 +15,7 @@ export LANG=$1
 
 for old_dir in $( find /tmp -maxdepth 1 -type d -mmin +60 -path "/tmp/SavedFile*" ); do
     rm -rf "$old_dir"
-done	       
+done
 
 for old_file in $( find /tmp -maxdepth 1 -type f -mmin +60 -path "/tmp/datemp*" ); do
     rm -f "$old_file"
@@ -43,4 +43,8 @@ if [[ $CONTAINERROLE =~ .*:(all|web):.* ]]; then
     if [ "${DAWEBSERVER:-nginx}" = "nginx" ]; then
 	rsync -auq /var/log/nginx/ "${LOGDIRECTORY}/" && chown -R www-data.www-data "${LOGDIRECTORY}"
     fi
+fi
+
+if [ "${S3ENABLE:-false}" == "false" ] && [ "${AZUREENABLE:-false}" == "false" ]; then
+    rsync -auq --delete "${DA_ROOT}/files" "${DA_ROOT}/backup/"
 fi

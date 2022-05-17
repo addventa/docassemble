@@ -6,6 +6,7 @@ import codecs
 import copy
 import datetime
 import inspect
+import io
 import json
 import mimetypes
 import os
@@ -29,7 +30,7 @@ from requests.exceptions import RequestException
 import httplib2
 import oauth2client.client
 import apiclient
-import pytz
+from backports import zoneinfo
 from PIL import Image, ImageEnhance
 # from twilio.rest import Client as TwilioRestClient
 import pycountry
@@ -38,7 +39,7 @@ from jinja2.exceptions import TemplateError
 from docassemble.base.error import DAError, DAValidationError, DAIndexError, DAWebError, LazyNameError, DAAttributeError
 from docassemble.base.file_docx import include_docx_template
 from docassemble.base.filter import markdown_to_html
-from docassemble.base.functions import alpha, roman, item_label, comma_and_list, get_language, set_language, get_dialect, set_country, get_country, word, comma_list, ordinal, ordinal_number, need, nice_number, quantity_noun, possessify, verb_past, verb_present, noun_plural, noun_singular, space_to_underscore, force_ask, force_gather, period_list, name_suffix, currency_symbol, currency, indefinite_article, nodoublequote, capitalize, title_case, url_of, do_you, did_you, does_a_b, did_a_b, were_you, was_a_b, have_you, has_a_b, your, her, his, their, is_word, get_locale, set_locale, process_action, url_action, get_info, set_info, get_config, prevent_going_back, qr_code, action_menu_item, from_b64_json, defined, define, value, message, response, json_response, command, single_paragraph, quote_paragraphs, location_returned, location_known, user_lat_lon, interview_url, interview_url_action, interview_url_as_qr, interview_url_action_as_qr, interview_email, get_emails, this_thread, static_image, action_arguments, action_argument, language_functions, language_function_constructor, get_default_timezone, user_logged_in, interface, user_privileges, user_has_privilege, user_info, background_action, background_response, background_response_action, background_error_action, us, set_live_help_status, chat_partners_available, phone_number_in_e164, phone_number_formatted, phone_number_is_valid, countries_list, country_name, write_record, read_records, delete_record, variables_as_json, all_variables, server, language_from_browser, device, plain, bold, italic, states_list, state_name, subdivision_type, indent, raw, fix_punctuation, set_progress, get_progress, referring_url, undefine, invalidate, dispatch, yesno, noyes, split, showif, showifdef, phone_number_part, set_parts, log, encode_name, decode_name, interview_list, interview_menu, server_capabilities, session_tags, get_chat_log, get_user_list, get_user_info, set_user_info, get_user_secret, create_user, create_session, get_session_variables, set_session_variables, get_question_data, go_back_in_session, manage_privileges, salutation, redact, ensure_definition, forget_result_of, re_run_logic, reconsider, set_title, set_save_status, single_to_double_newlines, CustomDataType, verbatim, add_separators, update_ordinal_numbers, update_ordinal_function, update_language_function, update_nice_numbers, update_word_collection, store_variables_snapshot, get_uid, update_terms, possessify_long, a_in_the_b, its, the, this, these, underscore_to_space, some, ReturnValue
+from docassemble.base.functions import alpha, roman, item_label, comma_and_list, get_language, set_language, get_dialect, set_country, get_country, word, comma_list, ordinal, ordinal_number, need, nice_number, quantity_noun, possessify, verb_past, verb_present, noun_plural, noun_singular, space_to_underscore, force_ask, force_gather, period_list, name_suffix, currency_symbol, currency, indefinite_article, nodoublequote, capitalize, title_case, url_of, do_you, did_you, does_a_b, did_a_b, were_you, was_a_b, have_you, has_a_b, your, her, his, their, is_word, get_locale, set_locale, process_action, url_action, get_info, set_info, get_config, prevent_going_back, qr_code, action_menu_item, from_b64_json, defined, define, value, message, response, json_response, command, single_paragraph, quote_paragraphs, location_returned, location_known, user_lat_lon, interview_url, interview_url_action, interview_url_as_qr, interview_url_action_as_qr, interview_email, get_emails, this_thread, static_image, action_arguments, action_argument, language_functions, language_function_constructor, get_default_timezone, user_logged_in, interface, user_privileges, user_has_privilege, user_info, background_action, background_response, background_response_action, background_error_action, us, set_live_help_status, chat_partners_available, phone_number_in_e164, phone_number_formatted, phone_number_is_valid, countries_list, country_name, write_record, read_records, delete_record, variables_as_json, all_variables, server, language_from_browser, device, plain, bold, italic, states_list, state_name, subdivision_type, indent, raw, fix_punctuation, set_progress, get_progress, referring_url, undefine, invalidate, dispatch, yesno, noyes, split, showif, showifdef, phone_number_part, set_parts, log, encode_name, decode_name, interview_list, interview_menu, server_capabilities, session_tags, get_chat_log, get_user_list, get_user_info, set_user_info, get_user_secret, create_user, create_session, get_session_variables, set_session_variables, get_question_data, go_back_in_session, manage_privileges, salutation, redact, ensure_definition, forget_result_of, re_run_logic, reconsider, set_title, set_save_status, single_to_double_newlines, CustomDataType, verbatim, add_separators, update_ordinal_numbers, update_ordinal_function, update_language_function, update_nice_numbers, update_word_collection, store_variables_snapshot, get_uid, update_terms, possessify_long, a_in_the_b, its, the, this, these, underscore_to_space, some, ReturnValue, set_variables, language_name, run_action_in_session
 from docassemble.base.generate_key import random_alphanumeric, random_string
 from docassemble.base.logger import logmessage
 from docassemble.base.pandoc import word_to_markdown, concatenate_files
@@ -49,6 +50,7 @@ import docassemble.base.geocode
 import docassemble.base.pandoc
 import docassemble.base.parse
 import docassemble.base.pdftk
+import docassemble.base.DA as DA
 import dateutil
 import dateutil.parser
 import babel.dates
@@ -58,11 +60,12 @@ from bs4 import BeautifulSoup
 import i18naddress
 from flask_mail import Message
 from pyzbar.pyzbar import decode
-from docxtpl import InlineImage, Subdoc
+from docxtpl import InlineImage, Subdoc, DocxTemplate
 #import tablib
 import pandas
 import PyPDF2
 from docx import Document
+import google.cloud
 
 capitalize_func = capitalize
 NoneType = type(None)
@@ -322,7 +325,12 @@ __all__ = [
     'retrieve_stashed_data',
     'update_terms',
     'chain',
-    'DABreadCrumbs'
+    'DABreadCrumbs',
+    'set_variables',
+    'language_name',
+    'DA',
+    'DAGlobal',
+    'run_action_in_session'
 ]
 
 #knn_machine_learner = DummyObject
@@ -387,7 +395,7 @@ class DAEmpty:
     def __init__(self, *pargs, **kwargs):
         self.str = str(kwargs.get('str', ''))
     def __getattr__(self, thename):
-        if thename.startswith('_') or thename == 'str':
+        if thename.startswith('__') or thename == 'str':
             return object.__getattribute__(self, thename)
         return DAEmpty()
     def __str__(self):
@@ -685,7 +693,8 @@ class DAObject:
                         object_type = self.__class__
                     self.new_relation.initializeObject(relationship_type, object_type, **filter_by)
                 if complete_attribute:
-                    getattr(self.new_relation[relationship_type], complete_attribute)
+                    for attrib in self._complete_attributes(complete_attribute):
+                        complex_getattr(self.new_relation[relationship_type], attrib)
                 else:
                     str(self.new_relation[relationship_type])
                 new_item = self.new_relation[relationship_type]
@@ -731,7 +740,8 @@ class DAObject:
                         object_type = self.__class__
                     self.new_peer_relation.initializeObject(relationship_type, object_type)
                 if complete_attribute:
-                    getattr(self.new_peer_relation[relationship_type], complete_attribute)
+                    for attrib in self._complete_attributes(complete_attribute):
+                        complex_getattr(self.new_peer_relation[relationship_type], attrib)
                 else:
                     str(self.new_peer_relation[relationship_type])
                 new_item = self.new_peer_relation[relationship_type]
@@ -818,9 +828,11 @@ class DAObject:
     def _map_info(self):
         return None
     def __getattr__(self, thename):
-        if thename.startswith('_') or hasattr(self.__class__, thename):
+        if thename.startswith('__') or hasattr(self.__class__, thename):
             if 'pending_error' in docassemble.base.functions.this_thread.misc:
-                raise docassemble.base.functions.this_thread.misc['pending_error']
+                pending_error = docassemble.base.functions.this_thread.misc['pending_error']
+                del docassemble.base.functions.this_thread.misc['pending_error']
+                raise pending_error
             return object.__getattribute__(self, thename)
         var_name = object.__getattribute__(self, 'instanceName') + "." + thename
         docassemble.base.functions.this_thread.misc['pending_error'] = DAAttributeError("name '" + var_name + "' is not defined")
@@ -914,9 +926,9 @@ class DAObject:
         if len(pargs) == 0:
             raise Exception("alternative: attribute must be provided")
         attribute = pargs[0]
-        value = getattr(self, attribute)
-        if value in kwargs:
-            return kwargs[value]
+        the_value = getattr(self, attribute)
+        if the_value in kwargs:
+            return kwargs[the_value]
         if '_default' in kwargs:
             return kwargs['_default']
         if 'default' in kwargs:
@@ -1406,9 +1418,9 @@ class DAList(DAObject):
             self.doing_gathered_and_complete = True
             if hasattr(self, 'complete_attribute') and self.complete_attribute == 'complete':
                 for item in self.elements:
-                    if hasattr(item, self.complete_attribute):
+                    if hasattr(item, 'complete'):
                         try:
-                            delattr(item, self.complete_attribute)
+                            delattr(item, 'complete')
                         except:
                             pass
             if hasattr(self, 'gathered'):
@@ -1481,12 +1493,13 @@ class DAList(DAObject):
         if hasattr(self, 'new_object_type'):
             delattr(self, 'new_object_type')
         if mark_incomplete and self.complete_attribute is not None:
-            for item in self.elements:
-                if hasattr(item, self.complete_attribute):
-                    try:
-                        delattr(item, self.complete_attribute)
-                    except:
-                        pass
+            for attrib in self._complete_attributes():
+                for item in self.elements:
+                    if complex_hasattr(item, attrib):
+                        try:
+                            complex_delattr(item, attrib)
+                        except:
+                            pass
         if recursive:
             self._reset_gathered_recursively()
     def has_been_gathered(self):
@@ -1648,10 +1661,10 @@ class DAList(DAObject):
     def remove(self, *pargs):
         """Removes the given arguments from the list, if they are in the list"""
         something_removed = False
-        for value in pargs:
-            if value in self.elements:
-                self.hook_on_remove(value)
-                self.elements.remove(value)
+        for the_value in pargs:
+            if the_value in self.elements:
+                self.hook_on_remove(the_value)
+                self.elements.remove(the_value)
                 something_removed = True
         self._reset_instance_names()
         if something_removed and len(self.elements) == 0:
@@ -1660,9 +1673,9 @@ class DAList(DAObject):
         """Removes items from the list, by index number"""
         new_list = []
         list_truncated = False
-        for indexno in range(len(self.elements)):
+        for indexno, item in enumerate(self.elements):
             if indexno not in pargs:
-                new_list.append(self.elements[indexno])
+                new_list.append(item)
             else:
                 list_truncated = True
         self.elements = new_list
@@ -1671,7 +1684,7 @@ class DAList(DAObject):
             del self._necessary_length
     def insert(self, *pargs):
         """Inserts an item at the given position."""
-        result = self.elements.insert(*pargs)
+        self.elements.insert(*pargs)
         self._reset_instance_names()
         self.there_are_any = True
     def count(self, item):
@@ -1800,7 +1813,12 @@ class DAList(DAObject):
             if item is None:
                 continue
             if complete_attribute is not None:
-                if not hasattr(item, complete_attribute):
+                should_skip = False
+                for attrib in self._complete_attributes(complete_attribute):
+                    if not complex_hasattr(item, attrib):
+                        should_skip = True
+                        break
+                if should_skip:
                     continue
             else:
                 try:
@@ -1810,6 +1828,16 @@ class DAList(DAObject):
             items.append(item)
         items.gathered = True
         return items
+    def _complete_attributes(self, complete_attribute=None):
+        if complete_attribute is None:
+            complete_attribute = self.complete_attribute
+        if isinstance(complete_attribute, str):
+            return [complete_attribute]
+        if isinstance(complete_attribute, list):
+            return complete_attribute
+        if isinstance(complete_attribute, DAList):
+            return complete_attribute.elements
+        return []
     def _validate(self, item_object_type, complete_attribute):
         if self.ask_object_type:
             for indexno in range(len(self.elements)):
@@ -1824,14 +1852,16 @@ class DAList(DAObject):
                         raise Exception("new_object_type must be an object type")
                     self.elements[indexno] = object_type_to_use(self.instanceName + '[' + str(indexno) + ']', **parameters_to_use)
                 if complete_attribute is not None:
-                    getattr(self.elements[indexno], complete_attribute)
+                    for attrib in self._complete_attributes(complete_attribute):
+                        complex_getattr(self.elements[indexno], attrib)
                 else:
                     str(self.elements[indexno])
             if hasattr(self, 'new_object_type'):
                 delattr(self, 'new_object_type')
         for elem in self.elements:
             if item_object_type is not None and complete_attribute is not None:
-                getattr(elem, complete_attribute)
+                for attrib in self._complete_attributes(complete_attribute):
+                    complex_getattr(elem, attrib)
             else:
                 str(elem)
     def _allow_appending(self):
@@ -1993,7 +2023,7 @@ class DAList(DAObject):
         try:
             return self.elements[index]
         except:
-            if self.auto_gather and hasattr(self, 'gathered') and not (hasattr(self, '_appending_allowed') and self._appending_allowed):
+            if (self.auto_gather and hasattr(self, 'gathered') and not (hasattr(self, '_appending_allowed') and self._appending_allowed)) or docassemble.base.functions.this_thread.probing:
                 try:
                     logmessage("list index " + str(index) + " out of range on " + str(self.instanceName))
                 except:
@@ -2129,7 +2159,7 @@ class DAList(DAObject):
             else:
                 items += [{'follow up': [self.instanceName + '[' + repr(index) + ']']}]
             if self.complete_attribute is not None and self.complete_attribute != 'complete':
-                items += [dict(action='_da_define', arguments=dict(variables=[item.instanceName + '.' + self.complete_attribute]))]
+                items += [dict(action='_da_define', arguments=dict(variables=[item.instanceName + '.' + attrib for attrib in self._complete_attributes()]))]
             if ensure_complete:
                 items += [dict(action='_da_list_ensure_complete', arguments=dict(group=self.instanceName))]
             output += '<a href="' + docassemble.base.functions.url_action('_da_list_edit', items=items) + '" role="button" class="btn btn-sm ' + server.button_class_prefix + server.daconfig['button colors'].get('edit', 'secondary') + ' btn-darevisit"><span class="text-nowrap"><i class="fas fa-pencil-alt"></i> ' + word('Edit') + '</span></a> '
@@ -2185,13 +2215,13 @@ class DAList(DAObject):
         if url_only:
             return docassemble.base.functions.url_action('_da_list_add', list=self.instanceName)
         return '<a href="' + docassemble.base.functions.url_action('_da_list_add', list=self.instanceName) + '" class="btn' + size + block + ' ' + server.button_class_prefix + color + classname + '">' + icon + str(message) + '</a>'
-    def hook_on_gather(self):
+    def hook_on_gather(self, *pargs, **kwargs):
         pass
-    def hook_after_gather(self):
+    def hook_after_gather(self, *pargs, **kwargs):
         pass
-    def hook_on_item_complete(self, item):
+    def hook_on_item_complete(self, item, *pargs, **kwargs):
         pass
-    def hook_on_remove(self, item):
+    def hook_on_remove(self, item, *pargs, **kwargs):
         pass
     def __eq__(self, other):
         self._trigger_gather()
@@ -2453,12 +2483,13 @@ class DADict(DAObject):
         if hasattr(self, 'new_object_type'):
             delattr(self, 'new_object_type')
         if mark_incomplete and self.complete_attribute is not None:
-            for item in list(self.elements.values()):
-                if hasattr(item, self.complete_attribute):
-                    try:
-                        delattr(item, self.complete_attribute)
-                    except:
-                        pass
+            for attrib in self._complete_attributes():
+                for item in list(self.elements.values()):
+                    if complex_hasattr(item, attrib):
+                        try:
+                            complex_delattr(item, attrib)
+                        except:
+                            pass
         if recursive:
             self._reset_gathered_recursively()
     def slice(self, *pargs):
@@ -2587,7 +2618,12 @@ class DADict(DAObject):
             if val is None:
                 continue
             if complete_attribute is not None:
-                if not hasattr(val, complete_attribute):
+                should_skip = False
+                for attrib in self._complete_attributes(complete_attribute):
+                    if not complex_hasattr(val, attrib):
+                        should_skip = True
+                        break
+                if should_skip:
                     continue
             else:
                 try:
@@ -2600,6 +2636,16 @@ class DADict(DAObject):
         return sorted(self.keys())
     def _sorted_elements_keys(self):
         return sorted(self.elements.keys())
+    def _complete_attributes(self, complete_attribute=None):
+        if complete_attribute is None:
+            complete_attribute = self.complete_attribute
+        if isinstance(complete_attribute, str):
+            return [complete_attribute]
+        if isinstance(complete_attribute, list):
+            return complete_attribute
+        if isinstance(complete_attribute, DAList):
+            return complete_attribute.elements
+        return []
     def _validate(self, item_object_type, complete_attribute, keys=None):
         if keys is None:
             try:
@@ -2626,7 +2672,8 @@ class DADict(DAObject):
         for key in keys:
             elem = self.elements[key]
             if item_object_type is not None and complete_attribute is not None:
-                getattr(elem, complete_attribute)
+                for attrib in self._complete_attributes(complete_attribute):
+                    complex_getattr(elem, attrib)
             else:
                 str(elem)
     def gathered_and_complete(self):
@@ -2635,9 +2682,9 @@ class DADict(DAObject):
             self.doing_gathered_and_complete = True
             if self.complete_attribute == 'complete':
                 for item in list(self.elements.values()):
-                    if hasattr(item, self.complete_attribute):
+                    if hasattr(item, 'complete'):
                         try:
-                            delattr(item, self.complete_attribute)
+                            delattr(item, 'complete')
                         except:
                             pass
             if hasattr(self, 'gathered'):
@@ -2750,7 +2797,8 @@ class DADict(DAObject):
             delattr(self, 'new_item_value')
         for elem in self._sorted_elements_values():
             if self.object_type is not None and self.complete_attribute is not None:
-                getattr(elem, self.complete_attribute)
+                for attrib in self._complete_attributes():
+                    complex_getattr(elem, attrib)
             else:
                 str(elem)
     def comma_and_list(self, **kwargs):
@@ -2763,7 +2811,7 @@ class DADict(DAObject):
             return comma_and_list(self.elements.keys(), **kwargs)
     def __getitem__(self, index):
         if index not in self.elements:
-            if self.object_type is None:
+            if self.object_type is None or docassemble.base.functions.this_thread.probing:
                 var_name = object.__getattribute__(self, 'instanceName') + "[" + repr(index) + "]"
                 raise DAIndexError("name '" + var_name + "' is not defined")
             self.initializeObject(index, self.object_type, **self.object_type_parameters)
@@ -2962,13 +3010,13 @@ class DADict(DAObject):
         if use_edit:
             items = []
             if self.complete_attribute == 'complete':
-                items += [dict(action='_da_undefine', arguments=dict(variables=[item.instanceName + '.' + self.complete_attribute]))]
+                items += [dict(action='_da_undefine', arguments=dict(variables=[item.instanceName + '.complete']))]
             if len(the_args) > 0:
                 items += [{'follow up': [item.instanceName + ('' if y.startswith('[') else '.') + y for y in the_args]}]
             else:
                 items += [{'follow up': [self.instanceName + '[' + repr(index) + ']']}]
             if self.complete_attribute is not None and self.complete_attribute != 'complete':
-                items += [dict(action='_da_define', arguments=dict(variables=[item.instanceName + '.' + self.complete_attribute]))]
+                items += [dict(action='_da_define', arguments=dict(variables=[item.instanceName + '.' + attrib for attrib in self._complete_attributes()]))]
             if ensure_complete:
                 items += [dict(action='_da_dict_ensure_complete', arguments=dict(group=self.instanceName))]
             output += '<a href="' + docassemble.base.functions.url_action('_da_dict_edit', items=items) + '" role="button" class="btn btn-sm ' + server.button_class_prefix + server.daconfig['button colors'].get('edit', 'secondary') + ' btn-darevisit"><i class="fas fa-pencil-alt"></i> ' + word('Edit') + '</a> '
@@ -3026,13 +3074,13 @@ class DADict(DAObject):
         return '<a href="' + docassemble.base.functions.url_action('_da_dict_add', dict=self.instanceName) + '" class="btn' + size + block + ' ' + server.button_class_prefix + color + classname + '">' + icon + str(message) + '</a>'
     def _new_elements(self):
         return {}
-    def hook_on_gather(self):
+    def hook_on_gather(self, *pargs, **kwargs):
         pass
-    def hook_after_gather(self):
+    def hook_after_gather(self, *pargs, **kwargs):
         pass
-    def hook_on_item_complete(self, item):
+    def hook_on_item_complete(self, item, *pargs, **kwargs):
         pass
-    def hook_on_remove(self, item):
+    def hook_on_remove(self, item, *pargs, **kwargs):
         pass
     def __eq__(self, other):
         self._trigger_gather()
@@ -3080,9 +3128,9 @@ class DASet(DAObject):
             self.doing_gathered_and_complete = True
             if hasattr(self, 'complete_attribute') and self.complete_attribute == 'complete':
                 for item in self.elements:
-                    if hasattr(item, self.complete_attribute):
+                    if hasattr(item, 'complete'):
                         try:
-                            delattr(item, self.complete_attribute)
+                            delattr(item, 'complete')
                         except:
                             pass
             if hasattr(self, 'gathered'):
@@ -3105,7 +3153,12 @@ class DASet(DAObject):
             if item is None:
                 continue
             if complete_attribute is not None:
-                if not hasattr(item, complete_attribute):
+                should_skip = False
+                for attrib in self._complete_attributes(complete_attribute):
+                    if not complex_hasattr(item, attrib):
+                        should_skip = True
+                        break
+                if should_skip:
                     continue
             else:
                 try:
@@ -3159,12 +3212,13 @@ class DASet(DAObject):
         if hasattr(self, 'new_object_type'):
             delattr(self, 'new_object_type')
         if mark_incomplete and self.complete_attribute is not None:
-            for item in list(self.elements):
-                if hasattr(item, self.complete_attribute):
-                    try:
-                        delattr(item, self.complete_attribute)
-                    except:
-                        pass
+            for attrib in self._complete_attributes():
+                for item in list(self.elements):
+                    if complex_hasattr(item, attrib):
+                        try:
+                            complex_delattr(item, attrib)
+                        except:
+                            pass
         if recursive:
             self._reset_gathered_recursively()
     def has_been_gathered(self):
@@ -3486,13 +3540,13 @@ class DASet(DAObject):
     def pronoun_subjective(self, **kwargs):
         """Same as pronoun()."""
         return self.pronoun(**kwargs)
-    def hook_on_gather(self):
+    def hook_on_gather(self, *pargs, **kwargs):
         pass
-    def hook_after_gather(self):
+    def hook_after_gather(self, *pargs, **kwargs):
         pass
-    def hook_on_item_complete(self, item):
+    def hook_on_item_complete(self, item, *pargs, **kwargs):
         pass
-    def hook_on_remove(self, item):
+    def hook_on_remove(self, item, *pargs, **kwargs):
         pass
     def __eq__(self, other):
         self._trigger_gather()
@@ -3548,7 +3602,9 @@ class DAFile(DAObject):
         if hasattr(self, 'mimetype'):
             del self.mimetype
         self.initialize(extension=output_extension, filename=output_filename)
-        if input_extension in ("docx", "doc", "odt", "rtf", "png", "jpg", "tif") and output_extension == "pdf":
+        if input_extension == output_extension:
+            shutil.copyfile(input_path, self.path())
+        elif input_extension in ("docx", "doc", "odt", "rtf", "png", "jpg", "tif") and output_extension == "pdf":
             shutil.copyfile(docassemble.base.pandoc.concatenate_files([input_path]), self.path())
         elif input_extension in ("docx", "doc", "odt", "rtf") and output_extension in ("docx", "doc", "odt", "rtf"):
             docassemble.base.pandoc.convert_file(input_path, self.path(), input_extension, output_extension)
@@ -4052,9 +4108,7 @@ class DAFile(DAObject):
         the future.
 
         """
-        #logmessage("commit")
         if hasattr(self, 'number'):
-            #logmessage("Committed " + str(self.number))
             sf = server.SavedFile(self.number, fix=True)
             sf.finalize()
     def show(self, width=None, wait=True, alt_text=None):
@@ -4106,11 +4160,16 @@ class DAFile(DAObject):
             del kwargs['attachment']
         return server.url_finder(self, **kwargs)
     def set_attributes(self, **kwargs):
-        """Sets attributes of the file stored on the server.  Takes optional keyword arguments private and persistent, which must be boolean values."""
+        """Sets attributes of the file stored on the server.  Takes optional keyword arguments private and persistent, which must be boolean values.  Also takes the optional keyword argument filename."""
         if 'private' in kwargs and kwargs['private'] in [True, False]:
             self.private = kwargs['private']
         if 'persistent' in kwargs and kwargs['persistent'] in [True, False]:
             self.persistent = kwargs['persistent']
+        if 'filename' in kwargs:
+            kwargs['filename'] = server.secure_filename_spaces_ok(kwargs['filename'])
+            self.filename = kwargs['filename']
+        if 'session' in kwargs:
+            del kwargs['session']
         return server.file_set_attributes(self.number, **kwargs)
     def user_access(self, *pargs, **kwargs):
         """Allows or disallows access to the file for a given user."""
@@ -4251,6 +4310,8 @@ class DAFileCollection(DAObject):
         raise Exception("Could not find a file within a DACollection.")
     def set_attributes(self, **kwargs):
         """Sets attributes of the file(s) stored on the server.  Takes optional keyword arguments private and persistent, which must be boolean values."""
+        if 'filename' in kwargs:
+            del kwargs['filename']
         for ext in self._extension_list():
             if hasattr(self, ext):
                 getattr(self, ext).set_attributes(**kwargs)
@@ -4385,6 +4446,8 @@ class DAFileList(DAList):
         return self.elements[0].url_for(**kwargs)
     def set_attributes(self, **kwargs):
         """Sets attributes of the file(s) stored on the server.  Takes optional keyword arguments private and persistent, which must be boolean values."""
+        if 'filename' in kwargs:
+            del kwargs['filename']
         for element in sorted(self.elements):
             if element.ok:
                 element.set_attributes(**kwargs)
@@ -4762,9 +4825,10 @@ class DALazyTemplate(DAObject):
     an object of this type.  The two attributes are "subject" and
     "content." """
     def __getstate__(self):
+        return_val = {}
         if hasattr(self, 'instanceName'):
-            return dict(instanceName=self.instanceName)
-        return {}
+            return_val['instanceName'] = self.instanceName
+        return return_val
     def subject_as_html(self, **kwargs):
         the_args = {}
         for key, val in kwargs.items():
@@ -4810,7 +4874,7 @@ class DALazyTemplate(DAObject):
         user_dict_copy.update(self.tempvars)
         user_dict_copy.update(kwargs)
         content = self.source_content.text(user_dict_copy).rstrip()
-        if docassemble.base.functions.this_thread.evaluation_context == 'docx':
+        if docassemble.base.functions.this_thread.evaluation_context == 'docx' and server.daconfig.get('new template markdown behavior', False):
             content = re.sub(r'\\_', r'\\\\_', content)
             return str(docassemble.base.file_docx.markdown_to_docx(content, docassemble.base.functions.this_thread.current_question, docassemble.base.functions.this_thread.misc.get('docx_template', None)))
         return content
@@ -4823,7 +4887,7 @@ class DALazyTemplate(DAObject):
         user_dict_copy.update(kwargs)
         return self.source_content.text(user_dict_copy).rstrip()
     def __str__(self):
-        if docassemble.base.functions.this_thread.evaluation_context == 'docx':
+        if docassemble.base.functions.this_thread.evaluation_context == 'docx' and server.daconfig.get('new template markdown behavior', False):
             content = self.content
             content = re.sub(r'\\_', r'\\\\_', content)
             return str(docassemble.base.file_docx.markdown_to_docx(content, docassemble.base.functions.this_thread.current_question, docassemble.base.functions.this_thread.misc.get('docx_template', None)))
@@ -4889,6 +4953,8 @@ class DALazyTableTemplate(DALazyTemplate):
         except:
             return table_safe(word(self.table_info.not_available_label))
     def header_and_contents(self):
+        if not hasattr(self, 'table_info'):
+            raise LazyNameError("name '" + str(self.instanceName) + "' is not defined")
         user_dict_copy = copy.copy(self.userdict)
         user_dict_copy.update(self.tempvars)
         header_output = [export_safe(x.text(user_dict_copy)) for x in self.table_info.header]
@@ -5224,6 +5290,94 @@ class DADeviceLocal(DAObject):
 class DAUserLocal(DAObject):
     def __init__(self, *pargs, **kwargs):
         super().__init__('user_local')
+
+class DAGlobal(DAObject):
+    """A class for objects that are stored in an unencrypted global area outside of the interview answers."""
+    @classmethod
+    def keys(cls, base):
+        if base == 'interview':
+            globalbase = 'da:daglobal:i:' + str(this_thread.current_info.get('yaml_filename', ''))
+        elif base == 'global':
+            globalbase = 'da:daglobal:global'
+        else:
+            globalbase =  'da:daglobal:userid:' + str(this_thread.current_info['user']['the_user_id'])
+        return server.server_sql_keys(globalbase + ':')
+    @classmethod
+    def defined(cls, base, key):
+        """Returns True if the key exists in the data store, otherwise returns False."""
+        if base == 'interview':
+            globalkey = 'da:daglobal:i:' + str(this_thread.current_info.get('yaml_filename', '')) + ':' + str(key)
+        elif base == 'global':
+            globalkey = 'da:daglobal:global:' + str(key)
+        else:
+            globalkey =  'da:daglobal:userid:' + str(this_thread.current_info['user']['the_user_id']) + ':' + str(key)
+        return server.server_sql_defined(globalkey)
+    def init(self, *pargs, **kwargs):
+        super().init(*pargs, **kwargs)
+        if 'base' not in kwargs:
+            self.base = 'user'
+        if 'key' not in kwargs:
+            self.key = random_alphanumeric(32)
+        if self.base == 'interview':
+            globalkey = 'da:daglobal:i:' + str(this_thread.current_info.get('yaml_filename', '')) + ':' + str(self.key)
+        elif self.base == 'global':
+            globalkey = 'da:daglobal:global:' + str(self.key)
+        else:
+            globalkey = 'da:daglobal:userid:' + str(this_thread.current_info['user']['the_user_id']) + ':' + str(self.key)
+        saved_dict = server.server_sql_get(globalkey)
+        if isinstance(saved_dict, dict):
+            for key, val in saved_dict.items():
+                setattr(self, key, val)
+    def __getstate__(self):
+        if hasattr(self, 'base') and hasattr(self, 'key'):
+            if self.base == 'interview':
+                globalkey = 'da:daglobal:i:' + str(this_thread.current_info.get('yaml_filename', '')) + ':' + str(self.key)
+            elif self.base == 'global':
+                globalkey = 'da:daglobal:global:' + str(self.key)
+            else:
+                globalkey = 'da:daglobal:userid:' + str(this_thread.current_info['user']['the_user_id']) + ':' + str(self.key)
+            dict_to_save = copy.copy(self.__dict__)
+            dict_to_return = {'attrList': []}
+            if 'instanceName' in dict_to_save:
+                dict_to_return['instanceName'] = dict_to_save['instanceName']
+                del dict_to_save['instanceName']
+            if 'has_nonrandom_instance_name' in dict_to_save:
+                dict_to_return['has_nonrandom_instance_name'] = dict_to_save['has_nonrandom_instance_name']
+                del dict_to_save['has_nonrandom_instance_name']
+            if 'base' in dict_to_save:
+                dict_to_return['base'] = dict_to_save['base']
+                del dict_to_save['base']
+            if 'key' in dict_to_save:
+                dict_to_return['key'] = dict_to_save['key']
+                del dict_to_save['key']
+            server.server_sql_set(globalkey, dict_to_save, encrypted=False)
+            return dict_to_return
+        dict_to_return = copy.copy(self.__dict__)
+        return dict_to_return
+    def __setstate__(self, pickle_dict):
+        self.__dict__ = pickle_dict
+        if 'base' in pickle_dict and 'key' in pickle_dict:
+            if pickle_dict['base'] == 'interview':
+                globalkey = 'da:daglobal:i:' + str(this_thread.current_info.get('yaml_filename', '')) + ':' + str(pickle_dict['key'])
+            elif pickle_dict['base'] == 'global':
+                globalkey = 'da:daglobal:global:' + str(pickle_dict['key'])
+            else:
+                globalkey = 'da:daglobal:userid:' + str(this_thread.current_info['user']['the_user_id']) + ':' + str(pickle_dict['key'])
+
+            saved_dict = server.server_sql_get(globalkey)
+            if isinstance(saved_dict, dict):
+                for key, val in saved_dict.items():
+                    setattr(self, key, val)
+    def delete(self):
+        """Deletes the data in the global storage area and undefines all attributes."""
+        if self.base == 'interview':
+            globalkey = 'da:daglobal:i:' + this_thread.current_info.get('yaml_filename', '') + ':' + self.key
+        elif self.base == 'global':
+            globalkey = 'da:daglobal:global:' + self.key
+        else:
+            globalkey = 'da:daglobal:userid:' + str(this_thread.current_info['user']['the_user_id']) + ':' + self.key
+        server.server_sql_delete(globalkey)
+        self.__dict__ = dict(instanceName=self.instanceName, attrList=[], has_nonrandom_instance_name=self.has_nonrandom_instance_name)
 
 class DAStore(DAObject):
     """A class used to save objects to SQL."""
@@ -5615,9 +5769,12 @@ class DAGoogleAPI(DAObject):
     def project_id(self):
         """Returns the ID of the project referenced in the google service account credentials in the Configuration."""
         return server.google_api.project_id()
-    def google_cloud_storage_client(self, scope=None):
+    def google_cloud_storage_client(self):
         """Returns a google.cloud.storage.Client object."""
-        return server.google_api.google_cloud_storage_client(scope)
+        return server.google_api.google_cloud_storage_client()
+    def google_cloud_vision_client(self):
+        """Returns an google.cloud.vision.ImageAnnotatorClient object."""
+        return server.google_api.google_cloud_vision_client()
 
 def run_python_module(module, arguments=None):
     """Runs a python module, as though from the command line, and returns the output."""
@@ -5644,7 +5801,7 @@ def today(timezone=None, format=None):
     ensure_definition(timezone, format)
     if timezone is None:
         timezone = get_default_timezone()
-    val = pytz.utc.localize(datetime.datetime.utcnow()).astimezone(pytz.timezone(timezone))
+    val = datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc).astimezone(zoneinfo.ZoneInfo(timezone))
     if format is not None:
         return dd(val.replace(hour=0, minute=0, second=0, microsecond=0)).format_date(format)
     return dd(val.replace(hour=0, minute=0, second=0, microsecond=0))
@@ -5851,7 +6008,7 @@ def current_datetime(timezone=None):
     ensure_definition(timezone)
     if timezone is None:
         timezone = get_default_timezone()
-    return dd(pytz.utc.localize(datetime.datetime.utcnow()).astimezone(pytz.timezone(timezone)))
+    return dd(datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc).astimezone(zoneinfo.ZoneInfo(timezone)))
 
 def as_datetime(the_date, timezone=None):
     """Converts the_date to a DADateTime object with a timezone.  Uses the
@@ -5866,9 +6023,9 @@ def as_datetime(the_date, timezone=None):
     else:
         new_datetime = dateutil.parser.parse(the_date)
     if new_datetime.tzinfo:
-        new_datetime = new_datetime.astimezone(pytz.timezone(timezone))
+        new_datetime = new_datetime.astimezone(zoneinfo.ZoneInfo(timezone))
     else:
-        new_datetime = pytz.timezone(timezone).localize(new_datetime)
+        new_datetime = new_datetime.replace(tzinfo=zoneinfo.ZoneInfo(timezone))
     return dd(new_datetime)
 
 def dd(obj):
@@ -5905,13 +6062,13 @@ def date_difference(starting=None, ending=None, timezone=None):
     if not isinstance(ending, datetime.datetime):
         ending = dateutil.parser.parse(ending)
     if starting.tzinfo:
-        starting = starting.astimezone(pytz.timezone(timezone))
+        starting = starting.astimezone(zoneinfo.ZoneInfo(timezone))
     else:
-        starting = pytz.timezone(timezone).localize(starting)
+        starting = starting.replace(tzinfo=zoneinfo.ZoneInfo(timezone))
     if ending.tzinfo:
-        ending = ending.astimezone(pytz.timezone(timezone))
+        ending = ending.astimezone(zoneinfo.ZoneInfo(timezone))
     else:
-        ending = pytz.timezone(timezone).localize(ending)
+        ending = ending.replace(tzinfo=zoneinfo.ZoneInfo(timezone))
     delta = ending - starting
     output = DateTimeDelta()
     output.start = starting
@@ -5983,7 +6140,7 @@ def valid_datetime(the_datetime):
 
 def timezone_list():
     """Returns a list of timezone choices, expressed as text."""
-    return sorted(list(pytz.all_timezones))
+    return sorted(list(zoneinfo.available_timezones()))
 
 def returning_user(minutes=None, hours=None, days=None):
     """Returns True if the user is returning to the interview after six
@@ -6077,14 +6234,14 @@ def last_access_time(include_privileges=None, exclude_privileges=None, include_c
     if max_time is None:
         return None
     if timezone is not None:
-        return dd(pytz.utc.localize(max_time).astimezone(pytz.timezone(timezone)))
-    return dd(pytz.utc.localize(max_time).astimezone(pytz.utc))
+        return dd(max_time.replace(tzinfo=datetime.timezone.utc).astimezone(zoneinfo.ZoneInfo(timezone)))
+    return dd(max_time.replace(tzinfo=datetime.timezone.utc))
 
 def start_time(timezone=None):
     """Returns the time the interview was started, as a DADateTime object."""
     if timezone is not None:
-        return dd(pytz.utc.localize(this_thread.internal['starttime']).astimezone(pytz.timezone(timezone)))
-    return dd(pytz.utc.localize(this_thread.internal['starttime']).astimezone(pytz.utc))
+        return dd(this_thread.internal['starttime'].replace(tzinfo=datetime.timezone.utc).astimezone(zoneinfo.ZoneInfo(timezone)))
+    return dd(this_thread.internal['starttime'].replace(tzinfo=datetime.timezone.utc))
 
 class LatitudeLongitude(DAObject):
     """Represents a GPS location."""
@@ -6393,11 +6550,13 @@ class Address(DAObject):
         while not success and try_number < 2:
             try:
                 success = geocoder.geocode(the_address, language=get_language())
+                assert hasattr(geocoder.data, 'longitude')
                 assert success
             except Exception as the_err:
                 logmessage(the_err.__class__.__name__ + ": " + str(the_err))
                 try_number += 1
                 time.sleep(try_number)
+                success = False
         self._geocoded = True
         self.geolocated = True
         if success:
@@ -7279,6 +7438,8 @@ class FaxStatus:
             return info['FaxStatus']
         if 'status_text' in info:
             return info['status_text'] or 'no-information'
+        if 'status' in info:
+            return info['status'] or 'no-information'
         return 'no-information'
     def pages(self):
         if self.sid is None:
@@ -7291,6 +7452,8 @@ class FaxStatus:
             return info['NumPages']
         if 'message_pages' in info:
             return info['message_pages'] or 0
+        if 'page_count' in info:
+            return info['page_count'] or 0
         return 0
     def info(self):
         if self.sid is None:
@@ -7309,16 +7472,15 @@ class FaxStatus:
         return False
 
 def send_fax(fax_number, file_object, config='default', country=None):
-    if server.twilio_config is None:
-        logmessage("send_fax: ignoring because Twilio not enabled")
-        return FaxStatus(None)
-    if config not in server.twilio_config['name']:
-        logmessage("send_fax: ignoring because requested configuration does not exist")
-        return FaxStatus(None)
-    tconfig = server.twilio_config['name'][config]
-    if 'fax' not in tconfig or tconfig['fax'] in [False, None]:
-        logmessage("send_fax: ignoring because fax not enabled")
-        return FaxStatus(None)
+    if isinstance(file_object, DAFileCollection):
+        file_object = file_object._first_file()
+    if isinstance(file_object, DAFileList):
+        if len(file_object.elements) == 0:
+            raise Exception("send_fax: if passing a DAFileList, the DAFileList must have at least one element")
+        if len(file_object.elements) == 1:
+            file_object = file_object.elements[0]
+        else:
+            file_object = pdf_concatenate(file_object)
     return FaxStatus(server.send_fax(fax_string(fax_number, country=country), file_object, config, country=country))
 
 def send_email(to=None, sender=None, reply_to=None, cc=None, bcc=None, body=None, html=None, subject="", template=None, task=None, task_persistent=False, attachments=None, mailgun_variables=None, dry_run=False):
@@ -7487,34 +7649,37 @@ def int_or_none(number):
 def ocr_file_in_background(*pargs, **kwargs):
     """Starts optical character recognition on one or more image files or PDF
     files and returns an object representing the background task created."""
-    language = kwargs.get('language', None)
-    f = int_or_none(kwargs.get('f', None))
-    l = int_or_none(kwargs.get('l', None))
-    psm = kwargs.get('psm', 6)
-    x = int_or_none(kwargs.get('x', None))
-    y = int_or_none(kwargs.get('y', None))
-    W = int_or_none(kwargs.get('W', None))
-    H = int_or_none(kwargs.get('H', None))
-    the_message = kwargs.get('message', None)
     image_file = pargs[0]
     if len(pargs) > 1:
         ui_notification = pargs[1]
     else:
         ui_notification = None
-    args = dict(yaml_filename=this_thread.current_info['yaml_filename'], user=this_thread.current_info['user'], user_code=this_thread.current_info['session'], secret=this_thread.current_info['secret'], url=this_thread.current_info['url'], url_root=this_thread.current_info['url_root'], language=language, f=f, l=l, psm=psm, x=x, y=y, W=W, H=H, extra=ui_notification, message=the_message, pdf=False, preserve_color=False)
-    collector = server.ocr_finalize.s(**args)
-    todo = []
-    indexno = 0
-    for item in ocr_page_tasks(image_file, **args):
-        todo.append(server.ocr_page.s(indexno, **item))
-        indexno += 1
-    the_chord = server.chord(todo)(collector)
+    if kwargs.get('use_google', False):
+        the_task = server.ocr_google_in_background(image_file, kwargs.get('raw_result', False), docassemble.base.functions.this_thread.current_info['session'])
+    else:
+        language = kwargs.get('language', None)
+        f = int_or_none(kwargs.get('f', None))
+        l = int_or_none(kwargs.get('l', None))
+        psm = kwargs.get('psm', 6)
+        x = int_or_none(kwargs.get('x', None))
+        y = int_or_none(kwargs.get('y', None))
+        W = int_or_none(kwargs.get('W', None))
+        H = int_or_none(kwargs.get('H', None))
+        the_message = kwargs.get('message', None)
+        args = dict(yaml_filename=this_thread.current_info['yaml_filename'], user=this_thread.current_info['user'], user_code=this_thread.current_info['session'], secret=this_thread.current_info['secret'], url=this_thread.current_info['url'], url_root=this_thread.current_info['url_root'], language=language, f=f, l=l, psm=psm, x=x, y=y, W=W, H=H, extra=ui_notification, message=the_message, pdf=False, preserve_color=False)
+        collector = server.ocr_finalize.s(**args)
+        todo = []
+        indexno = 0
+        for item in ocr_page_tasks(image_file, **args):
+            todo.append(server.ocr_page.s(indexno, **item))
+            indexno += 1
+        the_task = server.chord(todo)(collector)
     if ui_notification is not None:
         worker_key = 'da:worker:uid:' + str(this_thread.current_info['session']) + ':i:' + str(this_thread.current_info['yaml_filename']) + ':userid:' + str(this_thread.current_info['user']['the_user_id'])
         #sys.stderr.write("worker_caller: id is " + str(result.obj.id) + " and key is " + worker_key + "\n")
-        server.server_redis.rpush(worker_key, the_chord.id)
+        server.server_redis.rpush(worker_key, the_task.id)
     #sys.stderr.write("ocr_file_in_background finished\n")
-    return the_chord
+    return the_task
 
 # def ocr_file_in_background(image_file, ui_notification=None, language=None, psm=6, x=None, y=None, W=None, H=None):
 #     """Starts optical character recognition on one or more image files or PDF
@@ -7522,11 +7687,107 @@ def ocr_file_in_background(*pargs, **kwargs):
 #     sys.stderr.write("ocr_file_in_background: started\n")
 #     return server.async_ocr(image_file, ui_notification=ui_notification, language=language, psm=psm, x=x, y=y, W=W, H=H, user_code=this_thread.current_info.get('session', None))
 
-def ocr_file(image_file, language=None, psm=6, f=None, l=None, x=None, y=None, W=None, H=None):
+
+def get_work_bucket():
+    bucket_name = server.daconfig.get('google', {}).get('work bucket', None)
+    if bucket_name is None:
+        raise Exception("Cannot use Google Storage unless there is a work bucket configured in the google configuration")
+    api = DAGoogleAPI()
+    client = api.google_cloud_storage_client()
+    try:
+        bucket = client.get_bucket(bucket_name)
+    except:
+        try:
+            bucket = client.create_bucket(bucket_name)
+        except Exception as err:
+            raise Exception("failed to create bucket named " + bucket_name + ": " + str(err))
+    return bucket
+
+def google_ocr_file(image_file, raw_result=False):
+    if isinstance(image_file, DAFile):
+        image_file = [image_file]
+    api = docassemble.base.util.DAGoogleAPI()
+    client = api.google_cloud_vision_client()
+    if raw_result:
+        output = []
+    else:
+        output = ''
+    bucket = None
+    for doc in image_file:
+        if hasattr(doc, 'extension'):
+            if doc.extension not in ['pdf', 'png', 'jpg', 'gif']:
+                return word("(Not a readable image file)")
+            path = doc.path()
+            if doc.extension == 'pdf':
+                if bucket is None:
+                    bucket = get_work_bucket()
+                if isinstance(doc, DAFile):
+                    input_prefix = 'ocr/ocr_input_' + str(doc.number).zfill(12) + '.pdf'
+                    output_prefix = 'ocr/ocr_result_' + str(doc.number).zfill(12)
+                else:
+                    suffix = random_alphanumeric(12) + '_' + space_to_underscore(os.path.basename(path))
+                    input_prefix = 'ocr/ocr_input_' + suffix
+                    output_prefix = 'ocr/ocr_result_' + suffix
+                blob = bucket.blob(input_prefix)
+                blob.upload_from_filename(path)
+                gcs_source_uri = 'gs://' + bucket.name + '/' + input_prefix
+                gcs_destination_uri = 'gs://' + bucket.name + '/' + output_prefix
+                batch_size = 2
+                mime_type = 'application/pdf'
+
+                feature = google.cloud.vision.Feature(
+                    type_=google.cloud.vision.Feature.Type.DOCUMENT_TEXT_DETECTION)
+
+                gcs_source = google.cloud.vision.GcsSource(uri=gcs_source_uri)
+                input_config = google.cloud.vision.InputConfig(
+                    gcs_source=gcs_source, mime_type=mime_type)
+
+                gcs_destination = google.cloud.vision.GcsDestination(uri=gcs_destination_uri)
+                output_config = google.cloud.vision.OutputConfig(
+                    gcs_destination=gcs_destination, batch_size=batch_size)
+
+                async_request = google.cloud.vision.AsyncAnnotateFileRequest(
+                    features=[feature], input_config=input_config,
+                    output_config=output_config)
+
+                operation = client.async_batch_annotate_files(
+                    requests=[async_request])
+
+                operation.result(timeout=420)
+                blob.delete()
+                blob_list = [blob for blob in list(bucket.list_blobs(prefix=output_prefix)) if not blob.name.endswith('/')]
+                for blob in blob_list:
+                    json_string = blob.download_as_string()
+                    the_response = json.loads(json_string)
+                    if raw_result:
+                        output.append(the_response)
+                    else:
+                        for item in the_response['responses']:
+                            output += item['fullTextAnnotation']['text'] + "\n"
+                for blob in blob_list:
+                    blob.delete()
+            else:
+                image = google.cloud.vision.Image()
+                with io.open(path, 'rb') as the_image_file:
+                    content = the_image_file.read()
+                image = google.cloud.vision.Image(content=content)
+                the_response = client.text_detection(image=image)
+                if the_response.error.message:
+                    raise Exception("Failed to OCR file with Google Cloud Vision: " + the_response.error.message)
+                if raw_result:
+                    output.append(json.loads(google.cloud.vision.AnnotateImageResponse.to_json(the_response)))
+                else:
+                    for text in the_response.text_annotations:
+                        output += text.description + "\n"
+    return output
+
+def ocr_file(image_file, language=None, psm=6, f=None, l=None, x=None, y=None, W=None, H=None, use_google=False, raw_result=False):
     """Runs optical character recognition on one or more image files or PDF
     files and returns the recognized text."""
     if not isinstance(image_file, (DAFile, DAFileList)):
         return word("(Not a DAFile or DAFileList object)")
+    if use_google:
+        return google_ocr_file(image_file, raw_result=raw_result)
     x = int_or_none(x)
     y = int_or_none(y)
     W = int_or_none(W)
@@ -7861,7 +8122,7 @@ def zip_file(*pargs, **kwargs):
         info = zipfile.ZipInfo(zip_path)
         info.compress_type = zipfile.ZIP_DEFLATED
         info.external_attr = 0o644 << 16
-        info.date_time = datetime.datetime.utcfromtimestamp(os.path.getmtime(path)).replace(tzinfo=pytz.utc).astimezone(pytz.timezone(timezone)).timetuple()
+        info.date_time = datetime.datetime.utcfromtimestamp(os.path.getmtime(path)).replace(tzinfo=datetime.timezone.utc).astimezone(zoneinfo.ZoneInfo(timezone)).timetuple()
         with open(path, 'rb') as fp:
             zf.writestr(info, fp.read())
     zf.close()
@@ -7952,6 +8213,7 @@ def url_ask(data):
             if contains_volatile.search(the_saveas['action']):
                 raise DAError("url_ask cannot be used with a generic object or a variable iterator")
             variables.append(dict(action=the_saveas['action'], arguments=the_saveas['arguments']))
+            continue
         if not isinstance(the_saveas, str):
             raise DAError("url_ask: invalid variable name " + repr(the_saveas) + ".  " + repr(data))
         the_saveas = the_saveas.strip()
@@ -7991,7 +8253,7 @@ def action_button_html(url, icon=None, color='success', size='sm', block=False, 
     else:
         icon = ''
     if new_window is True:
-        target = 'target="_blank"'
+        target = 'target="_blank" '
     elif new_window is False:
         target = 'target="_self" '
     elif new_window:
@@ -8004,8 +8266,8 @@ def action_button_html(url, icon=None, color='success', size='sm', block=False, 
         id_tag = ' id=' + json.dumps(id_tag)
     return '<a ' + target + 'href="' + url + '"' + id_tag + ' class="btn' + size + block + ' ' + server.button_class_prefix + color + ' btn-darevisit' + classname + '">' + icon + word(label) + '</a> '
 
-def overlay_pdf(main_pdf, logo_pdf, first_page=None, last_page=None, logo_page=None, only=None):
-    """Overlays a page from a PDF file on top of the pages of another PDF file."""
+def overlay_pdf(main_pdf, logo_pdf, first_page=None, last_page=None, logo_page=None, only=None, multi=False):
+    """Overlays one or more pages from a PDF file on top of the pages of another PDF file."""
     if isinstance(main_pdf, DAFileCollection):
         main_file = main_pdf.pdf.path()
     elif isinstance(main_pdf, (DAFile, DAStaticFile, DAFileList)):
@@ -8025,7 +8287,10 @@ def overlay_pdf(main_pdf, logo_pdf, first_page=None, last_page=None, logo_page=N
     outfile = DAFile()
     outfile.set_random_instance_name()
     outfile.initialize(extension='pdf')
-    docassemble.base.pdftk.overlay_pdf(main_file, logo_file, outfile.path(), first_page=first_page, last_page=last_page, logo_page=logo_page, only=only)
+    if multi:
+        docassemble.base.pdftk.overlay_pdf_multi(main_file, logo_file, outfile.path())
+    else:
+        docassemble.base.pdftk.overlay_pdf(main_file, logo_file, outfile.path(), first_page=first_page, last_page=last_page, logo_page=logo_page, only=only)
     outfile.commit()
     outfile.retrieve()
     return outfile
@@ -8097,11 +8362,12 @@ def assemble_docx(input_file, fields=None, output_path=None, output_format='docx
     if isinstance(fields, dict):
         the_fields.update(fields)
     try:
-        docx_template = docassemble.base.file_docx.DocxTemplate(input_file)
+        docx_template = DocxTemplate(input_file)
+        docx_template.render_init()
         docassemble.base.functions.set_context('docx', template=docx_template)
         the_env = docassemble.base.parse.custom_jinja_env()
         the_xml = docx_template.get_xml()
-        the_xml = re.sub(r'<w:p>', '\n<w:p>', the_xml)
+        the_xml = re.sub(r'<w:p([ >])', r'\n<w:p\1', the_xml)
         the_xml = re.sub(r'({[\%\{].*?[\%\}]})', docassemble.base.parse.fix_quotes, the_xml)
         the_xml = docx_template.patch_xml(the_xml)
         the_env.parse(the_xml)
@@ -8111,7 +8377,8 @@ def assemble_docx(input_file, fields=None, output_path=None, output_format='docx
             if docassemble.base.functions.this_thread.misc.get('docx_include_count', 0) > old_count and old_count < 10:
                 new_template_file = tempfile.NamedTemporaryFile(prefix="datemp", mode="wb", suffix=".docx", delete=False)
                 docx_template.save(new_template_file.name)
-                docx_template = docassemble.base.file_docx.DocxTemplate(new_template_file.name)
+                docx_template = DocxTemplate(new_template_file.name)
+                docx_template.render_init()
                 docassemble.base.functions.this_thread.misc['docx_template'] = docx_template
             else:
                 break
@@ -8831,3 +9098,26 @@ def ocr_page(indexno, doc=None, lang=None, pdf_to_ppm='pdf_to_ppm', ocr_resoluti
         raise Exception("ocr_page: failed to run tesseract with command " + " ".join(params) + ": " + str(err) + " " + str(err.output.decode()))
     sys.stderr.write("ocr_page finished with page " + str(page) + "\n")
     return dict(indexno=indexno, page=page, text=text)
+
+def complex_getattr(obj, attr):
+    parts = attr.split('.')
+    while len(parts) > 1:
+        pre_attr = parts.pop(0)
+        obj = getattr(obj, pre_attr)
+    return getattr(obj, parts[0])
+
+def complex_hasattr(obj, attr):
+    parts = attr.split('.')
+    while len(parts) > 1:
+        pre_attr = parts.pop(0)
+        if not hasattr(obj, pre_attr):
+            return False
+        obj = getattr(obj, pre_attr)
+    return hasattr(obj, parts[0])
+
+def complex_delattr(obj, attr):
+    parts = attr.split('.')
+    while len(parts) > 1:
+        pre_attr = parts.pop(0)
+        obj = getattr(obj, pre_attr)
+    delattr(obj, parts[0])

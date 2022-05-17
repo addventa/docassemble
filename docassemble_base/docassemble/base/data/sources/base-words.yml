@@ -129,11 +129,11 @@
 "Change username": Null
 "Chat message you want to send": Null
 "Check at least one option, or check “%s”": Null
-"Checkboxes:": Null
 "Check box": Null
 "Check if applicable": Null
 "Chile": Null
 "China": Null
+"Choices (choose one):": Null
 "Choices:": Null
 "Christmas Island": Null
 "Classes": Null
@@ -410,6 +410,7 @@
 "icon": Null
 "I do not understand what you mean by": Null
 "I don't know": Null
+"If no items are selected, user privileges will determine permissions of the API key.": Null
 "If you did not initiate this confirmation, you may safely ignore this email.": Null
 "If you did not initiate this password change, click the link below to reset it.": Null
 "If you did not initiate this password change,": Null
@@ -458,6 +459,7 @@
 "Interview files": Null
 "Interview": Null
 "Interview:": Null
+"Interview Progress": Null
 "Interviews": Null
 "in the": Null
 "Invalid action.": Null
@@ -517,6 +519,7 @@
 "Libya": Null
 "License": Null
 "Liechtenstein": Null
+"Limited Permissions": Null
 "Linked folder": Null
 "link": Null
 "Links": Null
@@ -912,7 +915,6 @@
 "Slovakia": Null
 "Slovenia": Null
 "SMS": Null
-"Social ID": Null
 "Solomon Islands": Null
 "Somalia": Null
 "something": Null
@@ -964,6 +966,7 @@
 "Telephone assistance": Null
 "Template files": Null
 "Templates": Null
+"(term definition)": Null
 "Terms used in this question:": Null
 "Terms used:": Null
 "Test": Null
@@ -1229,6 +1232,7 @@
 "You do not have any API keys yet.": Null
 "You do not have permission to access '%(url)s'.": Null
 "You do not have permission to install this package.": Null
+"You do not have sufficient privileges to edit this user.": Null
 "You have been invited to join": Null
 "You have made too many login attempts.": Null
 "You have registered successfully.": Null

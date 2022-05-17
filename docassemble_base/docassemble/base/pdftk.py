@@ -148,7 +148,7 @@ def recursively_add_fields(fields, id_to_page, outfields, prefix=''):
 def read_fields_pdftk(pdffile):
     output = subprocess.check_output([PDFTK_PATH, pdffile, 'dump_data_fields']).decode()
     fields = []
-    if not len(output) > 0:
+    if len(output) == 0:
         return None
     for field in yaml.load_all(output, Loader=yaml.FullLoader):
         if 'FieldType' in field and field['FieldType'] == 'Button':
@@ -379,7 +379,10 @@ def fill_template(template, data_strings=None, data_names=None, hidden=None, rea
                 writer._root_object.update({pypdf.generic.NameObject(key): val})
             writer.page_list = []
             recursive_get_pages(writer._root_object['/Pages'], writer.page_list)
-            recursive_add_bookmark(original, writer, original.getOutlines())
+            try:
+                recursive_add_bookmark(original, writer, original.getOutlines())
+            except:
+                pass
             with open(new_pdf_file.name, "wb") as outFile:
                 writer.write(outFile)
             shutil.copyfile(new_pdf_file.name, pdf_file.name)
@@ -668,6 +671,17 @@ def flatten_pdf(filename):
         raise DAError("Call to pdftk failed for template where arguments were " + " ".join(subprocess_arguments))
     shutil.move(outfile.name, filename)
 
+def overlay_pdf_multi(main_file, logo_file, out_file):
+    subprocess_arguments = [PDFTK_PATH, main_file, 'multistamp', logo_file, 'output', out_file]
+    try:
+        result = subprocess.run(subprocess_arguments, timeout=60, check=False).returncode
+    except subprocess.TimeoutExpired:
+        result = 1
+        logmessage("overlay_pdf_multi: call to pdftk took too long")
+    if result != 0:
+        logmessage("Failed to overlay PDF")
+        raise DAError("Call to pdftk failed for overlay where arguments were " + " ".join(subprocess_arguments))
+
 def overlay_pdf(main_file, logo_file, out_file, first_page=None, last_page=None, logo_page=None, only=None):
     main_pdf = safe_pypdf_reader(main_file)
     logo_pdf = safe_pypdf_reader(logo_file)
@@ -713,10 +727,10 @@ def apply_qpdf(filename):
             result = subprocess.run(qpdf_subprocess_arguments, timeout=60, check=False).returncode
         except subprocess.TimeoutExpired:
             result = 1
-            logmessage("fill_template: call to qpdf took too long")
+            logmessage("apply_qpdf: call to qpdf took too long")
         if result != 0:
-            logmessage("Failed to convert PDF template " + str(filename))
-            logmessage("Call to qpdf failed for template " + str(filename) + " where arguments were " + " ".join(qpdf_subprocess_arguments))
+            logmessage("Failed to convert PDF " + str(filename))
+            logmessage("Call to qpdf failed for " + str(filename) + " where arguments were " + " ".join(qpdf_subprocess_arguments))
             raise Exception("qpdf error")
         pypdf.PdfFileReader(open(new_file.name, 'rb'), overwriteWarnings=False)
     except:

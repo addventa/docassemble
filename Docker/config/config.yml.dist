@@ -16,6 +16,10 @@ db:
   password: {{DBPASSWORD}}
   host: {{DBHOST}}
   port: {{DBPORT}}
+  ssl mode: {{DBSSLMODE}}
+  ssl cert: {{DBSSLCERT}}
+  ssl key: {{DBSSLKEY}}
+  ssl root cert: {{DBSSLROOTCERT}}
   table prefix: {{DBTABLEPREFIX}}
   backup: {{DBBACKUP}}
 oauth:
@@ -106,6 +110,7 @@ allow non-idempotent questions: False
 restrict input variables: True
 web server: {{DAWEBSERVER}}
 new markdown to docx: True
+new template markdown behavior: True
 stable version: {{DASTABLEVERSION}}
 sql ping: {{DASQLPING}}
 default icons: font awesome
