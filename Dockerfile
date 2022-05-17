@@ -96,7 +96,6 @@ bash -c \
    requests==2.27.1 \
    six==1.16.0 \
    tqdm==4.64.0 \
-   urllib3==1.26.9 \
    zope.component==5.0.1 \
    zope.event==4.5.0 \
    zope.hookable==5.1.0 \
