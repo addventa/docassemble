@@ -220,9 +220,9 @@ install_requires = [
     "zipp==3.8.0",
     "zc.lockfile==2.0",
     "billiard==3.6.4.0",
-    "click-didyoumean==0.0.3",
+    "click-didyoumean==0.3.0",
     "click-repl==0.2.0",
-    "kombu==5.2.2",
+    "kombu==5.2.4",
     "vine==5.0.0"
 ]
 
