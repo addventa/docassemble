@@ -20346,13 +20346,13 @@ def playground_page():
             delete_current_file(current_project, 'questions')
             if len(files) > 0:
                 the_file = sorted(files, key=lambda x: x['modtime'])[-1]['name']
-            elif current_project == 'default':
+            else:
                 the_file = 'test.yml'
                 is_default = True
-                content = default_playground_yaml
-    if is_new:
-        the_file = 'test.yml'
-        content = default_playground_yaml
+                if daconfig.get('default playground yaml', True):
+                    content = default_playground_yaml
+                else:
+                    content = ''
     if the_file in file_listing:
         set_current_file(current_project, 'questions', the_file)
     active_file = the_file
