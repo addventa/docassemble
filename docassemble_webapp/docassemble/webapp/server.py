@@ -20349,10 +20349,7 @@ def playground_page():
             elif current_project == 'default':
                 the_file = 'test.yml'
                 is_default = True
-                if daconfig.get('default playground yaml', True):
-                    content = default_playground_yaml
-                else:
-                    content = ''
+                content = default_playground_yaml
     if the_file in file_listing:
         set_current_file(current_project, 'questions', the_file)
     active_file = the_file
