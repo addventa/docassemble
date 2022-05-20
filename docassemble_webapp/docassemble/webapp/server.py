@@ -20350,6 +20350,9 @@ def playground_page():
                 the_file = 'test.yml'
                 is_default = True
                 content = default_playground_yaml
+    if is_new:
+        the_file = 'test.yml'
+        content = default_playground_yaml
     if the_file in file_listing:
         set_current_file(current_project, 'questions', the_file)
     active_file = the_file
