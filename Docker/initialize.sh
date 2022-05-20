@@ -39,7 +39,7 @@ echo "initialize: config.yml is at" $DA_CONFIG_FILE >&2
 echo "initialize: initialize starting" >&2
 
 echo "--------------------------" >&2
-echo "Docassemble V1.3.44-4" >&2
+echo "Docassemble V1.3.44-5" >&2
 echo "--------------------------" >&2
 
 RESTOREFROMBACKUP=true
