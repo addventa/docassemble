@@ -111,7 +111,7 @@ install_requires = [
     "namedentities==1.5.2",
     "nltk==3.5",
     "num2words==0.5.10",
-    "numpy==1.19.4",
+    "numpy==1.22.0",
     "oauth2client==4.1.3",
     "oauthlib==3.1.0",
     "openpyxl==3.0.7",
