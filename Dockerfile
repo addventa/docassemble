@@ -146,15 +146,7 @@ rm -rf /tmp/docassemble \
 ; a2enmod proxy_wstunnel \
 ; a2enmod headers \
 ; a2enconf docassemble \
-; echo 'export TERM=xterm' >> /etc/bash.bashrc"
-
-USER www-data
-RUN bash -c \
-"source /usr/share/docassemble/local3.10/bin/activate \
-&& python /tmp/docassemble/Docker/nltkdownload.py \
-&& cd /var/www/nltk_data/corpora \
-&& unzip wordnet.zip \
-&& unzip omw-1.4.zip"
+; echo 'export TERM=xterm' >> /etc/bash.bashrc
 
 USER root
 RUN rm -rf /tmp/docassemble
