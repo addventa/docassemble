@@ -1,18 +1,24 @@
 # Adapted from flask_mail
-import sys
+# import sys
 import time
 import requests
 from requests.auth import HTTPBasicAuth
 from flask_mail import Message, BadHeaderError, sanitize_addresses, email_dispatched, contextmanager, current_app
+from docassemble.base.logger import logmessage
+
 
 class Connection:
+
     def __init__(self, mail):
         self.mail = mail
+
     def __enter__(self):
         return self
+
     def __exit__(self, exc_type, exc_value, tb):
         pass
-    def send(self, message, envelope_from=None):
+
+    def send(self, message, envelope_from=None):  # pylint: disable=unused-argument
         assert message.send_to, "No recipients have been added"
         assert message.sender, (
                 "The message does not specify a sender and a default sender "
@@ -30,16 +36,18 @@ class Connection:
                                  data=data,
                                  files={'message': ('mime_message', message.as_string())})
         if response.status_code >= 400:
-            sys.stderr.write("Mailgun status code: " + str(response.status_code) + "\n")
-            sys.stderr.write("Mailgun response headers: " + repr(response.headers) + "\n")
+            logmessage("Mailgun status code: " + str(response.status_code))
+            logmessage("Mailgun response headers: " + repr(response.headers))
             try:
-                sys.stderr.write(repr(response.body) + "\n")
+                logmessage(repr(response.body))
             except:
                 pass
             raise Exception("Failed to send e-mail message to " + self.mail.api_url)
         email_dispatched.send(message, app=current_app._get_current_object())
+
     def send_message(self, *args, **kwargs):
         self.send(Message(*args, **kwargs))
+
 
 class _MailMixin:
 
@@ -50,7 +58,7 @@ class _MailMixin:
 
         outbox = []
 
-        def _record(message, app):
+        def _record(message, app):  # pylint: disable=unused-argument
             outbox.append(message)
 
         email_dispatched.connect(_record)
@@ -74,7 +82,9 @@ class _MailMixin:
         except KeyError:
             raise RuntimeError("The curent application was not configured with Flask-Mail")
 
+
 class _Mail(_MailMixin):
+
     def __init__(self, api_url, api_key,
                  default_sender, debug, suppress,
                  ascii_attachments=False):
@@ -85,7 +95,9 @@ class _Mail(_MailMixin):
         self.suppress = suppress
         self.ascii_attachments = ascii_attachments
 
+
 class Mail(_MailMixin):
+
     def __init__(self, app=None):
         self.app = app
         if app is not None:

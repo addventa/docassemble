@@ -1,7 +1,9 @@
-debug: {{DEBUG}}
+debug: {{DADEBUG}}
 enable playground: {{ENABLEPLAYGROUND}}
 checkin interval: {{CHECKININTERVAL}}
 maximum content length: {{DAMAXCONTENTLENGTH}}
+allow log viewing: {{DAALLOWLOGVIEWING}}
+root owned: {{DAROOTOWNED}}
 allow demo: {{ALLOWDEMO}}
 allow anonymous access: {{ALLOWANONYMOUSACCESS}}
 allow vars route access: {{ALLOWVARSROUTEACCESS}}
@@ -9,6 +11,9 @@ root redirect url: {{ROOTREDIRECTURL}}
 roles map: {{ROLESMAP}}
 default playground yaml: {{DEFAULTPLAYGROUNDYAML}}
 exitpage: https://docassemble.org
+supervisor:
+  username: {{DASUPERVISORUSERNAME}}
+  password: {{DASUPERVISORPASSWORD}}
 db:
   prefix: {{DBPREFIX}}
   name: {{DBNAME}}
@@ -73,6 +78,7 @@ os locale: {{LOCALE}}
 timezone: {{TIMEZONE}}
 redis: {{REDIS}}
 rabbitmq: {{RABBITMQ}}
+celery processes: {{DACELERYWORKERS}}
 s3:
   enable: {{S3ENABLE}}
   access key id: {{S3ACCESSKEY}}
@@ -80,6 +86,11 @@ s3:
   bucket: {{S3BUCKET}}
   region: {{S3REGION}}
   endpoint url: {{S3ENDPOINTURL}}
+  server side encryption:
+    algorithm: {{S3_SSE_ALGORITHM}}
+    customer algorithm: {{S3_SSE_CUSTOMER_ALGORITHM}}
+    customer key: {{S3_SSE_CUSTOMER_KEY}}
+    KMS key ID: {{S3_SSE_KMS_KEY_ID}}
 azure:
   enable: {{AZUREENABLE}}
   account name: {{AZUREACCOUNTNAME}}
@@ -98,6 +109,7 @@ behind https load balancer: {{BEHINDHTTPSLOADBALANCER}}
 xsendfile: {{XSENDFILE}}
 update on start: {{DAUPDATEONSTART}}
 allow updates: {{DAALLOWUPDATES}}
+allow configuration editing: {{DAALLOWCONFIGURATIONEDITING}}
 url root: {{URLROOT}}
 external hostname: {{DAHOSTNAME}}
 expose websockets: {{DAEXPOSEWEBSOCKETS}}

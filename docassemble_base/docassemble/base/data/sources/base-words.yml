@@ -30,6 +30,7 @@
 "Albania": Null
 "Algeria": Null
 "Allowed sites": Null
+"All Playgrounds": Null
 "Already registered?": Null
 "Already registered? Sign in.": Null
 "American Samoa": Null
@@ -109,6 +110,7 @@
 "Brazil": Null
 "breadcrumb": Null
 "British Indian Ocean Territory": Null
+"Browse Other Playgrounds": Null
 "Brunei Darussalam": Null
 "Bulgaria": Null
 "Burkina Faso": Null
@@ -275,6 +277,7 @@
 "Enter code": Null
 "Entering a different interview.  To go back to your previous interview, go to My Interviews on the menu.": Null
 "Entering a different interview.  To go back to your previous interview, log in to see a list of your interviews.": Null
+"Enter": Null
 "Enter the name of the new project you want to create.": Null
 "Equatorial Guinea": Null
 "Erase existing data for each model before importing": Null
@@ -942,6 +945,7 @@
 "Static Files": Null
 "Stop Controlling": Null
 "Stop Observing": Null
+"<strong>This is the only time you will be able to see your API key</strong>, so make sure to make a note of it and keep it in a secure place.": Null
 "Submit": Null
 "Sudan": Null
 "(%s uncompressed)": Null
@@ -1043,7 +1047,6 @@
 "This field is required.": Null
 "This image file does not exist": Null
 "This is my custom interview page.": Null
-"This is the only time you will be able to see your API key, so make sure to make a note of it and keep it in a secure place.": Null
 "This package is not yet published on PyPI.": Null
 "This package is not yet published on your GitHub account.": Null
 "This package is": Null
@@ -1229,6 +1232,7 @@
 "You can type menu1 to select the menu item": Null
 "You can type question to read the question again.": Null
 "You can upload a file here": Null
+"You can use the Playground of another user who has admin or developer privileges.": Null
 "You do not have any API keys yet.": Null
 "You do not have permission to access '%(url)s'.": Null
 "You do not have permission to install this package.": Null
@@ -1297,7 +1301,7 @@
 "Your GitHub settings were saved.": Null
 "Your information was saved.": Null
 "Your IP address is": Null
-"Your new API key, known internally as %s, is %s": Null
+"Your new API key, known internally as <strong>%s</strong>, is:<br />%s<br />": Null
 "Your password has been changed": Null
 "Your password has been changed.": Null
 "Your password has been changed successfully.": Null

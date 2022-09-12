@@ -5,7 +5,7 @@ import socket
 import threading
 import base64
 import json
-from distutils.version import LooseVersion
+from packaging import version
 import yaml
 import httplib2
 import pkg_resources
@@ -27,17 +27,21 @@ AZURE_ENABLED = False
 hostname = None
 loaded = False
 in_celery = False
+in_cron = False
 errors = []
 env_messages = []
 allowed = {}
+
 
 def env_true_false(var):
     value = str(os.getenv(var, 'false')).lower().strip()
     return value == 'true'
 
+
 def env_exists(var):
     value = os.getenv(var)
     return value is not None
+
 
 def env_translate(var):
     value = str(os.getenv(var)).strip()
@@ -50,6 +54,7 @@ def env_translate(var):
     if re.match(r'^\-?[0-9]+$', value):
         return int(value)
     return value
+
 
 def override_config(the_config, messages, key, var, pre_key=None):
     value = env_translate(var)
@@ -64,17 +69,22 @@ def override_config(the_config, messages, key, var, pre_key=None):
             messages.append("The value of configuration key %s has been set to %s based on the value of environment variable %s" % (key, value, var))
         the_config[key] = value
     else:
-        if pre_key not in the_config:
-            the_config[pre_key] = {}
-        if key in the_config[pre_key] and str(the_config[pre_key][key]) != str(value):
-            messages.append("The value of configuration key %s in %s has been replaced with %s based on the value of environment variable %s" % (key, pre_key, value, var))
-        elif key not in the_config[pre_key]:
-            messages.append("The value of configuration key %s in %s has been set to %s based on the value of environment variable %s" % (key, pre_key, value, var))
-        the_config[pre_key][key] = value
+        root = the_config
+        for the_key in pre_key:
+            if the_key not in root:
+                root[the_key] = {}
+            root = root[the_key]
+        if key in root and str(root[key]) != str(value):
+            messages.append("The value of configuration key %s in %s has been replaced with %s based on the value of environment variable %s" % (key, ", ".join(pre_key), value, var))
+        elif key not in root:
+            messages.append("The value of configuration key %s in %s has been set to %s based on the value of environment variable %s" % (key, ", ".join(pre_key), value, var))
+        root[key] = value
+
 
 def config_error(error):
     errors.append(error)
     sys.stderr.write(error + "\n")
+
 
 def cleanup_filename(filename):
     filename = filename.strip()
@@ -85,8 +95,9 @@ def cleanup_filename(filename):
         return parts[0] + ':' + 'data/questions/' + parts[1]
     return filename
 
+
 def delete_environment():
-    for var in ('DBSSLMODE', 'DBSSLCERT', 'DBSSLKEY', 'DBSSLROOTCERT', 'DBTYPE', 'DBPREFIX', 'DBNAME', 'DBUSER', 'DBPASSWORD', 'DBHOST', 'DBPORT', 'DBTABLEPREFIX', 'DBBACKUP', 'DASECRETKEY', 'DABACKUPDAYS', 'ENVIRONMENT_TAKES_PRECEDENCE', 'DASTABLEVERSION', 'DASSLPROTOCOLS', 'SERVERADMIN', 'REDIS', 'REDISCLI', 'RABBITMQ', 'DACELERYWORKERS', 'S3ENABLE', 'S3ACCESSKEY', 'S3SECRETACCESSKEY', 'S3BUCKET', 'S3REGION', 'S3ENDPOINTURL', 'AZUREENABLE', 'AZUREACCOUNTKEY', 'AZUREACCOUNTNAME', 'AZURECONTAINER', 'AZURECONNECTIONSTRING', 'EC2', 'COLLECTSTATISTICS', 'KUBERNETES', 'LOGSERVER', 'USECLOUDURLS', 'USEMINIO', 'USEHTTPS', 'USELETSENCRYPT', 'LETSENCRYPTEMAIL', 'BEHINDHTTPSLOADBALANCER', 'XSENDFILE', 'DAUPDATEONSTART', 'URLROOT', 'DAHOSTNAME', 'DAEXPOSEWEBSOCKETS', 'DAWEBSOCKETSIP', 'DAWEBSOCKETSPORT', 'POSTURLROOT', 'DAWEBSERVER', 'DASQLPING', 'PORT', 'OTHERLOCALES', 'DAMAXCONTENTLENGTH', 'DACELERYWORKERS', 'PACKAGES', 'PYTHONPACKAGES', 'DAALLOWUPDATES', 'AWS_SECRET_ACCESS_KEY', 'AWS_ACCESS_KEY_ID', 'AWS_DEFAULT_REGION', 'S4CMD_OPTS', 'WSGIROOT', 'DATIMEOUT'):
+    for var in ('DBSSLMODE', 'DBSSLCERT', 'DBSSLKEY', 'DBSSLROOTCERT', 'DBTYPE', 'DBPREFIX', 'DBNAME', 'DBUSER', 'DBPASSWORD', 'DBHOST', 'DBPORT', 'DBTABLEPREFIX', 'DBBACKUP', 'DASECRETKEY', 'DABACKUPDAYS', 'ENVIRONMENT_TAKES_PRECEDENCE', 'DASTABLEVERSION', 'DASSLPROTOCOLS', 'SERVERADMIN', 'REDIS', 'REDISCLI', 'RABBITMQ', 'DACELERYWORKERS', 'S3ENABLE', 'S3ACCESSKEY', 'S3SECRETACCESSKEY', 'S3BUCKET', 'S3REGION', 'S3ENDPOINTURL', 'S3_SSE_ALGORITHM', 'S3_SSE_CUSTOMER_ALGORITHM', 'S3_SSE_CUSTOMER_KEY', 'S3_SSE_KMS_KEY_ID', 'AZUREENABLE', 'AZUREACCOUNTKEY', 'AZUREACCOUNTNAME', 'AZURECONTAINER', 'AZURECONNECTIONSTRING', 'EC2', 'COLLECTSTATISTICS', 'KUBERNETES', 'LOGSERVER', 'USECLOUDURLS', 'USEMINIO', 'USEHTTPS', 'USELETSENCRYPT', 'LETSENCRYPTEMAIL', 'BEHINDHTTPSLOADBALANCER', 'XSENDFILE', 'DAUPDATEONSTART', 'URLROOT', 'DAHOSTNAME', 'DAEXPOSEWEBSOCKETS', 'DAWEBSOCKETSIP', 'DAWEBSOCKETSPORT', 'POSTURLROOT', 'DAWEBSERVER', 'DASQLPING', 'PORT', 'OTHERLOCALES', 'DAMAXCONTENTLENGTH', 'DACELERYWORKERS', 'PACKAGES', 'PYTHONPACKAGES', 'DAALLOWUPDATES', 'AWS_SECRET_ACCESS_KEY', 'AWS_ACCESS_KEY_ID', 'AWS_DEFAULT_REGION', 'S4CMD_OPTS', 'WSGIROOT', 'DATIMEOUT', 'PIPINDEXURL', 'PIPEXTRAINDEXURLS', 'DAALLOWCONFIGURATIONEDITING', 'DADEBUG', 'DAENABLEPLAYGROUND', 'DAALLOWLOGVIEWING', 'DAROOTOWNED', 'DAREADONLYFILESYSTEM', 'DASUPERVISORUSERNAME', 'DASUPERVISORPASSWORD'):
         if var in os.environ:
             del os.environ[var]
 
@@ -94,11 +105,13 @@ this_thread = threading.local()
 this_thread.botoclient = {}
 this_thread.azureclient = {}
 
+
 def aws_get_region(arn):
     m = re.search(r'arn:aws:secretsmanager:([^:]+):', arn)
     if m:
         return m.group(1)
     return 'us-east-1'
+
 
 def aws_get_secret(data):
     region = aws_get_region(data)
@@ -111,7 +124,7 @@ def aws_get_secret(data):
             session = boto3.session.Session()
         this_thread.botoclient[region] = session.client(
             service_name='secretsmanager',
-	    region_name=region,
+            region_name=region
         )
     try:
         response = this_thread.botoclient[region].get_secret_value(SecretId=data)
@@ -142,11 +155,12 @@ def aws_get_secret(data):
         sys.stderr.write("aws_get_secret: problem decoding JSON\n")
     return result
 
+
 def azure_get_secret(data):
     vault_name = None
     secret_name = None
     secret_version = None
-    m = re.search('^@Microsoft.KeyVault\(([^\)]+)\)', data)
+    m = re.search(r'^@Microsoft.KeyVault\(([^\)]+)\)', data)
     if m:
         parts = m.group(1).split(';')
         for part in parts:
@@ -205,6 +219,7 @@ def azure_get_secret(data):
         data = secret_data.value
     return data
 
+
 def recursive_fetch_cloud(data):
     if isinstance(data, str):
         if data.startswith('arn:aws:secretsmanager:'):
@@ -224,8 +239,10 @@ def recursive_fetch_cloud(data):
         return tuple(recursive_fetch_cloud(y) for y in data)
     return data
 
+
 def fix_authorized_domain(domain):
     return '@' + re.sub(r'^@+', '', domain.lower().strip())
+
 
 def load(**kwargs):
     global daconfig
@@ -239,6 +256,7 @@ def load(**kwargs):
     global hostname
     global loaded
     global in_celery
+    global in_cron
     global env_messages
     # changed = False
     filename = None
@@ -252,6 +270,8 @@ def load(**kwargs):
         filename = kwargs.get('filename', os.getenv('DA_CONFIG_FILE', '/usr/share/docassemble/config/config.yml'))
     if 'in_celery' in kwargs and kwargs['in_celery']:
         in_celery = True
+    if 'in_cron' in kwargs and kwargs['in_cron']:
+        in_cron = True
     if not os.path.isfile(filename):
         if not os.access(os.path.dirname(filename), os.W_OK):
             sys.stderr.write("Configuration file " + str(filename) + " does not exist and cannot be created\n")
@@ -297,18 +317,25 @@ def load(**kwargs):
             daconfig['system version'] = fp.read().strip()
     else:
         daconfig['system version'] = '0.1.12'
-    if LooseVersion(daconfig['system version']) >= LooseVersion('1.2.50'):
+    if version.parse(daconfig['system version']) >= version.parse('1.2.50'):
         daconfig['has_celery_single_queue'] = True
     else:
         daconfig['has_celery_single_queue'] = False
+    null_messages = []
+    for env_var, key in (('DASUPERVISORUSERNAME', 'username'), ('DASUPERVISORPASSWORD', 'password')):
+        value = os.getenv(env_var)
+        if value not in (None, ''):
+            override_config(daconfig, null_messages, key, env_var, pre_key=['supervisor'])
     if env_true_false('ENVIRONMENT_TAKES_PRECEDENCE'):
-        null_messages = []
         for env_var, key in (('S3ENABLE', 'enable'), ('S3ACCESSKEY', 'access key id'), ('S3SECRETACCESSKEY', 'secret access key'), ('S3BUCKET', 'bucket'), ('S3REGION', 'region'), ('S3ENDPOINTURL', 'endpoint url')):
             if env_exists(env_var):
-                override_config(daconfig, null_messages, key, env_var, pre_key='s3')
+                override_config(daconfig, null_messages, key, env_var, pre_key=['s3'])
+        for env_var, key in (('S3_SSE_ALGORITHM', 'algorithm'), ('S3_SSE_CUSTOMER_ALGORITHM', 'customer algorithm'), ('S3_SSE_CUSTOMER_KEY', 'customer key'), ('S3_SSE_KMS_KEY_ID', 'KMS key ID')):
+            if env_exists(env_var):
+                override_config(daconfig, null_messages, key, env_var, pre_key=['s3', 'server side encryption'])
         for env_var, key in (('AZUREENABLE', 'enable'), ('AZUREACCOUNTKEY', 'account key'), ('AZUREACCOUNTNAME', 'account name'), ('AZURECONTAINER', 'container'), ('AZURECONNECTIONSTRING', 'connection string')):
             if env_exists(env_var):
-                override_config(daconfig, null_messages, key, env_var, pre_key='azure')
+                override_config(daconfig, null_messages, key, env_var, pre_key=['azure'])
         if env_exists('KUBERNETES'):
             override_config(daconfig, null_messages, 'kubernetes', 'KUBERNETES')
     s3_config = daconfig.get('s3', None)
@@ -352,6 +379,11 @@ def load(**kwargs):
             daconfig = cloud.load_with_secrets(daconfig)
     else:
         cloud = None
+    if 'supervisor' in daconfig:
+        if not (isinstance(daconfig['supervisor'], dict) and daconfig['supervisor'].get('username', None) and daconfig['supervisor'].get('password', None)):
+            daconfig['supervisor'] = {}
+    else:
+        daconfig['supervisor'] = {}
     if 'suppress error notificiations' in daconfig and isinstance(daconfig['suppress error notificiations'], list):
         ok = True
         for item in daconfig['suppress error notificiations']:
@@ -363,6 +395,12 @@ def load(**kwargs):
             config_error("Configuration file suppress error notifications directive not valid")
     else:
         daconfig['suppress error notificiations'] = []
+    if 'words' not in daconfig:
+        daconfig['words'] = ['docassemble.base:data/sources/us-words.yml']
+    if 'concurrency lock timeout' in daconfig:
+        if not (isinstance(daconfig['concurrency lock timeout'], int) and daconfig['concurrency lock timeout'] > 0):
+            config_error("The value of concurrency lock timeout is invalid.")
+            del daconfig['concurrency lock timeout']
     if 'maximum content length' in daconfig:
         if isinstance(daconfig['maximum content length'], (int, type(None))):
             if daconfig['maximum content length'] is not None and daconfig['maximum content length'] <= 0:
@@ -572,6 +610,26 @@ def load(**kwargs):
     if daconfig['verification code timeout'] < 1:
         config_error('verification code timeout must be one or greater')
         daconfig['verification code timeout'] = 180
+    if 'module whitelist' in daconfig:
+        if isinstance(daconfig['module whitelist'], list):
+            daconfig['module whitelist'] = [y.strip() for y in daconfig['module whitelist'] if isinstance(y, str)]
+        else:
+            del daconfig['module whitelist']
+    if 'module blacklist' in daconfig:
+        if isinstance(daconfig['module blacklist'], list):
+            daconfig['module blacklist'] = [y.strip() for y in daconfig['module blacklist'] if isinstance(y, str)]
+        else:
+            daconfig['module blacklist'] = []
+    else:
+        daconfig['module blacklist'] = []
+    if 'user profile fields' in daconfig:
+        if isinstance(daconfig['user profile fields'], list):
+            daconfig['user profile fields'] = [y for y in daconfig['user profile fields'] if y in ('first_name', 'last_name', 'country', 'subdivisionfirst', 'subdivisionsecond', 'subdivisionthird', 'organization', 'timezone', 'language')]
+        else:
+            config_error('user profile fields must be a list')
+            daconfig['user profile fields'] = []
+    else:
+        daconfig['user profile fields'] = []
     if 'permissions' in daconfig:
         if not isinstance(daconfig['permissions'], dict):
             config_error("permissions must be in the form of a dict")
@@ -746,7 +804,7 @@ def load(**kwargs):
         messages = []
         for env_var, key in (('DBPREFIX', 'prefix'), ('DBNAME', 'name'), ('DBUSER', 'user'), ('DBPASSWORD', 'password'), ('DBHOST', 'host'), ('DBPORT', 'port'), ('DBTABLEPREFIX', 'table prefix'), ('DBBACKUP', 'backup'), ('DBSSLMODE', 'ssl mode'), ('DBSSLCERT', 'ssl cert'), ('DBSSLKEY', 'ssl key'), ('DBSSLROOTCERT', 'ssl root cert')):
             if env_exists(env_var):
-                override_config(daconfig, messages, key, env_var, pre_key='db')
+                override_config(daconfig, messages, key, env_var, pre_key=['db'])
         if env_exists('DASECRETKEY'):
             override_config(daconfig, messages, 'secretkey', 'DASECRETKEY')
             daconfig['secretkey'] = env_translate('DASECRETKEY')
@@ -768,12 +826,19 @@ def load(**kwargs):
             override_config(daconfig, messages, 'rabbitmq', 'RABBITMQ')
         if env_exists('DACELERYWORKERS'):
             override_config(daconfig, messages, 'celery processes', 'DACELERYWORKERS')
+        if env_exists('PIPINDEXURL'):
+            override_config(daconfig, messages, 'pip index url', 'PIPINDEXURL')
+        if env_exists('PIPEXTRAINDEXURLS'):
+            override_config(daconfig, messages, 'pip extra index urls', 'PIPEXTRAINDEXURLS')
         for env_var, key in (('S3ENABLE', 'enable'), ('S3ACCESSKEY', 'access key id'), ('S3SECRETACCESSKEY', 'secret access key'), ('S3BUCKET', 'bucket'), ('S3REGION', 'region'), ('S3ENDPOINTURL', 'endpoint url')):
             if env_exists(env_var):
-                override_config(daconfig, messages, key, env_var, pre_key='s3')
+                override_config(daconfig, messages, key, env_var, pre_key=['s3'])
+        for env_var, key in (('S3_SSE_ALGORITHM', 'algorithm'), ('S3_SSE_CUSTOMER_ALGORITHM', 'customer algorithm'), ('S3_SSE_CUSTOMER_KEY', 'customer key'), ('S3_SSE_KMS_KEY_ID', 'KMS key ID')):
+            if env_exists(env_var):
+                override_config(daconfig, messages, key, env_var, pre_key=['s3', 'server side encryption'])
         for env_var, key in (('AZUREENABLE', 'enable'), ('AZUREACCOUNTKEY', 'account key'), ('AZUREACCOUNTNAME', 'account name'), ('AZURECONTAINER', 'container'), ('AZURECONNECTIONSTRING', 'connection string')):
             if env_exists(env_var):
-                override_config(daconfig, messages, key, env_var, pre_key='azure')
+                override_config(daconfig, messages, key, env_var, pre_key=['azure'])
         if env_exists('EC2'):
             override_config(daconfig, messages, 'ec2', 'EC2')
         if env_exists('COLLECTSTATISTICS'):
@@ -816,7 +881,22 @@ def load(**kwargs):
             override_config(daconfig, messages, 'sql ping', 'DASQLPING')
         if env_exists('PORT'):
             override_config(daconfig, messages, 'http port', 'PORT')
+        if env_exists('DAALLOWUPDATES'):
+            override_config(daconfig, messages, 'allow updates', 'DAALLOWUPDATES')
+        if env_exists('DAALLOWCONFIGURATIONEDITING'):
+            override_config(daconfig, messages, 'allow configuration editing', 'DAALLOWCONFIGURATIONEDITING')
+        if env_exists('DAENABLEPLAYGROUND'):
+            override_config(daconfig, messages, 'enable playground', 'DAENABLEPLAYGROUND')
+        if env_exists('DADEBUG'):
+            override_config(daconfig, messages, 'debug', 'DADEBUG')
+        if env_exists('DAALLOWLOGVIEWING'):
+            override_config(daconfig, messages, 'allow log viewing', 'DAALLOWLOGVIEWING')
+        if env_exists('DAROOTOWNED'):
+            override_config(daconfig, messages, 'root owned', 'DAROOTOWNED')
+        if env_exists('DAREADONLYFILESYSTEM'):
+            override_config(daconfig, messages, 'read only file system', 'DAREADONLYFILESYSTEM')
         env_messages = messages
+
 
 def default_config():
     config = """\
@@ -825,6 +905,7 @@ mail:
   default sender: '"Administrator" <no-reply@example.com>'
 """
     return config
+
 
 def parse_redis_uri():
     redis_url = daconfig.get('redis', None)
@@ -858,6 +939,7 @@ def parse_redis_uri():
 
     redis_host = re.sub(r'\?.*', '', redis_url)
     redis_host = re.sub(r'^rediss?://', r'', redis_host)
+    redis_host = re.sub(r'^.*@', r'', redis_host)
     m = re.search(r'/([0-9]+)', redis_host)
     if m:
         redis_db = int(m.group(1))
@@ -906,6 +988,7 @@ def parse_redis_uri():
             redis_cli += ' --key ' + json.dumps(redis_key)
             ssl_opts['ssl_keyfile'] = redis_key
     return (redis_host, redis_port, redis_username, redis_password, redis_offset, redis_cli, ssl_opts)
+
 
 def noquote(string):
     if isinstance(string, str):

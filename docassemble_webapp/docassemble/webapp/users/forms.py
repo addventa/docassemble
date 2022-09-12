@@ -23,6 +23,8 @@ except ImportError:
     daconfig['ldap login']['enable'] = False
 
 HTTP_TO_HTTPS = daconfig.get('behind https load balancer', False)
+BAN_IP_ADDRESSES = daconfig.get('ip address ban enabled', True)
+
 
 def get_requester_ip(req):
     if not req:
@@ -34,15 +36,19 @@ def get_requester_ip(req):
             return req.headers['X-Forwarded-For']
     return req.remote_addr
 
+
 def fix_nickname(form, field):
     field.data = str(form.first_name.data) + ' ' + str(form.last_name.data)
 
+
 class MySignInForm(LoginForm):
+
     def validate(self):
-        key = 'da:failedlogin:ip:' + str(get_requester_ip(request))
-        failed_attempts = r.get(key)
-        if failed_attempts is not None and int(failed_attempts) > daconfig['attempt limit']:
-            abort(404)
+        if BAN_IP_ADDRESSES:
+            key = 'da:failedlogin:ip:' + str(get_requester_ip(request))
+            failed_attempts = r.get(key)
+            if failed_attempts is not None and int(failed_attempts) > daconfig['attempt limit']:
+                abort(404)
         if daconfig['ldap login'].get('enable', False):
             ldap_server = daconfig['ldap login'].get('server', 'localhost').strip()
             username = self.email.data
@@ -54,7 +60,7 @@ class MySignInForm(LoginForm):
                 if connect.whoami_s() is not None:
                     connect.unbind_s()
                     user_manager = current_app.user_manager
-                    user, user_email = user_manager.find_user_by_email(self.email.data)
+                    user, user_email = user_manager.find_user_by_email(self.email.data)  # pylint: disable=unused-variable
                     if not user:
                         while True:
                             new_social = 'ldap$' + random_alphanumeric(32)
@@ -102,15 +108,16 @@ class MySignInForm(LoginForm):
                 else:
                     self.email.errors.append(word("You cannot log in this way."))
                 return False
-            #sys.stderr.write("Trying super validate\n")
+            # logmessage("Trying super validate")
             result = super().validate()
-            #sys.stderr.write("Super validate response was " + repr(result) + "\n")
+            # logmessage("Super validate response was " + repr(result))
         if result is False:
             r.incr(key)
             r.expire(key, daconfig['ban period'])
         elif failed_attempts is not None:
             r.delete(key)
         return result
+
 
 def da_unique_email_validator(form, field):
     if daconfig['ldap login'].get('enable', False) and daconfig['ldap login'].get('base dn', None) is not None and daconfig['ldap login'].get('bind email', None) is not None and daconfig['ldap login'].get('bind password', None) is not None:
@@ -128,7 +135,8 @@ def da_unique_email_validator(form, field):
         return True
     return unique_email_validator(form, field)
 
-def da_registration_restrict_validator(form, field):
+
+def da_registration_restrict_validator(form, field):  # pylint: disable=unused-argument
     if len(daconfig['authorized registration domains']) == 0:
         return True
     user_email = str(form.email.data).lower().strip()
@@ -140,9 +148,17 @@ def da_registration_restrict_validator(form, field):
     form.email.errors = tuple(errors)
     return False
 
+
 class MyRegisterForm(RegisterForm):
     first_name = StringField(word('First name'), [validators.Length(min=0, max=255)])
     last_name = StringField(word('Last name'), [validators.Length(min=0, max=255)])
+    country = StringField(word('Country code'), [validators.Length(min=0, max=2)])
+    subdivisionfirst = StringField(word('First subdivision'), [validators.Length(min=0, max=64)])
+    subdivisionsecond = StringField(word('Second subdivision'), [validators.Length(min=0, max=64)])
+    subdivisionthird = StringField(word('Third subdivision'), [validators.Length(min=0, max=64)])
+    organization = StringField(word('Organization'), [validators.Length(min=0, max=64)])
+    language = StringField(word('Language'), [validators.Length(min=0, max=64)])
+    timezone = SelectField(word('Time Zone'), [validators.Length(min=0, max=64)])
     nickname = StringField(word('Nickname'), [fix_nickname])
     email = StringField(word('Email'), validators=[
         validators.DataRequired(word('Email is required')),
@@ -150,14 +166,17 @@ class MyRegisterForm(RegisterForm):
         da_unique_email_validator,
         da_registration_restrict_validator])
 
-def length_two(form, field):
+
+def length_two(form, field):  # pylint: disable=unused-argument
     if len(field.data) != 2:
         raise ValidationError(word('Must be a two-letter code'))
+
 
 class NewPrivilegeForm(FlaskForm):
     name = StringField(word('Name of new privilege'), validators=[
         DataRequired(word('Name of new privilege is required'))])
     submit = SubmitField(word('Add'))
+
 
 class UserProfileForm(FlaskForm):
     first_name = StringField(word('First name'), [validators.Length(min=0, max=255)])
@@ -168,24 +187,26 @@ class UserProfileForm(FlaskForm):
     subdivisionthird = StringField(word('Third subdivision'), [validators.Length(min=0, max=64)])
     organization = StringField(word('Organization'), [validators.Length(min=0, max=64)])
     language = StringField(word('Language'), [validators.Length(min=0, max=64)])
-    timezone = SelectField(word('Time Zone'))
-    pypi_username = StringField(word('PyPI Username'))
-    pypi_password = StringField(word('PyPI Password'))
+    timezone = SelectField(word('Time Zone'), [validators.Length(min=0, max=64)])
+    pypi_username = StringField(word('PyPI Username'), [validators.Length(min=0, max=255)])
+    pypi_password = StringField(word('PyPI Password'), [validators.Length(min=0, max=255)])
     confirmed_at = DateField(word('Confirmation Date'))
     submit = SubmitField(word('Save'))
     cancel = SubmitField(word('Cancel'))
+
 
 class EditUserProfileForm(UserProfileForm):
     email = StringField(word('E-mail'), validators=[Email(word('Must be a valid e-mail address')), DataRequired(word('E-mail is required'))])
     role_id = SelectMultipleField(word('Privileges'), coerce=int)
     active = BooleanField(word('Active'))
     uses_mfa = BooleanField(word('Uses two-factor authentication'))
-    def validate(self, user_id, admin_id):
+
+    def validate(self, user_id, admin_id):  # pylint: disable=arguments-differ
         user_manager = current_app.user_manager
         rv = UserProfileForm.validate(self)
         if not rv:
             return False
-        user, user_email = user_manager.find_user_by_email(self.email.data)
+        user, user_email = user_manager.find_user_by_email(self.email.data)  # pylint: disable=unused-variable
         if user is not None and user.id != user_id:
             self.email.errors.append(word('That e-mail address is already taken.'))
             return False
@@ -196,8 +217,10 @@ class EditUserProfileForm(UserProfileForm):
             self.active.data = True
         return True
 
+
 class PhoneUserProfileForm(UserProfileForm):
-    def validate(self):
+
+    def validate(self):  # pylint: disable=arguments-differ
         if self.email.data:
             if current_user.social_id.startswith('phone$'):
                 existing_user = db.session.execute(select(UserModel).filter_by(email=self.email.data, active=True)).scalar()
@@ -207,16 +230,19 @@ class PhoneUserProfileForm(UserProfileForm):
         return super().validate()
     email = StringField(word('E-mail'), validators=[Optional(), Email(word('Must be a valid e-mail address'))])
 
+
 class RequestDeveloperForm(FlaskForm):
     reason = StringField(word('Reason for needing developer account (optional)'))
     submit = SubmitField(word('Submit'))
 
+
 class MyInviteForm(FlaskForm):
-    def validate(self):
+
+    def validate(self):  # pylint: disable=arguments-differ
         has_error = False
         if self.email.data:
             for email_address in re.split(r'[\n\r]+', self.email.data.strip()):
-                (part_one, part_two) = email.utils.parseaddr(email_address)
+                (part_one, part_two) = email.utils.parseaddr(email_address)  # pylint: disable=unused-variable
                 if part_two == '':
                     the_errors = list(self.email.errors)
                     the_errors.append(word("Invalid e-mail address: " + email_address))
@@ -232,6 +258,7 @@ class MyInviteForm(FlaskForm):
     next = HiddenField()
     submit = SubmitField(word('Invite'))
 
+
 class UserAddForm(FlaskForm):
     email = StringField(word('E-mail'), validators=[
         validators.InputRequired(word('E-mail is required')),
@@ -242,23 +269,27 @@ class UserAddForm(FlaskForm):
     password = StringField(word('Password'), widget=PasswordInput(hide_value=False), validators=[password_validator])
     submit = SubmitField(word('Add'))
 
+
 class PhoneLoginForm(FlaskForm):
     phone_number = StringField(word('Phone number'), [validators.Length(min=5, max=255)])
     submit = SubmitField(word('Go'))
+
 
 class PhoneLoginVerifyForm(FlaskForm):
     phone_number = StringField(word('Phone number'), [validators.Length(min=5, max=255)])
     verification_code = StringField(word('Verification code'), [validators.Length(min=daconfig['verification code digits'], max=daconfig['verification code digits'])])
     submit = SubmitField(word('Verify'))
-    def validate(self):
+
+    def validate(self):  # pylint: disable=arguments-differ
         result = True
-        key = 'da:failedlogin:ip:' + str(get_requester_ip(request))
-        failed_attempts = r.get(key)
-        if failed_attempts is not None and int(failed_attempts) > daconfig['attempt limit']:
-            abort(404)
+        if BAN_IP_ADDRESSES:
+            key = 'da:failedlogin:ip:' + str(get_requester_ip(request))
+            failed_attempts = r.get(key)
+            if failed_attempts is not None and int(failed_attempts) > daconfig['attempt limit']:
+                abort(404)
         verification_key = 'da:phonelogin:' + str(self.phone_number.data) + ':code'
         verification_code = r.get(verification_key)
-        #r.delete(verification_key)
+        # r.delete(verification_key)
         supplied_verification_code = re.sub(r'[^0-9]', '', self.verification_code.data)
         logmessage("Supplied code is " + str(supplied_verification_code))
         if verification_code is None:
@@ -277,32 +308,39 @@ class PhoneLoginVerifyForm(FlaskForm):
             r.delete(key)
         return result
 
+
 class MFASetupForm(FlaskForm):
     verification_code = StringField(word('Verification code'))
     submit = SubmitField(word('Verify'))
+
 
 class MFALoginForm(FlaskForm):
     verification_code = StringField(word('Verification code'))
     next = HiddenField()
     submit = SubmitField(word('Verify'))
 
+
 class MFAReconfigureForm(FlaskForm):
     reconfigure = SubmitField(word('Reconfigure'))
     disable = SubmitField(word('Disable'))
     cancel = SubmitField(word('Cancel'))
+
 
 class MFAChooseForm(FlaskForm):
     auth = SubmitField(word('App'))
     sms = SubmitField(word('SMS'))
     cancel = SubmitField(word('Cancel'))
 
+
 class MFASMSSetupForm(FlaskForm):
     phone_number = StringField(word('Phone number'), [validators.Length(min=5, max=255)])
     submit = SubmitField(word('Verify'))
 
+
 class MFAVerifySMSSetupForm(FlaskForm):
     verification_code = StringField(word('Verification code'))
     submit = SubmitField(word('Verify'))
+
 
 class MyResendConfirmEmailForm(FlaskForm):
     email = StringField(word('Your e-mail address'), validators=[
@@ -311,9 +349,11 @@ class MyResendConfirmEmailForm(FlaskForm):
         ])
     submit = SubmitField(word('Send confirmation email'))
 
+
 class ManageAccountForm(FlaskForm):
     confirm = StringField(word('Type \"delete my account\" here to confirm that you want to delete your account.'), [validators.AnyOf(LazyArray([word("delete my account")]), message=word('Since you did not type \"delete my account\" I did not delete your account.'))])
     delete = SubmitField(word('Delete Account'))
+
 
 class InterviewsListForm(FlaskForm):
     i = StringField()

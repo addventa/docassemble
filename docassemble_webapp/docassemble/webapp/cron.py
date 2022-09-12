@@ -16,7 +16,7 @@ if __name__ == "__main__":
             cron_type = arguments.pop(0)
             continue
         remaining_arguments.append(arguments.pop(0))
-    docassemble.base.config.load(arguments=remaining_arguments)
+    docassemble.base.config.load(arguments=remaining_arguments, in_cron=True)
 from docassemble.webapp.server import UserModel, UserDict, UserDictKeys, Role, unpack_dictionary, db, set_request_active, save_user_dict, reset_user_dict, obtain_lock_patiently, release_lock, app, login_user, error_notification, user_interviews
 from docassemble.webapp.users.models import UserRoles
 from docassemble.webapp.daredis import r, r_user
@@ -25,21 +25,25 @@ import docassemble.base.interview_cache
 import docassemble.base.parse
 import docassemble.base.util
 import docassemble.base.functions
+from docassemble.base.logger import logmessage
 
 set_request_active(False)
 
+
 def get_filenames():
     results = []
-    for record in db.session.execute(select(UserDict.filename).where(UserDict.encrypted == False).group_by(UserDict.filename)):
+    for record in db.session.execute(select(UserDict.filename).where(UserDict.encrypted == False).group_by(UserDict.filename)):  # noqa: E712 # pylint: disable=singleton-comparison
         results.append(record.filename)
     return results
 
+
 def get_records(filename, last_index):
-    subq = select(UserDict.key, UserDict.filename, db.func.max(UserDict.indexno).label('indexno'), db.func.count(UserDict.indexno).label('cnt')).group_by(UserDict.filename, UserDict.key).where(UserDict.filename == filename, UserDict.encrypted == False, UserDict.indexno > last_index).subquery()
+    subq = select(UserDict.key, UserDict.filename, db.func.max(UserDict.indexno).label('indexno'), db.func.count(UserDict.indexno).label('cnt')).group_by(UserDict.filename, UserDict.key).where(UserDict.filename == filename, UserDict.encrypted == False, UserDict.indexno > last_index).subquery()  # noqa: E712 # pylint: disable=singleton-comparison
     results = []
     for record in db.session.execute(select(UserDict.key, UserDict.filename, UserDict.dictionary, subq.c.indexno, subq.c.cnt).join(subq, and_(subq.c.indexno == UserDict.indexno)).order_by(UserDict.indexno).limit(200)):
         results.append((record.indexno, record.key, record.filename, record.dictionary, record.cnt))
     return results
+
 
 def get_cron_user():
     for user in UserModel.query.options(db.joinedload(UserModel.roles)).all():
@@ -48,10 +52,11 @@ def get_cron_user():
                 return user
     sys.exit("Cron user not found")
 
+
 def delete_inactive_users():
     user_auto_delete = docassemble.base.config.daconfig.get('user auto delete', {})
     if not isinstance(user_auto_delete, dict):
-        sys.stderr.write("Error in configuration for user auto delete\n")
+        logmessage("Error in configuration for user auto delete")
         return
     if not user_auto_delete.get('enable', True):
         return
@@ -59,7 +64,7 @@ def delete_inactive_users():
         cutoff_days = int(user_auto_delete.get('inactive days', 0))
         assert cutoff_days >= 0
     except:
-        sys.stderr.write("Error in configuration for user auto delete\n")
+        logmessage("Error in configuration for user auto delete")
         return
     if cutoff_days == 0:
         return
@@ -71,18 +76,18 @@ def delete_inactive_users():
     if isinstance(roles, str):
         roles = [roles]
     if not isinstance(roles, list):
-        sys.stderr.write("Error in configuration for user auto delete\n")
+        logmessage("Error in configuration for user auto delete")
         return
     search_roles = set()
     for item in roles:
         if not isinstance(item, str):
-            sys.stderr.write("Error in configuration for user auto delete: invalid privilege\n")
+            logmessage("Error in configuration for user auto delete: invalid privilege")
             return
         if item not in role_ids:
-            sys.stderr.write("Error in configuration for user auto delete: unknown privilege" + repr(item) + "\n")
+            logmessage("Error in configuration for user auto delete: unknown privilege" + repr(item))
             return
         if item == 'cron':
-            sys.stderr.write("Error in configuration for user auto delete: invalid privilege\n")
+            logmessage("Error in configuration for user auto delete: invalid privilege")
             return
         search_roles.add(role_ids[item])
     filters = []
@@ -102,16 +107,17 @@ def delete_inactive_users():
         last_interview = db.session.execute(select(UserDictKeys.user_id, db.func.max(UserDict.modtime).label('last_activity')).join(UserDict, and_(UserDictKeys.filename == UserDict.filename, UserDictKeys.key == UserDict.key)).where(UserDictKeys.user_id == user_id).group_by(UserDictKeys.user_id)).first()
         if last_interview is not None and last_interview.last_activity > cutoff_date:
             continue
-        sys.stderr.write("delete_inactive_users: deleting %d\n" % (user_id,))
+        logmessage("delete_inactive_users: deleting %d" % (user_id,))
         user_interviews(user_id=user_id, secret=None, exclude_invalid=False, action='delete_all', delete_shared=delete_shared, admin=True)
         docassemble.webapp.backend.delete_user_data(user_id, r, r_user)
 
+
 def clear_old_interviews():
-    #sys.stderr.write("clear_old_interviews: starting\n")
+    # logmessage("clear_old_interviews: starting")
     try:
         interview_delete_days = int(docassemble.base.config.daconfig.get('interview delete days', 90))
     except:
-        sys.stderr.write("Error in configuration for interview delete days\n")
+        logmessage("Error in configuration for interview delete days")
         interview_delete_days = 0
     days_by_filename = {}
     if 'interview delete days by filename' in docassemble.base.config.daconfig:
@@ -120,9 +126,9 @@ def clear_old_interviews():
                 assert isinstance(filename, str)
                 days_by_filename[filename] = int(days)
         except:
-            sys.stderr.write("Error in configuration for interview delete days by filename\n")
+            logmessage("Error in configuration for interview delete days by filename")
     nowtime = datetime.datetime.utcnow()
-    #sys.stderr.write("clear_old_interviews: days is " + str(interview_delete_days) + "\n")
+    # logmessage("clear_old_interviews: days is " + str(interview_delete_days))
     for filename, days in days_by_filename.items():
         last_index = -1
         while True:
@@ -134,7 +140,7 @@ def clear_old_interviews():
                 results_count += 1
                 last_index = record.indexno
                 delta = nowtime - record.modtime
-                #sys.stderr.write("clear_old_interviews: delta days is " + str(delta.days) + "\n")
+                # logmessage("clear_old_interviews: delta days is " + str(delta.days))
                 if delta.days > days:
                     stale.append(dict(key=record.key, filename=record.filename))
             if results_count == 0:
@@ -157,7 +163,7 @@ def clear_old_interviews():
             results_count += 1
             last_index = record.indexno
             delta = nowtime - record.modtime
-            #sys.stderr.write("clear_old_interviews: delta days is " + str(delta.days) + "\n")
+            # logmessage("clear_old_interviews: delta days is " + str(delta.days))
             if delta.days > interview_delete_days:
                 stale.append(dict(key=record.key, filename=record.filename))
         if results_count == 0:
@@ -168,6 +174,7 @@ def clear_old_interviews():
             release_lock(item['key'], item['filename'])
             time.sleep(0.15)
         time.sleep(0.6)
+
 
 def run_cron(the_cron_type):
     cron_types = [the_cron_type]
@@ -266,7 +273,7 @@ def run_cron(the_cron_type):
                                                         sys.stdout.write("Unable to write output to standard error\n")
                                 except Exception as err:
                                     release_lock(key, the_filename)
-                                    sys.stderr.write("Cron error: " + str(key) + " " + str(the_filename) + " " + str(err.__class__.__name__) + ": " + str(err) + "\n")
+                                    logmessage("Cron error: " + str(key) + " " + str(the_filename) + " " + str(err.__class__.__name__) + ": " + str(err))
                                     if hasattr(err, 'traceback'):
                                         error_trace = str(err.traceback)
                                         if hasattr(err, 'da_line_with_error'):

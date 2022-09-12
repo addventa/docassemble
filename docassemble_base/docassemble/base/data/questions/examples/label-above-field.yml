@@ -1,6 +1,6 @@
 metadata:
   title: Label above field
-  documentation: "https://docassemble.org/docs/fields.html#no label"
+  documentation: "https://docassemble.org/docs/fields.html#label above field"
 ---
 question: |
   Your sign

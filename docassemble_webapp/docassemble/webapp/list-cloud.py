@@ -3,6 +3,7 @@ import os
 import docassemble.base.amazon
 import docassemble.base.microsoft
 
+
 def main():
     if os.environ.get('S3ENABLE', 'false') == 'true':
         s3_config = {}
@@ -10,6 +11,11 @@ def main():
         s3_config['access key id'] = os.environ.get('S3ACCESSKEY', None)
         s3_config['secret access key'] = os.environ.get('S3SECRETACCESSKEY', None)
         s3_config['endpoint url'] = os.environ.get('S3ENDPOINTURL', None)
+        s3_config['server side encryption'] = {}
+        s3_config['server side encryption']['algorithm'] = os.environ.get('S3_SSE_ALGORITHM', None)
+        s3_config['server side encryption']['customer algorithm'] = os.environ.get('S3_SSE_CUSTOMER_ALGORITHM', None)
+        s3_config['server side encryption']['customer key'] = os.environ.get('S3_SSE_CUSTOMER_KEY', None)
+        s3_config['server side encryption']['KMS key ID'] = os.environ.get('S3_SSE_KMS_KEY_ID', None)
         cloud = docassemble.base.amazon.s3object(s3_config)
     elif os.environ.get('AZUREENABLE', 'false') == 'true':
         azure_config = {}
@@ -25,6 +31,7 @@ def main():
     else:
         prefix = None
     recursive_list(cloud, prefix)
+
 
 def recursive_list(cloud, prefix):
     for key in cloud.list_keys(prefix):

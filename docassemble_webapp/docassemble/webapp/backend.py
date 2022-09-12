@@ -1,14 +1,13 @@
 from io import IOBase as FileType
 import codecs
 import json
-import logging
 import math
 import os
 import pickle
 import platform
 import re
-import sys
-#import time
+# import sys
+# import time
 import types
 import xml.etree.ElementTree as ET
 import pandas
@@ -16,13 +15,13 @@ from Cryptodome.Cipher import AES
 from dateutil import tz
 from flask import session, url_for as base_url_for
 from flask_login import current_user
-from flask_mail import Mail as FlaskMail, Message
+from flask_mail import Mail as FlaskMail, Message  # noqa: F401 # pylint: disable=unused-import
 from flask_wtf.csrf import generate_csrf
 from sqlalchemy import or_, and_, select, delete
 import ruamel.yaml
 import tzlocal
 from docassemble.base.functions import pickleable_objects
-from docassemble.base.config import daconfig, hostname, in_celery
+from docassemble.base.config import daconfig, hostname
 from docassemble.base.generate_key import random_bytes, random_alphanumeric
 from docassemble.base.logger import logmessage
 import docassemble.base.functions
@@ -30,7 +29,7 @@ import docassemble.base.parse
 from docassemble.webapp.app_object import app
 from docassemble.webapp.core.models import Uploads, UploadsUserAuth, UploadsRoleAuth, SpeakList, ObjectStorage, Shortener, MachineLearning, GlobalObjectStorage, Email, EmailAttachment
 from docassemble.webapp.db_object import db
-from docassemble.webapp.file_access import get_info_from_file_number, get_info_from_file_reference, reference_exists, url_if_exists
+from docassemble.webapp.file_access import get_info_from_file_number, get_info_from_file_reference, url_if_exists  # noqa: F401 # pylint: disable=unused-import
 from docassemble.webapp.file_number import get_new_file_number
 from docassemble.webapp.files import SavedFile, get_ext_and_mimetype
 from docassemble.webapp.fixpickle import fix_pickle_obj, fix_pickle_dict
@@ -57,10 +56,11 @@ DEBUG = daconfig.get('debug', False)
 #         def time_func(*pargs, **kwargs):
 #             time_start = time.time()
 #             result = func(*pargs, **kwargs)
-#             sys.stderr.write(name_of_function + ': ' + str(time.time() - time_start) + "\n")
+#             logmessage(name_of_function + ': ' + str(time.time() - time_start))
 #             return result
 #         return time_func
 #     return elapse_decorator
+
 
 def write_record(key, data):
     new_record = ObjectStorage(key=key, value=pack_object(data))
@@ -68,17 +68,20 @@ def write_record(key, data):
     db.session.commit()
     return new_record.id
 
+
 def read_records(key):
     results = {}
     for record in db.session.execute(select(ObjectStorage).filter_by(key=key).order_by(ObjectStorage.id)).scalars():
         results[record.id] = unpack_object(record.value)
     return results
 
+
 def delete_record(key, the_id):
     db.session.execute(delete(ObjectStorage).filter_by(key=key, id=the_id))
     db.session.commit()
 
-#@elapsed('save_numbered_file')
+
+# @elapsed('save_numbered_file')
 def save_numbered_file(filename, orig_path, yaml_file_name=None, uid=None):
     if uid is None:
         try:
@@ -95,6 +98,7 @@ def save_numbered_file(filename, orig_path, yaml_file_name=None, uid=None):
     new_file.save(finalize=True)
     return (file_number, extension, mimetype)
 
+
 def fix_ml_files(playground_number, current_project):
     playground = SavedFile(playground_number, section='playgroundsources', fix=False)
     changed = False
@@ -109,23 +113,28 @@ def fix_ml_files(playground_number, current_project):
     if changed:
         playground.finalize()
 
+
 def is_package_ml(parts):
     if len(parts) == 3 and parts[0].startswith('docassemble.') and re.match(r'data/sources/.*\.json', parts[1]):
         return True
     return False
 
+
 def project_name(name):
     return '' if name == 'default' else name
+
 
 def add_project(filename, current_project):
     if current_project == 'default':
         return filename
     return os.path.join(current_project, filename)
 
+
 def directory_for(area, current_project):
     if current_project == 'default':
         return area.directory
     return os.path.join(area.directory, current_project)
+
 
 def write_ml_source(playground, playground_number, current_project, filename, finalize=True):
     if re.match(r'ml-.*\.json', filename):
@@ -154,12 +163,13 @@ def write_ml_source(playground, playground_number, current_project, filename, fi
             return True
     return False
 
+
 def absolute_filename(the_file):
     match = re.match(r'^docassemble.playground([0-9]+)([A-Za-z]?[A-Za-z0-9]*):(.*)', the_file)
-    #logmessage("absolute_filename call: " + the_file)
+    # logmessage("absolute_filename call: " + the_file)
     if match:
         filename = re.sub(r'[^A-Za-z0-9\-\_\. ]', '', match.group(3))
-        #logmessage("absolute_filename: filename is " + filename + " and subdir is " + match.group(2))
+        # logmessage("absolute_filename: filename is " + filename + " and subdir is " + match.group(2))
         playground = SavedFile(match.group(1), section='playground', fix=True, filename=filename, subdir=match.group(2))
         return playground
     match = re.match(r'^/playgroundtemplate/([0-9]+)/([A-Za-z0-9]+)/(.*)', the_file)
@@ -187,12 +197,14 @@ elif 'sendgrid api key' in daconfig['mail'] and daconfig['mail']['sendgrid api k
 else:
     mail = FlaskMail(app)
 
+
 def da_send_mail(the_message):
     mail.send(the_message)
 
 DEFAULT_LANGUAGE = daconfig.get('language', 'en')
 DEFAULT_LOCALE = daconfig.get('locale', 'en_US.utf8')
 DEFAULT_DIALECT = daconfig.get('dialect', 'us')
+DEFAULT_VOICE = daconfig.get('voice', None)
 if 'timezone' in daconfig and daconfig['timezone'] is not None:
     DEFAULT_TIMEZONE = daconfig['timezone']
 else:
@@ -202,6 +214,7 @@ else:
         DEFAULT_TIMEZONE = 'America/New_York'
 
 COOKIELESS_SESSIONS = daconfig.get('cookieless sessions', False)
+
 
 def url_for(*pargs, **kwargs):
     if 'jsembed' in docassemble.base.functions.this_thread.misc:
@@ -214,6 +227,7 @@ def url_for(*pargs, **kwargs):
             pargs[0] = 'html_index'
         kwargs['_external'] = True
     return base_url_for(*pargs, **kwargs)
+
 
 def sql_get(key, secret=None):
     for record in db.session.execute(select(GlobalObjectStorage).filter_by(key=key)).scalars():
@@ -230,11 +244,13 @@ def sql_get(key, secret=None):
         return result
     return None
 
+
 def sql_defined(key):
     record = db.session.execute(select(GlobalObjectStorage.id).filter_by(key=key)).first()
     if record is None:
         return False
     return True
+
 
 def sql_set(key, val, encrypted=True, secret=None, the_user_id=None):
     user_id, temp_user_id = parse_the_user_id(the_user_id)
@@ -256,19 +272,23 @@ def sql_set(key, val, encrypted=True, secret=None, the_user_id=None):
         db.session.add(record)
     db.session.commit()
 
+
 def sql_delete(key):
     db.session.execute(delete(GlobalObjectStorage).filter_by(key=key))
     db.session.commit()
+
 
 def sql_keys(prefix):
     n = len(prefix)
     stmt = select(GlobalObjectStorage.key).where(GlobalObjectStorage.key.like(prefix + '%'))
     return list(set(y.key[n:] for y in db.session.execute(stmt)))
 
+
 def get_info_from_file_reference_with_uids(*pargs, **kwargs):
     if 'uids' not in kwargs:
         kwargs['uids'] = get_session_uids()
     return get_info_from_file_reference(*pargs, **kwargs)
+
 
 def get_info_from_file_number_with_uids(*pargs, **kwargs):
     if 'uids' not in kwargs:
@@ -289,6 +309,7 @@ DEFAULT_COUNTRY = daconfig.get('country', None) or re.sub(r'^.*_', '', re.sub(r'
 docassemble.base.functions.update_server(default_language=DEFAULT_LANGUAGE,
                                          default_locale=DEFAULT_LOCALE,
                                          default_dialect=DEFAULT_DIALECT,
+                                         default_voice=DEFAULT_VOICE,
                                          default_timezone=DEFAULT_TIMEZONE,
                                          default_country=DEFAULT_COUNTRY,
                                          daconfig=daconfig,
@@ -316,22 +337,23 @@ docassemble.base.functions.update_server(default_language=DEFAULT_LANGUAGE,
                                          default_table_class=DEFAULT_TABLE_CLASS,
                                          default_thead_class=DEFAULT_THEAD_CLASS,
                                          to_text=to_text)
-docassemble.base.functions.set_language(DEFAULT_LANGUAGE, dialect=DEFAULT_DIALECT)
+docassemble.base.functions.set_language(DEFAULT_LANGUAGE, dialect=DEFAULT_DIALECT, voice=DEFAULT_VOICE)
 docassemble.base.functions.set_locale(DEFAULT_LOCALE)
 docassemble.base.functions.update_locale()
+
 
 def fix_words():
     word_file_list = daconfig.get('words', [])
     if not isinstance(word_file_list, list):
         word_file_list = [word_file_list]
     for word_file in word_file_list:
-        #sys.stderr.write("Reading from " + str(word_file) + "\n")
+        # logmessage("Reading from " + str(word_file))
         if not isinstance(word_file, str):
-            sys.stderr.write("Error reading words: file references must be plain text.\n")
+            logmessage("Error reading words: file references must be plain text.")
             continue
         filename = docassemble.base.functions.static_filename_path(word_file)
         if filename is None:
-            sys.stderr.write("Error reading " + str(word_file) + ": file not found.\n")
+            logmessage("Error reading " + str(word_file) + ": file not found.")
             continue
         if os.path.isfile(filename):
             if filename.lower().endswith('.yaml') or filename.lower().endswith('.yml'):
@@ -343,11 +365,11 @@ def fix_words():
                                     if isinstance(words, dict):
                                         docassemble.base.functions.update_word_collection(lang, words)
                                     else:
-                                        sys.stderr.write("Error reading " + str(word_file) + ": words not in dictionary form.\n")
+                                        logmessage("Error reading " + str(word_file) + ": words not in dictionary form.")
                             else:
-                                sys.stderr.write("Error reading " + str(word_file) + ": yaml file not in dictionary form.\n")
+                                logmessage("Error reading " + str(word_file) + ": yaml file not in dictionary form.")
                     except:
-                        sys.stderr.write("Error reading " + str(word_file) + ": yaml could not be processed.\n")
+                        logmessage("Error reading " + str(word_file) + ": yaml could not be processed.")
             elif filename.lower().endswith('.xlsx'):
                 try:
                     df = pandas.read_excel(filename, na_values=['#NA', '#N/A'], keep_default_na=False)
@@ -357,7 +379,7 @@ def fix_words():
                             invalid = True
                             break
                     if invalid:
-                        sys.stderr.write("Error reading " + str(word_file) + ": xlsx did not have the correct columns.\n")
+                        logmessage("Error reading " + str(word_file) + ": xlsx did not have the correct columns.")
                         continue
                     translations = {}
                     problems = []
@@ -381,11 +403,11 @@ def fix_words():
                         try:
                             docassemble.base.functions.update_word_collection(lang, the_dict)
                         except:
-                            sys.stderr.write("Error reading " + str(word_file) + ": xlsx for language " + lang + " could not be processed.\n")
+                            logmessage("Error reading " + str(word_file) + ": xlsx for language " + lang + " could not be processed.")
                     if len(problems) > 0:
-                        sys.stderr.write("Error reading " + str(word_file) + ": could not read lines " + ", ".join(problems) + ".\n")
+                        logmessage("Error reading " + str(word_file) + ": could not read lines " + ", ".join(problems) + ".")
                 except Exception as err:
-                    sys.stderr.write("Error reading " + str(word_file) + ": xlsx processing raised exception " + err.__class__.__name__ + ": " + str(err) + "\n")
+                    logmessage("Error reading " + str(word_file) + ": xlsx processing raised exception " + err.__class__.__name__ + ": " + str(err))
             elif filename.lower().endswith('.xlf') or filename.lower().endswith('.xliff'):
                 try:
                     tree = ET.parse(filename)
@@ -441,18 +463,18 @@ def fix_words():
                                 continue
                             translations[target_lang][orig_text] = tr_text
                     else:
-                        sys.stderr.write("Error reading " + str(word_file) + ": invalid XLIFF version.\n")
+                        logmessage("Error reading " + str(word_file) + ": invalid XLIFF version.")
                     for lang, the_dict in translations.items():
                         try:
                             docassemble.base.functions.update_word_collection(lang, the_dict)
                         except:
-                            sys.stderr.write("Error reading " + str(word_file) + ": xlf for language " + lang + " could not be processed.\n")
+                            logmessage("Error reading " + str(word_file) + ": xlf for language " + lang + " could not be processed.")
                 except Exception as err:
-                    sys.stderr.write("Error reading " + str(word_file) + ": xlf processing raised exception " + err.__class__.__name__ + ": " + str(err) + "\n")
+                    logmessage("Error reading " + str(word_file) + ": xlf processing raised exception " + err.__class__.__name__ + ": " + str(err))
             else:
-                sys.stderr.write("filename " + filename + " had an unknown type\n")
+                logmessage("filename " + filename + " had an unknown type")
         else:
-            sys.stderr.write("filename " + filename + " did not exist\n")
+            logmessage("filename " + filename + " did not exist")
 
 fix_words()
 
@@ -462,6 +484,7 @@ if 'currency symbol' in daconfig:
 cloud = docassemble.webapp.cloud.get_cloud()
 
 cloud_cache = {}
+
 
 def cloud_custom(provider, config):
     config_id = str(provider) + str(config)
@@ -481,22 +504,23 @@ if platform.machine() == 'x86_64':
     docassemble.base.functions.update_server(google_api=docassemble.webapp.google_api)
 
 initial_dict = dict(_internal=dict(session_local={}, device_local={}, user_local={}, dirty={}, progress=0, tracker=0, docvar={}, doc_cache={}, steps=1, steps_offset=0, secret=None, informed={}, livehelp=dict(availability='unavailable', mode='help', roles=[], partner_roles=[]), answered=set(), answers={}, objselections={}, starttime=None, modtime=None, accesstime={}, tasks={}, gather=[], event_stack={}, misc={}), url_args={}, nav=docassemble.base.functions.DANav())
-#else:
+# else:
 #    initial_dict = dict(_internal=dict(tracker=0, steps_offset=0, answered=set(), answers={}, objselections={}), url_args={})
 if 'initial_dict' in daconfig:
     initial_dict.update(daconfig['initial dict'])
 docassemble.base.parse.set_initial_dict(initial_dict)
 
 # def absolute_validator(the_file):
-#     #logmessage("Running my validator")
+#     # logmessage("Running my validator")
 #     if the_file.startswith(os.path.join(UPLOAD_DIRECTORY, 'playground')) and current_user.is_authenticated and not current_user.is_anonymous and current_user.has_role('admin', 'developer') and os.path.dirname(the_file) == os.path.join(UPLOAD_DIRECTORY, 'playground', str(current_user.id)):
 #         return True
 #     return False
 
-#docassemble.base.parse.set_absolute_filename(absolute_filename)
-#logmessage("Server started")
+# docassemble.base.parse.set_absolute_filename(absolute_filename)
+# logmessage("Server started")
 
-#@elapsed('can_access_file_number')
+
+# @elapsed('can_access_file_number')
 def can_access_file_number(file_number, uids=None):
     upload = db.session.execute(select(Uploads).where(Uploads.indexno == file_number)).scalar()
     if upload is None:
@@ -522,14 +546,14 @@ def can_access_file_number(file_number, uids=None):
             return True
     return False
 
-if in_celery:
-    LOGFILE = daconfig.get('celery flask log', '/tmp/celery-flask.log')
-else:
-    LOGFILE = daconfig.get('flask log', '/tmp/flask.log')
+# if in_celery:
+#     LOGFILE = daconfig.get('celery flask log', '/tmp/celery-flask.log')
+# else:
+#     LOGFILE = daconfig.get('flask log', '/tmp/flask.log')
 
-if not os.path.exists(LOGFILE):
-    with open(LOGFILE, 'a', encoding='utf-8'):
-        os.utime(LOGFILE, None)
+# if not os.path.exists(LOGFILE):
+#     with open(LOGFILE, 'a', encoding='utf-8'):
+#         os.utime(LOGFILE, None)
 
 # error_file_handler = logging.FileHandler(filename=LOGFILE)
 # error_file_handler.setLevel(logging.DEBUG)
@@ -540,19 +564,22 @@ stdout_handler.setLevel(logging.DEBUG)
 # stdout_handler.setFormatter(formatter)
 app.logger.addHandler(stdout_handler)
 
-#sys.stderr.write("__name__ is " + str(__name__) + " and __package__ is " + str(__package__) + "\n")
+# sys.stderr.write("__name__ is " + str(__name__) + " and __package__ is " + str(__package__) + "\n")
 
-def flask_logger(message):
-    #app.logger.warning(message)
-    sys.stderr.write(str(message) + "\n")
+# def flask_logger(message):
+#     # app.logger.warning(message)
+#     sys.stderr.write(str(message) + "\n")
+
 
 def pad(the_string):
     return the_string + bytearray((16 - len(the_string) % 16) * chr(16 - len(the_string) % 16), encoding='utf-8')
+
 
 def unpad(the_string):
     if isinstance(the_string[-1], int):
         return the_string[0:-the_string[-1]]
     return the_string[0:-ord(the_string[-1])]
+
 
 def encrypt_phrase(phrase, secret):
     iv = random_bytes(16)
@@ -561,39 +588,48 @@ def encrypt_phrase(phrase, secret):
         phrase = bytearray(phrase, 'utf-8')
     return (iv + codecs.encode(encrypter.encrypt(pad(phrase)), 'base64')).decode('utf-8')
 
+
 def pack_phrase(phrase):
     phrase = bytearray(phrase, encoding='utf-8')
     return codecs.encode(phrase, 'base64').decode('utf-8')
+
 
 def decrypt_phrase(phrase_string, secret):
     phrase_string = bytearray(phrase_string, encoding='utf-8')
     decrypter = AES.new(bytearray(secret, encoding='utf-8'), AES.MODE_CBC, phrase_string[:16])
     return unpad(decrypter.decrypt(codecs.decode(phrase_string[16:], 'base64'))).decode('utf-8')
 
+
 def unpack_phrase(phrase_string):
     return codecs.decode(bytearray(phrase_string, encoding='utf-8'), 'base64').decode('utf-8')
+
 
 def encrypt_dictionary(the_dict, secret):
     iv = random_bytes(16)
     encrypter = AES.new(bytearray(secret, encoding='utf-8'), AES.MODE_CBC, iv)
     return (iv + codecs.encode(encrypter.encrypt(pad(pickle.dumps(pickleable_objects(the_dict)))), 'base64')).decode()
 
+
 def pack_object(the_object):
     return codecs.encode(pickle.dumps(safe_pickle(the_object)), 'base64').decode()
+
 
 def unpack_object(the_string):
     the_string = bytearray(the_string, encoding='utf-8')
     return fix_pickle_dict(codecs.decode(the_string, 'base64'))
+
 
 def encrypt_object(obj, secret):
     iv = random_bytes(16)
     encrypter = AES.new(bytearray(secret, encoding='utf-8'), AES.MODE_CBC, iv)
     return (iv + codecs.encode(encrypter.encrypt(pad(pickle.dumps(safe_pickle(obj)))), 'base64')).decode()
 
+
 def decrypt_object(obj_string, secret):
     obj_string = bytearray(obj_string, encoding='utf-8')
     decrypter = AES.new(bytearray(secret, encoding='utf-8'), AES.MODE_CBC, obj_string[:16])
     return fix_pickle_obj(unpad(decrypter.decrypt(codecs.decode(obj_string[16:], 'base64'))))
+
 
 def parse_the_user_id(the_user_id):
     if the_user_id is None:
@@ -604,6 +640,7 @@ def parse_the_user_id(the_user_id):
             return None, int(m.group(2))
         return int(m.group(2)), None
     raise Exception("Invalid user ID")
+
 
 def safe_pickle(the_object):
     if isinstance(the_object, list):
@@ -622,28 +659,34 @@ def safe_pickle(the_object):
         return None
     return the_object
 
+
 def pack_dictionary(the_dict):
     retval = codecs.encode(pickle.dumps(pickleable_objects(the_dict)), 'base64').decode()
     return retval
+
 
 def decrypt_dictionary(dict_string, secret):
     dict_string = bytearray(dict_string, encoding='utf-8')
     decrypter = AES.new(bytearray(secret, encoding='utf-8'), AES.MODE_CBC, dict_string[:16])
     return fix_pickle_dict(unpad(decrypter.decrypt(codecs.decode(dict_string[16:], 'base64'))))
 
+
 def unpack_dictionary(dict_string):
     dict_string = codecs.decode(bytearray(dict_string, encoding='utf-8'), 'base64')
     return fix_pickle_dict(dict_string)
 
+
 def nice_date_from_utc(timestamp, timezone=tz.tzlocal()):
     return timestamp.replace(tzinfo=tz.tzutc()).astimezone(timezone).strftime('%x %X')
+
 
 def nice_utc_date(timestamp):
     return timestamp.strftime('%F %T')
 
-#@elapsed('fetch_user_dict')
+
+# @elapsed('fetch_user_dict')
 def fetch_user_dict(user_code, filename, secret=None):
-    #logmessage("fetch_user_dict: user_code is " + str(user_code) + " and filename is " + str(filename))
+    # logmessage("fetch_user_dict: user_code is " + str(user_code) + " and filename is " + str(filename))
     user_dict = None
     steps = 1
     encrypted = True
@@ -651,36 +694,39 @@ def fetch_user_dict(user_code, filename, secret=None):
     stmt = select(UserDict.indexno, UserDict.dictionary, UserDict.encrypted, subq.c.cnt).join(subq, subq.c.indexno == UserDict.indexno)
     result = db.session.execute(stmt)
     for d in list(result):
-        #logmessage("fetch_user_dict: indexno is " + str(d.indexno))
+        # logmessage("fetch_user_dict: indexno is " + str(d.indexno))
         if d.dictionary:
             if d.encrypted:
-                #logmessage("fetch_user_dict: entry was encrypted")
+                # logmessage("fetch_user_dict: entry was encrypted")
                 user_dict = decrypt_dictionary(d.dictionary, secret)
-                #logmessage("fetch_user_dict: decrypted dictionary")
+                # logmessage("fetch_user_dict: decrypted dictionary")
             else:
-                #logmessage("fetch_user_dict: entry was not encrypted")
+                # logmessage("fetch_user_dict: entry was not encrypted")
                 user_dict = unpack_dictionary(d.dictionary)
-                #logmessage("fetch_user_dict: unpacked dictionary")
+                # logmessage("fetch_user_dict: unpacked dictionary")
                 encrypted = False
         if d.cnt:
             steps = d.cnt
         break
     return steps, user_dict, encrypted
 
-#@elapsed('user_dict_exists')
+
+# @elapsed('user_dict_exists')
 def user_dict_exists(user_code, filename):
     result = db.session.execute(select(UserDict).where(and_(UserDict.key == user_code, UserDict.filename == filename))).first()
     if result:
         return True
     return False
 
-#@elapsed('fetch_previous_user_dict')
+
+# @elapsed('fetch_previous_user_dict')
 def fetch_previous_user_dict(user_code, filename, secret):
     max_indexno = db.session.execute(select(db.func.max(UserDict.indexno)).where(and_(UserDict.key == user_code, UserDict.filename == filename))).scalar()
     if max_indexno is not None:
         db.session.execute(delete(UserDict).where(UserDict.indexno == max_indexno))
         db.session.commit()
     return fetch_user_dict(user_code, filename, secret=secret)
+
 
 def advance_progress(user_dict, interview):
     if user_dict['_internal']['progress'] is None:
@@ -698,6 +744,7 @@ def advance_progress(user_dict, interview):
         user_dict['_internal']['progress'] += multiplier*(next_part-user_dict['_internal']['progress'])
     else:
         user_dict['_internal']['progress'] += multiplier*(100-user_dict['_internal']['progress'])
+
 
 def delete_temp_user_data(temp_user_id, r):
     db.session.execute(delete(UserDictKeys).where(UserDictKeys.temp_user_id == temp_user_id))
@@ -729,6 +776,7 @@ def delete_temp_user_data(temp_user_id, r):
         keys_to_delete.add(key)
     for key in keys_to_delete:
         r.delete(key)
+
 
 def delete_user_data(user_id, r, r_user):
     db.session.execute(delete(UserDict).where(UserDict.user_id == user_id))
@@ -802,9 +850,10 @@ def delete_user_data(user_id, r, r_user):
     for key in keys_to_delete:
         r_user.delete(key)
 
-#@elapsed('reset_user_dict')
+
+# @elapsed('reset_user_dict')
 def reset_user_dict(user_code, filename, user_id=None, temp_user_id=None, force=False):
-    #logmessage("reset_user_dict called with " + str(user_code) + " and " + str(filename) + " and " + str(user_id) + " and " + str(temp_user_id) + " and " + str(force))
+    # logmessage("reset_user_dict called with " + str(user_code) + " and " + str(filename) + " and " + str(user_id) + " and " + str(temp_user_id) + " and " + str(force))
     if force:
         the_user_id = None
     else:
@@ -883,7 +932,8 @@ def reset_user_dict(user_code, filename, user_id=None, temp_user_id=None, force=
             the_file = SavedFile(file_number)
             the_file.delete()
 
-#@elapsed('get_person')
+
+# @elapsed('get_person')
 def get_person(user_id, cache):
     if user_id in cache:
         return cache[user_id]
@@ -892,7 +942,8 @@ def get_person(user_id, cache):
         return record
     return None
 
-#@elapsed('get_chat_log')
+
+# @elapsed('get_chat_log')
 def get_chat_log(chat_mode, yaml_filename, session_id, user_id, temp_user_id, secret, self_user_id, self_temp_id):
     messages = []
     people = {}
@@ -914,7 +965,7 @@ def get_chat_log(chat_mode, yaml_filename, session_id, user_id, temp_user_id, se
         self_person_id = self_temp_id
     if chat_person_type == 'auth':
         if chat_mode in ('peer', 'peerhelp'):
-            records = db.session.execute(select(ChatLog).where(and_(ChatLog.filename == yaml_filename, ChatLog.key == session_id, or_(ChatLog.open_to_peer == True, ChatLog.owner_id == chat_person_id))).order_by(ChatLog.id)).scalars().all()
+            records = db.session.execute(select(ChatLog).where(and_(ChatLog.filename == yaml_filename, ChatLog.key == session_id, or_(ChatLog.open_to_peer == True, ChatLog.owner_id == chat_person_id))).order_by(ChatLog.id)).scalars().all()  # noqa: E712 # pylint: disable=singleton-comparison
         else:
             records = db.session.execute(select(ChatLog).where(and_(ChatLog.filename == yaml_filename, ChatLog.key == session_id, ChatLog.owner_id == chat_person_id)).order_by(ChatLog.id)).scalars().all()
         for record in records:
@@ -922,7 +973,7 @@ def get_chat_log(chat_mode, yaml_filename, session_id, user_id, temp_user_id, se
                 try:
                     message = decrypt_phrase(record.message, secret)
                 except:
-                    sys.stderr.write("Could not decrypt phrase with secret " + secret + "\n")
+                    logmessage("Could not decrypt phrase with secret " + secret)
                     continue
             else:
                 message = unpack_phrase(record.message)
@@ -934,7 +985,7 @@ def get_chat_log(chat_mode, yaml_filename, session_id, user_id, temp_user_id, se
             if record.user_id is not None:
                 person = get_person(record.user_id, people)
                 if person is None:
-                    sys.stderr.write("Person " + str(record.user_id) + " did not exist\n")
+                    logmessage("Person " + str(record.user_id) + " did not exist")
                     continue
                 role_list = [role.name for role in person.roles]
                 if len(role_list) == 0:
@@ -944,7 +995,7 @@ def get_chat_log(chat_mode, yaml_filename, session_id, user_id, temp_user_id, se
                 messages.append(dict(id=record.id, is_self=is_self, temp_owner_id=record.temp_owner_id, temp_user_id=record.temp_user_id, owner_id=record.owner_id, user_id=record.user_id, modtime=modtime, message=message, roles=['user']))
     else:
         if chat_mode in ['peer', 'peerhelp']:
-            records = db.session.execute(select(ChatLog).where(and_(ChatLog.filename == yaml_filename, ChatLog.key == session_id, or_(ChatLog.open_to_peer == True, ChatLog.temp_owner_id == chat_person_id))).order_by(ChatLog.id)).scalars().all()
+            records = db.session.execute(select(ChatLog).where(and_(ChatLog.filename == yaml_filename, ChatLog.key == session_id, or_(ChatLog.open_to_peer == True, ChatLog.temp_owner_id == chat_person_id))).order_by(ChatLog.id)).scalars().all()  # noqa: E712 # pylint: disable=singleton-comparison
         else:
             records = db.session.execute(select(ChatLog).where(and_(ChatLog.filename == yaml_filename, ChatLog.key == session_id, ChatLog.temp_owner_id == chat_person_id)).order_by(ChatLog.id)).scalars().all()
         for record in records:
@@ -952,7 +1003,7 @@ def get_chat_log(chat_mode, yaml_filename, session_id, user_id, temp_user_id, se
                 try:
                     message = decrypt_phrase(record.message, secret)
                 except:
-                    sys.stderr.write("Could not decrypt phrase with secret " + secret + "\n")
+                    logmessage("Could not decrypt phrase with secret " + secret)
                     continue
             else:
                 message = unpack_phrase(record.message)
@@ -960,12 +1011,12 @@ def get_chat_log(chat_mode, yaml_filename, session_id, user_id, temp_user_id, se
             if self_person_type == 'auth':
                 is_self = bool(self_person_id == record.user_id)
             else:
-                #logmessage("self person id is " + str(self_person_id) + " and record user id is " + str(record.temp_user_id))
+                # logmessage("self person id is " + str(self_person_id) + " and record user id is " + str(record.temp_user_id))
                 is_self = bool(self_person_id == record.temp_user_id)
             if record.user_id is not None:
                 person = get_person(record.user_id, people)
                 if person is None:
-                    sys.stderr.write("Person " + str(record.user_id) + " did not exist\n")
+                    logmessage("Person " + str(record.user_id) + " did not exist")
                     continue
                 role_list = [role.name for role in person.roles]
                 if len(role_list) == 0:
@@ -975,7 +1026,8 @@ def get_chat_log(chat_mode, yaml_filename, session_id, user_id, temp_user_id, se
                 messages.append(dict(id=record.id, is_self=is_self, temp_owner_id=record.temp_owner_id, temp_user_id=record.temp_user_id, owner_id=record.owner_id, user_id=record.user_id, modtime=modtime, message=message, roles=['user']))
     return messages
 
-#@elapsed('file_set_attributes')
+
+# @elapsed('file_set_attributes')
 def file_set_attributes(file_number, **kwargs):
     upload = db.session.execute(select(Uploads).filter_by(indexno=file_number).with_for_update()).scalar()
     if upload is None:
@@ -990,6 +1042,7 @@ def file_set_attributes(file_number, **kwargs):
     if 'filename' in kwargs and isinstance(kwargs['filename'], str):
         upload.filename = kwargs['filename']
     db.session.commit()
+
 
 def file_user_access(file_number, allow_user_id=None, allow_email=None, disallow_user_id=None, disallow_email=None, disallow_all=False):
     something_added = False
@@ -1046,6 +1099,7 @@ def file_user_access(file_number, allow_user_id=None, allow_email=None, disallow
         return result
     return None
 
+
 def file_privilege_access(file_number, allow=None, disallow=None, disallow_all=False):
     something_added = False
     if allow:
@@ -1078,10 +1132,12 @@ def file_privilege_access(file_number, allow=None, disallow=None, disallow_all=F
         return result
     return None
 
+
 def clear_session(i):
     if 'sessions' in session and i in session['sessions']:
         del session['sessions'][i]
     session.modified = True
+
 
 def clear_specific_session(i, uid):
     if 'sessions' in session and i in session['sessions']:
@@ -1089,9 +1145,10 @@ def clear_specific_session(i, uid):
             del session['sessions'][i]
     session.modified = True
 
+
 def guess_yaml_filename():
     yaml_filename = None
-    if 'i' in session and 'uid' in session: #TEMPORARY
+    if 'i' in session and 'uid' in session:  # TEMPORARY
         yaml_filename = session['i']
     if 'sessions' in session:
         for item in session['sessions']:
@@ -1099,24 +1156,27 @@ def guess_yaml_filename():
             break
     return yaml_filename
 
+
 def delete_obsolete():
     for name in ('i', 'uid', 'key_logged', 'encrypted', 'chatstatus'):
         if name in session:
             del session[name]
     session.modified = True
 
+
 def get_session(i):
     if 'sessions' not in session:
         session['sessions'] = {}
     if i in session['sessions']:
         return session['sessions'][i]
-    if 'i' in session and 'uid' in session: #TEMPORARY
+    if 'i' in session and 'uid' in session:  # TEMPORARY
         session['sessions'][session['i']] = dict(uid=session['uid'], encrypted=session.get('encrypted', True), key_logged=session.get('key_logged', False), chatstatus=session.get('chatstatus', 'off'))
         if i == session['i']:
             delete_obsolete()
             return session['sessions'][i]
         delete_obsolete()
     return None
+
 
 def unattached_uid():
     while True:
@@ -1126,12 +1186,14 @@ def unattached_uid():
             continue
         return newname
 
+
 def get_uid_for_filename(i):
     if 'sessions' not in session:
         session['sessions'] = {}
     if i not in session['sessions']:
         return None
     return session['sessions'][i]['uid']
+
 
 def update_session(i, uid=None, encrypted=None, key_logged=None, chatstatus=None):
     if 'sessions' not in session:
@@ -1158,8 +1220,9 @@ def update_session(i, uid=None, encrypted=None, key_logged=None, chatstatus=None
     session.modified = True
     return session['sessions'][i]
 
+
 def get_session_uids():
-    if 'i' in session: #TEMPORARY
+    if 'i' in session:  # TEMPORARY
         get_session(session['i'])
     if 'sessions' in session:
         return [item['uid'] for item in session['sessions'].values()]

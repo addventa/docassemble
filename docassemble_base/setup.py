@@ -1,13 +1,17 @@
 import os
+import sys
 from fnmatch import fnmatchcase
 from distutils.util import convert_path
 from setuptools import setup, find_packages
+
 
 def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname), encoding='utf-8').read()
 
 standard_exclude = ('*.py', '*.pyc', '*~', '.*', '*.bak', '*.swp*')
 standard_exclude_directories = ('.*', 'CVS', '_darcs', os.path.join('.', 'build'), os.path.join('.', 'dist'), 'EGG-INFO', '*.egg-info')
+
+
 def find_package_data(where='.', package='', exclude=standard_exclude, exclude_directories=standard_exclude_directories):
     out = {}
     stack = [(convert_path(where), '', package)]
@@ -18,8 +22,7 @@ def find_package_data(where='.', package='', exclude=standard_exclude, exclude_d
             if os.path.isdir(fn):
                 bad_name = False
                 for pattern in exclude_directories:
-                    if (fnmatchcase(name, pattern)
-                        or fn.lower() == pattern.lower()):
+                    if (fnmatchcase(name, pattern) or fn.lower() == pattern.lower()):
                         bad_name = True
                         break
                 if bad_name:
@@ -35,8 +38,7 @@ def find_package_data(where='.', package='', exclude=standard_exclude, exclude_d
             else:
                 bad_name = False
                 for pattern in exclude:
-                    if (fnmatchcase(name, pattern)
-                        or fn.lower() == pattern.lower()):
+                    if (fnmatchcase(name, pattern) or fn.lower() == pattern.lower()):
                         bad_name = True
                         break
                 if bad_name:
@@ -45,11 +47,11 @@ def find_package_data(where='.', package='', exclude=standard_exclude, exclude_d
     return out
 
 install_requires = [
-    'docassemble==1.3.44',
+    'docassemble==1.4.9',
     "3to2==1.1.1",
     "alembic==1.7.7",
     "astunparse==1.6.3",
-    "atomicwrites==1.4.0",
+    "atomicwrites==1.4.1",
     "attrs==21.4.0",
     "azure-common==1.1.28",
     "azure-core==1.23.1",
@@ -58,7 +60,6 @@ install_requires = [
     "azure-nspkg==3.0.2",
     "azure-storage-blob==12.11.0",
     "Babel==2.9.1",
-    "backports.zoneinfo==0.2.1",
     "bcrypt==3.2.0",
     "beautifulsoup4==4.11.1",
     "bleach==5.0.0",
@@ -86,7 +87,7 @@ install_requires = [
     "docopt==0.6.2",
     "docutils==0.18.1",
     "docxcompose==1.3.4",
-    "docxtpl==0.15.2",
+    "docxtpl==0.16.3",
     "et-xmlfile==1.1.0",
     "future==0.18.2",
     "geographiclib==1.52",
@@ -122,7 +123,7 @@ install_requires = [
     "jmespath==1.0.0",
     "joblib==1.1.0",
     "keyring==23.5.0",
-    "lxml==4.8.0",
+    "lxml==4.9.1",
     "Mako==1.2.0",
     "Markdown==3.3.6",
     "MarkupSafe==2.1.1",
@@ -141,10 +142,9 @@ install_requires = [
     "packaging==21.3",
     "pandas==1.4.2",
     "passlib==1.7.4",
-    "pathlib==1.0.1",
     "pdfminer.six==20220319",
     "phonenumbers==8.12.46",
-    "Pillow==9.1.0",
+    "Pillow==9.1.1",
     "pkginfo==1.8.2",
     "pluggy==1.0.0",
     "ply==3.11",
@@ -160,7 +160,7 @@ install_requires = [
     "pycryptodomex==3.14.1",
     "pycurl==7.45.1",
     "Pygments==2.11.2",
-    "PyJWT==2.3.0",
+    "PyJWT==2.4.0",
     "PyLaTeX==1.4.1",
     "pyparsing==3.0.8",
     "PyPDF2==1.27.5",
@@ -226,8 +226,13 @@ install_requires = [
     "vine==5.0.0"
 ]
 
+if sys.version_info < (3, 9):
+    install_requires.append("backports.zoneinfo==0.2.1")
+else:
+    install_requires.append("docassemble-backports==1.0")
+
 setup(name='docassemble.base',
-      version='1.3.44',
+      version='1.4.9',
       python_requires='>=3.8',
       description=('The base components of the docassemble system.'),
       long_description=read("README.md"),
@@ -236,9 +241,9 @@ setup(name='docassemble.base',
       author_email='jhpyle@gmail.com',
       license='MIT',
       url='https://docassemble.org',
-      namespace_packages = ['docassemble'],
-      install_requires = install_requires,
+      namespace_packages=['docassemble'],
+      install_requires=install_requires,
       packages=find_packages(),
-      zip_safe = False,
+      zip_safe=False,
       package_data=find_package_data(where=os.path.join('docassemble', 'base', ''), package='docassemble.base'),
-     )
+      )

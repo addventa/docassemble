@@ -1,18 +1,14 @@
 import ast
 import base64
-import cgi
 import codecs
-import collections
 import copy
 import datetime
-import email
-from distutils.version import LooseVersion
+import email as emailpackage
 import filecmp
-from functools import update_wrapper
+import fnmatch
 import hashlib
 import importlib
 import inspect
-import io
 from io import BytesIO, TextIOWrapper
 import json
 import logging
@@ -23,14 +19,12 @@ import os
 import pickle
 import re
 import shutil
-import socket
 import stat
 import subprocess
 from subprocess import Popen, PIPE
 import sys
 import tarfile
 import tempfile
-import threading
 import time
 import traceback
 import types
@@ -41,14 +35,13 @@ from urllib.parse import unquote as urllibunquote
 from urllib.parse import urlparse, urlunparse, urlencode, urlsplit, parse_qsl
 from urllib.request import urlretrieve
 import uuid
-import weakref
 import xml.etree.ElementTree as ET
 import zipfile
 
 import docassemble.base.config
 if not docassemble.base.config.loaded:
     docassemble.base.config.load()
-from docassemble.base.config import daconfig, hostname, in_celery
+from docassemble.base.config import daconfig, hostname, in_celery, in_cron
 
 import docassemble.webapp.setup
 from docassemble.webapp.setup import da_version
@@ -56,7 +49,7 @@ import docassemble.base.astparser
 from docassemble.webapp.api_key import encrypt_api_key
 from docassemble.base.error import DAError, DAErrorNoEndpoint, DAErrorMissingVariable, DAErrorCompileError, DAValidationError
 import docassemble.base.functions
-from docassemble.base.functions import pickleable_objects, word, comma_and_list, get_default_timezone, ReturnValue
+from docassemble.base.functions import get_default_timezone, ReturnValue, word
 import docassemble.base.DA
 from docassemble.base.generate_key import random_string, random_lower_string, random_alphanumeric, random_digits
 import docassemble.base.interview_cache
@@ -67,34 +60,34 @@ import docassemble.base.pdftk
 from docassemble.base.standardformatter import as_html, as_sms, get_choices_with_abb
 import docassemble.base.util
 from docassemble.base.util import DAEmail, DAEmailRecipientList, DAEmailRecipient, DAFileList, DAFile, DAObject, DAFileCollection, DAStaticFile, DADict, DAList
-import docassemble.base.core # for backward-compatibility with data pickled in earlier versions
+import docassemble.base.core  # for backward-compatibility with data pickled in earlier versions
 
 from docassemble.webapp.app_object import app, csrf, flaskbabel
 import docassemble.webapp.backend
-from docassemble.webapp.backend import cloud, initial_dict, can_access_file_number, get_info_from_file_number, get_info_from_file_number_with_uids, da_send_mail, get_new_file_number, pad, unpad, encrypt_phrase, pack_phrase, decrypt_phrase, unpack_phrase, encrypt_dictionary, pack_dictionary, decrypt_dictionary, unpack_dictionary, nice_date_from_utc, fetch_user_dict, fetch_previous_user_dict, advance_progress, reset_user_dict, get_chat_log, save_numbered_file, generate_csrf, get_info_from_file_reference, reference_exists, write_ml_source, fix_ml_files, is_package_ml, user_dict_exists, file_set_attributes, file_user_access, file_privilege_access, url_if_exists, get_person, Message, url_for, encrypt_object, decrypt_object, delete_user_data, delete_temp_user_data, clear_session, clear_specific_session, guess_yaml_filename, get_session, get_uid_for_filename, update_session, get_session_uids, project_name, directory_for, add_project
+from docassemble.webapp.backend import cloud, initial_dict, can_access_file_number, get_info_from_file_number, get_info_from_file_number_with_uids, da_send_mail, get_new_file_number, encrypt_phrase, pack_phrase, decrypt_phrase, unpack_phrase, encrypt_dictionary, pack_dictionary, decrypt_dictionary, unpack_dictionary, nice_date_from_utc, fetch_user_dict, fetch_previous_user_dict, advance_progress, reset_user_dict, get_chat_log, save_numbered_file, generate_csrf, get_info_from_file_reference, write_ml_source, fix_ml_files, is_package_ml, file_set_attributes, file_user_access, file_privilege_access, url_if_exists, get_person, Message, url_for, encrypt_object, decrypt_object, delete_user_data, delete_temp_user_data, clear_session, clear_specific_session, guess_yaml_filename, get_session, update_session, get_session_uids, project_name, directory_for, add_project
 import docassemble.webapp.clicksend
 import docassemble.webapp.telnyx
 from docassemble.webapp.core.models import Uploads, UploadsUserAuth, SpeakList, Supervisors, Shortener, Email, EmailAttachment, MachineLearning, GlobalObjectStorage
 from docassemble.webapp.daredis import r, r_user, r_store
 from docassemble.webapp.db_object import db
 from docassemble.webapp.develop import CreatePackageForm, CreatePlaygroundPackageForm, UpdatePackageForm, ConfigForm, PlaygroundForm, PlaygroundUploadForm, LogForm, Utilities, PlaygroundFilesForm, PlaygroundFilesEditForm, PlaygroundPackagesForm, GoogleDriveForm, OneDriveForm, GitHubForm, PullPlaygroundPackage, TrainingForm, TrainingUploadForm, APIKey, AddinUploadForm, FunctionFileForm, RenameProject, DeleteProject, NewProject
-from docassemble.webapp.files import SavedFile, get_ext_and_mimetype, make_package_zip
+from docassemble.webapp.files import SavedFile, get_ext_and_mimetype
 from docassemble.webapp.fixpickle import fix_pickle_obj
 from docassemble.webapp.info import system_packages
 from docassemble.webapp.jsonstore import read_answer_json, write_answer_json, delete_answer_json, variables_snapshot_connection
 import docassemble.webapp.machinelearning
-from docassemble.webapp.packages.models import Package, PackageAuth, Install
+from docassemble.webapp.packages.models import Package, PackageAuth
 from docassemble.webapp.playground import PlaygroundSection
 from docassemble.webapp.screenreader import to_text
 from docassemble.webapp.translations import setup_translation
-from docassemble.webapp.users.forms import MyRegisterForm, MyInviteForm, MySignInForm, PhoneLoginForm, PhoneLoginVerifyForm, MFASetupForm, MFAReconfigureForm, MFALoginForm, MFAChooseForm, MFASMSSetupForm, MFAVerifySMSSetupForm, MyResendConfirmEmailForm, ManageAccountForm, RequestDeveloperForm, InterviewsListForm
+from docassemble.webapp.users.forms import MyRegisterForm, MySignInForm, PhoneLoginForm, PhoneLoginVerifyForm, MFASetupForm, MFAReconfigureForm, MFALoginForm, MFAChooseForm, MFASMSSetupForm, MFAVerifySMSSetupForm, MyResendConfirmEmailForm, ManageAccountForm, RequestDeveloperForm, InterviewsListForm
 from docassemble.webapp.users.models import UserAuthModel, UserModel, UserDict, UserDictKeys, TempUser, ChatLog, MyUserInvitation, Role, UserRoles, AnonymousUserModel
 from docassemble.webapp.users.views import user_profile_page
 if not in_celery:
     import docassemble.webapp.worker
 
+import packaging
 import apiclient
-import babel.dates
 from bs4 import BeautifulSoup
 from Crypto.Hash import MD5
 from Crypto.PublicKey import RSA
@@ -106,7 +99,7 @@ import docassemble_flask_user.forms
 import docassemble_flask_user.signals
 import docassemble_flask_user.views
 from docassemble_flask_user import UserManager, SQLAlchemyAdapter
-from docassemble_flask_user import login_required, roles_required, user_logged_in, user_changed_password, user_registered, user_reset_password
+from docassemble_flask_user import login_required, roles_required, user_logged_in, user_changed_password, user_registered
 from docassemblekvsession import KVSessionExtension
 from docassemble_textstat.textstat import textstat
 from flask import make_response, abort, render_template, render_template_string, request, session, send_file, redirect, current_app, get_flashed_messages, flash, Markup, jsonify, Response, g
@@ -123,20 +116,23 @@ import oauth2client.client
 import pandas
 from PIL import Image
 import pkg_resources
-import psutil
 import pyotp
 from pygments import highlight
-from pygments.formatters import HtmlFormatter
-from pygments.lexers import YamlLexer, PythonLexer
-import pytz # should be loaded into memory because pickled objects might use it
-from backports import zoneinfo
+from pygments.formatters import HtmlFormatter  # pylint: disable=no-name-in-module
+from pygments.lexers import YamlLexer  # pylint: disable=no-name-in-module
+# pytz should be loaded into memory because pickled objects might use it
+import pytz  # noqa: F401 # pylint: disable=unused-import
+try:
+    import zoneinfo
+except ImportError:
+    from backports import zoneinfo
 import qrcode
 import qrcode.image.svg
 from rauth import OAuth1Service, OAuth2Service
 import requests
 import ruamel.yaml
 from simplekv.memory.redisstore import RedisStore
-from sqlalchemy import or_, and_, not_, select, delete, update
+from sqlalchemy import or_, and_, not_, select, delete as sqldelete, update
 import tailer
 import twilio.twiml
 import twilio.twiml.messaging_response
@@ -147,7 +143,7 @@ import werkzeug.utils
 import wtforms
 import xlsxwriter
 from user_agents import parse as ua_parse
-import yaml
+import yaml as standardyaml
 
 docassemble.base.util.set_knn_machine_learner(docassemble.webapp.machinelearning.SimpleTextMachineLearner)
 docassemble.base.util.set_machine_learning_entry(docassemble.webapp.machinelearning.MachineLearningEntry)
@@ -169,6 +165,8 @@ STATS = daconfig.get('collect statistics', False)
 DEBUG = daconfig.get('debug', False)
 ERROR_TYPES_NO_EMAIL = daconfig.get('suppress error notificiations', [])
 COOKIELESS_SESSIONS = daconfig.get('cookieless sessions', False)
+BAN_IP_ADDRESSES = daconfig.get('ip address ban enabled', True)
+CONCURRENCY_LOCK_TIMEOUT = daconfig.get('concurrency lock timeout', 4)
 
 if DEBUG:
     PREVENT_DEMO = False
@@ -439,6 +437,7 @@ ok_extensions = {
     "z80": "z80"
 }
 
+
 def update_editable():
     try:
         if 'editable mimetypes' in daconfig and isinstance(daconfig['editable mimetypes'], list):
@@ -477,8 +476,8 @@ gt_match = re.compile(r'>')
 amp_match = re.compile(r'&')
 extraneous_var = re.compile(r'^x\.|^x\[')
 key_requires_preassembly = re.compile(r'^(session_local\.|device_local\.|user_local\.|x\.|x\[|_multiple_choice|.*\[[ijklmn]\])')
-#match_invalid = re.compile('[^A-Za-z0-9_\[\].\'\%\-=]')
-#match_invalid_key = re.compile('[^A-Za-z0-9_\[\].\'\%\- =]')
+# match_invalid = re.compile('[^A-Za-z0-9_\[\].\'\%\-=]')
+# match_invalid_key = re.compile('[^A-Za-z0-9_\[\].\'\%\- =]')
 match_brackets = re.compile(r'\[[BR]?\'[^\]]*\'\]$')
 match_inside_and_outside_brackets = re.compile(r'(.*)(\[[BR]?\'[^\]]*\'\])$')
 match_inside_brackets = re.compile(r'\[([BR]?)\'([^\]]*)\'\]')
@@ -494,23 +493,33 @@ PDFTOPPM_COMMAND = daconfig.get('pdftoppm', 'pdftoppm')
 DEFAULT_LANGUAGE = daconfig.get('language', 'en')
 DEFAULT_LOCALE = daconfig.get('locale', 'en_US.utf8')
 DEFAULT_DIALECT = daconfig.get('dialect', 'us')
+DEFAULT_VOICE = daconfig.get('voice', None)
 LOGSERVER = daconfig.get('log server', None)
 CHECKIN_INTERVAL = int(daconfig.get('checkin interval', 6000))
-#message_sequence = dbtableprefix + 'message_id_seq'
+# message_sequence = dbtableprefix + 'message_id_seq'
 NOTIFICATION_CONTAINER = '<div class="datopcenter col-sm-7 col-md-6 col-lg-5" id="daflash">%s</div>'
 NOTIFICATION_MESSAGE = '<div class="da-alert alert alert-%s alert-dismissible fade show" role="alert">%s<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div>'
 
 USING_SUPERVISOR = bool(os.environ.get('SUPERVISOR_SERVER_URL', None))
+SINGLE_SERVER = USING_SUPERVISOR and bool(':all:' in ':' + os.environ.get('CONTAINERROLE', 'all') + ':')
 
 audio_mimetype_table = {'mp3': 'audio/mpeg', 'ogg': 'audio/ogg'}
 
 ROOT = daconfig.get('root', '/')
-#app.logger.warning("default sender is " + current_app.config['MAIL_DEFAULT_SENDER'] + "\n")
+# app.logger.warning("default sender is " + current_app.config['MAIL_DEFAULT_SENDER'] + "\n")
 exit_page = daconfig.get('exitpage', 'https://docassemble.org')
 
-SUPERVISORCTL = daconfig.get('supervisorctl', 'supervisorctl')
-#PACKAGE_CACHE = daconfig.get('packagecache', '/var/www/.cache')
+SUPERVISORCTL = [daconfig.get('supervisorctl', 'supervisorctl')]
+if daconfig['supervisor'].get('username', None):
+    SUPERVISORCTL.extend(['--username', daconfig['supervisor']['username'], '--password', daconfig['supervisor']['password']])
+
+# PACKAGE_CACHE = daconfig.get('packagecache', '/var/www/.cache')
 WEBAPP_PATH = daconfig.get('webapp', '/usr/share/docassemble/webapp/docassemble.wsgi')
+if packaging.version.parse(daconfig.get('system version', '0.1.12')) < packaging.version.parse('1.4.0'):
+    READY_FILE = daconfig.get('ready file', '/usr/share/docassemble/webapp/ready')
+else:
+    READY_FILE = daconfig.get('ready file', '/var/run/docassemble/ready')
+
 UPLOAD_DIRECTORY = daconfig.get('uploads', '/usr/share/docassemble/files')
 PACKAGE_DIRECTORY = daconfig.get('packages', '/usr/share/docassemble/local' + str(sys.version_info.major) + '.' + str(sys.version_info.minor))
 FULL_PACKAGE_DIRECTORY = os.path.join(PACKAGE_DIRECTORY, 'lib', 'python' + str(sys.version_info.major) + '.' + str(sys.version_info.minor), 'site-packages')
@@ -519,7 +528,7 @@ LOG_DIRECTORY = daconfig.get('log', '/usr/share/docassemble/log')
 PAGINATION_LIMIT = daconfig.get('pagination limit', 100)
 PAGINATION_LIMIT_PLUS_ONE = PAGINATION_LIMIT + 1
 
-#PLAYGROUND_MODULES_DIRECTORY = daconfig.get('playground_modules', )
+# PLAYGROUND_MODULES_DIRECTORY = daconfig.get('playground_modules', )
 
 init_py_file = """try:
     __import__('pkg_resources').declare_namespace(__name__)
@@ -527,25 +536,25 @@ except ImportError:
     __path__ = __import__('pkgutil').extend_path(__path__, __name__)
 """
 
-#if not os.path.isfile(os.path.join(PLAYGROUND_MODULES_DIRECTORY, 'docassemble', '__init__.py')):
-#    with open(os.path.join(PLAYGROUND_MODULES_DIRECTORY, 'docassemble', '__init__.py'), 'a') as the_file:
-#        the_file.write(init_py_file)
+# if not os.path.isfile(os.path.join(PLAYGROUND_MODULES_DIRECTORY, 'docassemble', '__init__.py')):
+#     with open(os.path.join(PLAYGROUND_MODULES_DIRECTORY, 'docassemble', '__init__.py'), 'a') as the_file:
+#         the_file.write(init_py_file)
 
-#USE_PROGRESS_BAR = daconfig.get('use_progress_bar', True)
+# USE_PROGRESS_BAR = daconfig.get('use_progress_bar', True)
 SHOW_LOGIN = daconfig.get('show login', True)
 ALLOW_REGISTRATION = daconfig.get('allow registration', True)
-#USER_PACKAGES = daconfig.get('user_packages', '/var/lib/docassemble/dist-packages')
-#sys.path.append(USER_PACKAGES)
-#if USE_PROGRESS_BAR:
+# USER_PACKAGES = daconfig.get('user_packages', '/var/lib/docassemble/dist-packages')
+# sys.path.append(USER_PACKAGES)
+# if USE_PROGRESS_BAR:
 
 if in_celery:
     LOGFILE = daconfig.get('celery flask log', '/tmp/celery-flask.log')
 else:
     LOGFILE = daconfig.get('flask log', '/tmp/flask.log')
-#APACHE_LOGFILE = daconfig.get('apache_log', '/var/log/apache2/error.log')
+# APACHE_LOGFILE = daconfig.get('apache_log', '/var/log/apache2/error.log')
 
-#connect_string = docassemble.webapp.database.connection_string()
-#alchemy_connect_string = docassemble.webapp.database.alchemy_connection_string()
+# connect_string = docassemble.webapp.database.connection_string()
+# alchemy_connect_string = docassemble.webapp.database.alchemy_connection_string()
 
 mimetypes.add_type('application/x-yaml', '.yml')
 mimetypes.add_type('application/x-yaml', '.yaml')
@@ -554,13 +563,15 @@ store = RedisStore(r_store)
 
 kv_session = KVSessionExtension(store, app)
 
+
 def _call_or_get(function_or_property):
     return function_or_property() if callable(function_or_property) else function_or_property
+
 
 def _get_safe_next_param(param_name, default_endpoint):
     if param_name in request.args:
         safe_next = current_app.user_manager.make_safe_url_function(urllibunquote(request.args[param_name]))
-        #safe_next = request.args[param_name]
+        # safe_next = request.args[param_name]
     else:
         safe_next = _endpoint_url(default_endpoint)
     return safe_next
@@ -588,12 +599,13 @@ def _get_safe_next_param(param_name, default_endpoint):
 
 #     return redirect(safe_next)
 
+
 def custom_resend_confirm_email():
     user_manager = current_app.user_manager
     form = user_manager.resend_confirm_email_form(request.form)
-    if request.method=='GET' and 'email' in request.args:
+    if request.method == 'GET' and 'email' in request.args:
         form.email.data = request.args['email']
-    if request.method=='POST' and form.validate():
+    if request.method == 'POST' and form.validate():
         email = form.email.data
         user, user_email = user_manager.find_user_by_email(email)
         if user:
@@ -603,17 +615,19 @@ def custom_resend_confirm_email():
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
 
+
 def as_int(val):
     try:
         return int(val)
     except:
         return 0
 
+
 def custom_register():
     """Display registration form and create new User."""
     is_json = bool(('json' in request.form and as_int(request.form['json'])) or ('json' in request.args and as_int(request.args['json'])))
 
-    user_manager =  current_app.user_manager
+    user_manager = current_app.user_manager
     db_adapter = user_manager.db_adapter
 
     safe_next = _get_safe_next_param('next', user_manager.after_login_endpoint)
@@ -636,6 +650,8 @@ def custom_register():
     # invite token used to determine validity of registeree
     invite_token = request.values.get("token")
 
+    the_tz = get_default_timezone()
+
     # require invite without a token should disallow the user from registering
     if user_manager.require_invitation and not invite_token:
         flash(word("Registration is invite only"), "error")
@@ -651,10 +667,21 @@ def custom_register():
             return redirect(url_for('user.login'))
 
     if request.method != 'POST':
-        login_form.next.data     = register_form.next.data     = safe_next
+        login_form.next.data = register_form.next.data = safe_next
         login_form.reg_next.data = register_form.reg_next.data = safe_reg_next
         if user_invite:
             register_form.email.data = user_invite.email
+
+    register_form.timezone.choices = [(x, x) for x in sorted(list(zoneinfo.available_timezones()))]
+    register_form.timezone.default = the_tz
+    if str(register_form.timezone.data) == 'None' or str(register_form.timezone.data) == '':
+        register_form.timezone.data = the_tz
+    if request.method == 'POST':
+        if 'timezone' not in app.config['USER_PROFILE_FIELDS']:
+            register_form.timezone.data = the_tz
+        for reg_field in ('first_name', 'last_name', 'country', 'subdivisionfirst', 'subdivisionsecond', 'subdivisionthird', 'organization', 'language'):
+            if reg_field not in app.config['USER_PROFILE_FIELDS']:
+                getattr(register_form, reg_field).data = ""
 
     # Process valid POST
     if request.method == 'POST' and register_form.validate():
@@ -740,9 +767,9 @@ def custom_register():
         # Add UserEmail record using named arguments 'user_email_fields'
         if db_adapter.UserEmailClass:
             user_email = db_adapter.add_object(UserEmail,
-                    user=user,
-                    is_primary=True,
-                    **user_email_fields)
+                                               user=user,
+                                               is_primary=True,
+                                               **user_email_fields)
         else:
             user_email = None
 
@@ -767,7 +794,7 @@ def custom_register():
             try:
                 # Send 'registered' email
                 docassemble_flask_user.views._send_registered_email(user, user_email, require_email_confirmation)
-            except Exception:
+            except:
                 # delete new User object if send fails
                 db_adapter.delete_object(user)
                 db_adapter.commit()
@@ -775,8 +802,8 @@ def custom_register():
 
         # Send user_registered signal
         docassemble_flask_user.signals.user_registered.send(current_app._get_current_object(),
-                                                user=user,
-                                                user_invite=user_invite)
+                                                            user=user,
+                                                            user_invite=user_invite)
 
         # Redirect if USER_ENABLE_CONFIRM_EMAIL is set
         if user_manager.enable_confirm_email and require_email_confirmation:
@@ -806,15 +833,15 @@ def custom_register():
     if is_json:
         return jsonify(action='register', csrf_token=generate_csrf())
     response = make_response(user_manager.render_function(user_manager.register_template,
-                                                              form=register_form,
-                                                              login_form=login_form,
-                                                              register_form=register_form), 200)
+                                                          form=register_form,
+                                                          login_form=login_form,
+                                                          register_form=register_form), 200)
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
 
+
 def custom_login():
     """ Prompt for username/email and password and sign the user in."""
-    #sys.stderr.write("In custom_login\n")
     print("Doing login")
 
     is_json = bool(('json' in request.form and as_int(request.form['json'])) or ('json' in request.args and as_int(request.args['json'])))
@@ -920,30 +947,29 @@ def custom_login():
     login_form = user_manager.login_form(request.form)
     register_form = user_manager.register_form()
     if request.method != 'POST':
-        login_form.next.data     = register_form.next.data     = safe_next
+        login_form.next.data = register_form.next.data = safe_next
         login_form.reg_next.data = register_form.reg_next.data = safe_reg_next
     if request.method == 'GET' and 'validated_user' in session:
         del session['validated_user']
-    if request.method=='POST' and login_form.validate():
+    if request.method == 'POST' and login_form.validate():
         user = None
-        user_email = None
         if user_manager.enable_username:
             user = user_manager.find_user_by_username(login_form.username.data)
-            user_email = None
+            user_email = None  # pylint: disable=unused-variable
             if user and db_adapter.UserEmailClass:
                 user_email = db_adapter.find_first_object(db_adapter.UserEmailClass,
-                        user_id=int(user.get_id()),
-                        is_primary=True,
-                        )
+                                                          user_id=int(user.get_id()),
+                                                          is_primary=True,
+                                                          )
             if not user and user_manager.enable_email:
                 user, user_email = user_manager.find_user_by_email(login_form.username.data)
         else:
             user, user_email = user_manager.find_user_by_email(login_form.email.data)
-        #if not user and daconfig['ldap login'].get('enabled', False):
+        # if not user and daconfig['ldap login'].get('enabled', False):
         if user:
             safe_next = user_manager.make_safe_url_function(login_form.next.data)
-            #safe_next = login_form.next.data
-            #safe_next = url_for('post_login', next=login_form.next.data)
+            # safe_next = login_form.next.data
+            # safe_next = url_for('post_login', next=login_form.next.data)
             if app.config['USE_MFA']:
                 if user.otp_secret is None and len(app.config['MFA_REQUIRED_FOR_ROLE']) and user.has_role(*app.config['MFA_REQUIRED_FOR_ROLE']):
                     session['validated_user'] = user.id
@@ -994,12 +1020,31 @@ def custom_login():
     #                            extra_css=Markup(extra_css),
     #                            extra_js=Markup(extra_js))
     # else:
+    if app.config['AUTO_LOGIN'] and not (app.config['USE_PASSWORD_LOGIN'] or ('admin' in request.args and request.args['admin'] == '1') or ('from_logout' in request.args and request.args['from_logout'] == '1')):
+        if app.config['AUTO_LOGIN'] is True:
+            number_of_methods = 0
+            the_method = None
+            for login_method in ('USE_PHONE_LOGIN', 'USE_GOOGLE_LOGIN', 'USE_FACEBOOK_LOGIN', 'USE_TWITTER_LOGIN', 'USE_AUTH0_LOGIN', 'USE_KEYCLOAK_LOGIN', 'USE_AZURE_LOGIN'):
+                if app.config[login_method]:
+                    number_of_methods += 1
+                    the_method = re.sub(r'USE_(.*)_LOGIN', r'\1', login_method).lower()
+            if number_of_methods > 1:
+                the_method = None
+        else:
+            the_method = app.config['AUTO_LOGIN']
+        if the_method == 'phone':
+            return redirect(url_for('phone_login'))
+        if the_method == 'google':
+            return redirect(url_for('google_page', next=request.args.get('next', '')))
+        if the_method in ('facebook', 'twitter', 'auth0', 'keycloak', 'azure'):
+            return redirect(url_for('oauth_authorize', provider=the_method, next=request.args.get('next', '')))
     response = make_response(user_manager.render_function(user_manager.login_template,
                                                           form=login_form,
                                                           login_form=login_form,
                                                           register_form=register_form), 200)
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
+
 
 def add_secret_to(response):
     if 'newsecret' in session:
@@ -1010,7 +1055,9 @@ def add_secret_to(response):
         del session['newsecret']
     return response
 
+
 def logout():
+    setup_translation()
     # secret = request.cookies.get('secret', None)
     # if secret is None:
     #     secret = random_string(16)
@@ -1019,15 +1066,19 @@ def logout():
     #     secret = str(secret)
     #     set_cookie = False
     user_manager = current_app.user_manager
-    if 'next_arg' in session:
-        next_url = session['next_arg']
-        del session['next_arg']
-    # if 'next' in request.args:
-    #     next_url = request.args['next']
-    elif session.get('language', None) and session['language'] != DEFAULT_LANGUAGE:
-        next_url = _endpoint_url(user_manager.after_logout_endpoint, lang=session['language'])
-    else:
-        next_url = _endpoint_url(user_manager.after_logout_endpoint)
+    next_url = None
+    if 'next' in request.args and request.args['next'] != '':
+        try:
+            next_url = decrypt_phrase(repad(bytearray(request.args['next'], encoding='utf-8')).decode(), app.secret_key)
+        except:
+            pass
+    if next_url is None:
+        next_url = daconfig.get('logoutpage', None)
+    if next_url is None:
+        if session.get('language', None) and session['language'] != DEFAULT_LANGUAGE:
+            next_url = _endpoint_url(user_manager.after_logout_endpoint, lang=session['language'], from_logout='1')
+        else:
+            next_url = _endpoint_url(user_manager.after_logout_endpoint, from_logout='1')
     if current_user.is_authenticated:
         if current_user.social_id.startswith('auth0$') and 'oauth' in daconfig and 'auth0' in daconfig['oauth'] and 'domain' in daconfig['oauth']['auth0']:
             if next_url.startswith('/'):
@@ -1036,13 +1087,7 @@ def logout():
         if current_user.social_id.startswith('keycloak$') and 'oauth' in daconfig and 'keycloak' in daconfig['oauth'] and 'domain' in daconfig['oauth']['keycloak']:
             if next_url.startswith('/'):
                 next_url = get_base_url() + next_url
-            next_url = ('https://' + daconfig['oauth']['keycloak']['domain'] + '/auth/realms/' + daconfig['oauth']['keycloak']['realm'] + '/protocol/openid-connect/logout?' + urlencode(dict(post_logout_redirect_uri=next_url))
-            )
-    else:
-        if session.get('language', None) and session['language'] != DEFAULT_LANGUAGE:
-            next_url = _endpoint_url(user_manager.after_logout_endpoint, lang=session['language'])
-        else:
-            next_url = _endpoint_url(user_manager.after_logout_endpoint)
+            next_url = ('https://' + daconfig['oauth']['keycloak']['domain'] + '/auth/realms/' + daconfig['oauth']['keycloak']['realm'] + '/protocol/openid-connect/logout?' + urlencode(dict(post_logout_redirect_uri=next_url)))
     docassemble_flask_user.signals.user_logged_out.send(current_app._get_current_object(), user=current_user)
     logout_user()
     delete_session_info()
@@ -1101,18 +1146,22 @@ def logout():
 
 #     return render_template(user_manager.login_template, page_title=word('Sign In'), tab_title=word('Sign In'), form=login_form, login_form=login_form, register_form=register_form)
 
+
 def unauthenticated():
     if not request.args.get('nm', False):
         flash(word("You need to log in before you can access") + " " + word(request.path), 'error')
     the_url = url_for('user.login', next=fix_http(request.url))
     return redirect(the_url)
 
+
 def unauthorized():
     flash(word("You are not authorized to access") + " " + word(request.path), 'error')
     return redirect(url_for('interview_list', next=fix_http(request.url)))
 
-def my_default_url(error, endpoint, values):
+
+def my_default_url(error, endpoint, values):  # pylint: disable=unused-argument
     return url_for('index')
+
 
 def make_safe_url(url):
     parts = urlsplit(url)
@@ -1123,7 +1172,8 @@ def make_safe_url(url):
         safe_url += '#' + parts.fragment
     return safe_url
 
-def password_validator(form, field):
+
+def password_validator(form, field):  # pylint: disable=unused-argument
     password = list(field.data)
     password_length = len(password)
 
@@ -1144,7 +1194,7 @@ def password_validator(form, field):
         if 'error message' in rules:
             error_message = str(rules['error message'])
         else:
-            #word("Password must be at least six characters long with at least one lowercase letter, at least one uppercase letter, and at least one number.")
+            # word("Password must be at least six characters long with at least one lowercase letter, at least one uppercase letter, and at least one number.")
             error_message = 'Password must be at least ' + docassemble.base.functions.quantity_noun(rules.get('length', 6), 'character', language='en') + ' long'
             standards = []
             if rules.get('lowercase', 1) > 0:
@@ -1168,6 +1218,82 @@ lm.init_app(app)
 lm.login_view = 'custom_login'
 lm.anonymous_user = AnonymousUserModel
 
+
+def url_for_interview(**args):
+    for k, v in daconfig.get('dispatch').items():
+        if v == args['i']:
+            args['dispatch'] = k
+            del args['i']
+            is_new = False
+            try:
+                if true_or_false(args['new_session']):
+                    is_new = True
+                    del args['new_session']
+            except:
+                is_new = False
+            if is_new:
+                return docassemble.base.functions.url_of('run_new_dispatch', **args)
+            return docassemble.base.functions.url_of('run_dispatch', **args)
+    return url_for('index', **args)
+
+app.jinja_env.globals.update(url_for=url_for, url_for_interview=url_for_interview)
+
+
+def syslog_message(message):
+    message = re.sub(r'\n', ' ', message)
+    if current_user and current_user.is_authenticated and not current_user.is_anonymous:
+        the_user = current_user.email
+    else:
+        the_user = "anonymous"
+    if request_active:
+        try:
+            sys_logger.debug('%s', LOGFORMAT % {'message': message, 'clientip': get_requester_ip(request), 'yamlfile': docassemble.base.functions.this_thread.current_info.get('yaml_filename', 'na'), 'user': the_user, 'session': docassemble.base.functions.this_thread.current_info.get('session', 'na')})
+        except Exception as err:
+            sys.stderr.write("Error writing log message " + str(message) + "\n")
+            try:
+                sys.stderr.write("Error was " + err.__class__.__name__ + ": " + str(err) + "\n")
+            except:
+                pass
+    else:
+        try:
+            sys_logger.debug('%s', LOGFORMAT % {'message': message, 'clientip': 'localhost', 'yamlfile': 'na', 'user': 'na', 'session': 'na'})
+        except Exception as err:
+            sys.stderr.write("Error writing log message " + str(message) + "\n")
+            try:
+                sys.stderr.write("Error was " + err.__class__.__name__ + ": " + str(err) + "\n")
+            except:
+                pass
+
+
+def syslog_message_with_timestamp(message):
+    syslog_message(time.strftime("%Y-%m-%d %H:%M:%S") + " " + message)
+
+sys_logger = logging.getLogger('docassemble')
+sys_logger.setLevel(logging.DEBUG)
+
+LOGFORMAT = daconfig.get('log format', 'docassemble: ip=%(clientip)s i=%(yamlfile)s uid=%(session)s user=%(user)s %(message)s')
+
+
+def add_log_handler():
+    tries = 0
+    while tries < 5:
+        try:
+            docassemble_log_handler = logging.FileHandler(filename=os.path.join(LOG_DIRECTORY, 'docassemble.log'))
+        except PermissionError:
+            time.sleep(1)
+            continue
+        sys_logger.addHandler(docassemble_log_handler)
+        break
+
+add_log_handler()
+
+if not (in_celery or in_cron):
+    if LOGSERVER is None:
+        docassemble.base.logger.set_logmessage(syslog_message_with_timestamp)
+    else:
+        docassemble.base.logger.set_logmessage(syslog_message)
+
+
 def login_as_admin(url, url_root):
     found = False
     for admin_user in db.session.execute(select(UserModel).filter_by(nickname='admin').order_by(UserModel.id)).scalars():
@@ -1175,6 +1301,7 @@ def login_as_admin(url, url_root):
             found = True
             current_app.login_manager._update_request_context_with_user(admin_user)
             docassemble.base.functions.this_thread.current_info = dict(user=dict(is_anonymous=False, is_authenticated=True, email=admin_user.email, theid=admin_user.id, the_user_id=admin_user.id, roles=['admin'], firstname=admin_user.first_name, lastname=admin_user.last_name, nickname=admin_user.nickname, country=admin_user.country, subdivisionfirst=admin_user.subdivisionfirst, subdivisionsecond=admin_user.subdivisionsecond, subdivisionthird=admin_user.subdivisionthird, organization=admin_user.organization, location=None, session_uid='admin', device_id='admin'), session=None, secret=None, yaml_filename=final_default_yaml_filename, url=url, url_root=url_root, encrypted=False, action=None, interface='initialization', arguments={})
+
 
 def import_necessary(url, url_root):
     login_as_admin(url, url_root)
@@ -1191,7 +1318,8 @@ def import_necessary(url, url_root):
                   os.path.join(FULL_PACKAGE_DIRECTORY, 'docassemble', 'demo'),
                   os.path.join(FULL_PACKAGE_DIRECTORY, 'docassemble', 'webapp')]
     modules = ['docassemble.base.legal']
-    for root, dirs, files in os.walk(os.path.join(FULL_PACKAGE_DIRECTORY, 'docassemble')):
+    use_whitelist = 'module whitelist' in daconfig
+    for root, dirs, files in os.walk(os.path.join(FULL_PACKAGE_DIRECTORY, 'docassemble')):  # pylint: disable=unused-variable
         ok = True
         for avoid in avoid_dirs:
             if root.startswith(avoid):
@@ -1203,26 +1331,39 @@ def import_necessary(url, url_root):
             if not the_file.endswith('.py'):
                 continue
             thefilename = os.path.join(root, the_file)
+            if use_whitelist:
+                parts = thefilename.split(os.sep)[start_dir:]
+                parts[-1] = parts[-1][0:-3]
+                module_name = '.'.join(parts)
+                module_name = re.sub(r'\.__init__$', '', module_name)
+                if any(fnmatch.fnmatchcase(module_name, whitelist_item) for whitelist_item in daconfig['module whitelist']):
+                    modules.append(module_name)
+                continue
             with open(thefilename, 'r', encoding='utf-8') as fp:
-                for cnt, line in enumerate(fp):
+                for line in fp:
                     if line.startswith('# do not pre-load'):
                         break
-                    if line.startswith('class') or line.startswith('# pre-load') or 'docassemble.base.util.update' in line:
+                    if line.startswith('class ') or line.startswith('# pre-load') or 'docassemble.base.util.update' in line:
                         parts = thefilename.split(os.sep)[start_dir:]
                         parts[-1] = parts[-1][0:-3]
-                        modules.append(('.'.join(parts)))
+                        module_name = '.'.join(parts)
+                        module_name = re.sub(r'\.__init__$', '', module_name)
+                        modules.append(module_name)
                         break
     for module_name in modules:
+        if any(fnmatch.fnmatchcase(module_name, blacklist_item) for blacklist_item in daconfig['module blacklist']):
+            continue
         current_package = re.sub(r'\.[^\.]+$', '', module_name)
         docassemble.base.functions.this_thread.current_package = current_package
         docassemble.base.functions.this_thread.current_info.update(dict(yaml_filename=current_package + ':data/questions/test.yml'))
         try:
             importlib.import_module(module_name)
         except Exception as err:
-            sys.stderr.write("Import of " + module_name + " failed.  " + err.__class__.__name__ + ": " + str(err) + "\n")
+            logmessage("Import of " + module_name + " failed.  " + err.__class__.__name__ + ": " + str(err))
     current_app.login_manager._update_request_context_with_user()
 
 fax_provider = daconfig.get('fax provider', None) or 'clicksend'
+
 
 def get_clicksend_config():
     if 'clicksend' in daconfig and isinstance(daconfig['clicksend'], (list, dict)):
@@ -1243,16 +1384,17 @@ def get_clicksend_config():
                 if 'name' in the_config:
                     the_clicksend_config['name'][the_config['name']] = the_config
             else:
-                sys.stderr.write("improper setup in clicksend configuration\n")
+                logmessage("improper setup in clicksend configuration")
         if 'default' not in the_clicksend_config['name']:
             the_clicksend_config = None
     else:
         the_clicksend_config = None
-    #if fax_provider == 'clicksend' and the_clicksend_config is None:
-    #    sys.stderr.write("improper clicksend configuration; faxing will not be functional\n")
+    # if fax_provider == 'clicksend' and the_clicksend_config is None:
+    #    logmessage("improper clicksend configuration; faxing will not be functional")
     return the_clicksend_config
 
 clicksend_config = get_clicksend_config()
+
 
 def get_telnyx_config():
     if 'telnyx' in daconfig and isinstance(daconfig['telnyx'], (list, dict)):
@@ -1273,16 +1415,17 @@ def get_telnyx_config():
                 if 'name' in the_config:
                     the_telnyx_config['name'][the_config['name']] = the_config
             else:
-                sys.stderr.write("improper setup in twilio configuration\n")
+                logmessage("improper setup in twilio configuration")
         if 'default' not in the_telnyx_config['name']:
             the_telnyx_config = None
     else:
         the_telnyx_config = None
     if fax_provider == 'telnyx' and the_telnyx_config is None:
-        sys.stderr.write("improper telnyx configuration; faxing will not be functional\n")
+        logmessage("improper telnyx configuration; faxing will not be functional")
     return the_telnyx_config
 
 telnyx_config = get_telnyx_config()
+
 
 def get_twilio_config():
     if 'twilio' in daconfig:
@@ -1303,7 +1446,7 @@ def get_twilio_config():
                 if 'name' in tconfig:
                     the_twilio_config['name'][tconfig['name']] = tconfig
             else:
-                sys.stderr.write("improper setup in twilio configuration\n")
+                logmessage("improper setup in twilio configuration")
         if 'default' not in the_twilio_config['name']:
             the_twilio_config = None
     else:
@@ -1326,6 +1469,7 @@ app.config['USE_ONEDRIVE'] = False
 app.config['USE_PHONE_LOGIN'] = False
 app.config['USE_GITHUB'] = False
 app.config['USE_PASSWORD_LOGIN'] = not bool(daconfig.get('password login', True) is False)
+app.config['AUTO_LOGIN'] = daconfig.get('auto login', False)
 if twilio_config is not None and daconfig.get('phone login', False) is True:
     app.config['USE_PHONE_LOGIN'] = True
 if 'oauth' in daconfig:
@@ -1360,6 +1504,7 @@ else:
     app.config['BUTTON_STYLE'] = 'btn-'
 BUTTON_COLOR_NAV_LOGIN = daconfig['button colors'].get('navigation bar login', 'primary')
 app.config['FOOTER_CLASS'] = str(daconfig.get('footer css class', 'bg-light')).strip() + ' dafooter'
+
 
 def get_page_parts():
     the_page_parts = {}
@@ -1439,6 +1584,7 @@ else:
     analytics_configured = False
     reserved_argnames = ('i', 'json', 'js_target', 'from_list', 'session', 'cache', 'reset', 'new_session', 'action')
 
+
 def get_sms_session(phone_number, config='default'):
     sess_info = None
     if twilio_config is None:
@@ -1462,6 +1608,7 @@ def get_sms_session(phone_number, config='default'):
             sess_info['email'] = user.email
     return sess_info
 
+
 def initiate_sms_session(phone_number, yaml_filename=None, uid=None, secret=None, encrypted=None, user_id=None, email=None, new=False, config='default'):
     phone_number = docassemble.base.functions.phone_number_in_e164(phone_number)
     if phone_number is None:
@@ -1476,7 +1623,7 @@ def initiate_sms_session(phone_number, yaml_filename=None, uid=None, secret=None
             yaml_filename = default_yaml_filename
     temp_user_id = None
     if user_id is None and email is not None:
-        user = db.session.execute(select(UserModel).where(and_(UserModel.email.ilike(email), UserModel.active == True))).scalar()
+        user = db.session.execute(select(UserModel).where(and_(UserModel.email.ilike(email), UserModel.active == True))).scalar()  # noqa: E712 # pylint: disable=singleton-comparison
         if user is not None:
             user_id = user.id
     if user_id is None:
@@ -1510,9 +1657,10 @@ def initiate_sms_session(phone_number, yaml_filename=None, uid=None, secret=None
         else:
             encrypted = the_current_info['encrypted']
     sess_info = dict(yaml_filename=yaml_filename, uid=uid, secret=secret, number=phone_number, encrypted=encrypted, tempuser=temp_user_id, user_id=user_id)
-    #logmessage("initiate_sms_session: setting da:sms:client:" + phone_number + ':server:' + tconfig['number'] + " to " + str(sess_info))
+    # logmessage("initiate_sms_session: setting da:sms:client:" + phone_number + ':server:' + tconfig['number'] + " to " + str(sess_info))
     r.set('da:sms:client:' + phone_number + ':server:' + tconfig['number'], pickle.dumps(sess_info))
     return True
+
 
 def terminate_sms_session(phone_number, config='default'):
     if config not in twilio_config['name']:
@@ -1521,19 +1669,29 @@ def terminate_sms_session(phone_number, config='default'):
     phone_number = docassemble.base.functions.phone_number_in_e164(phone_number)
     r.delete('da:sms:client:' + phone_number + ':server:' + tconfig['number'])
 
+
 def fix_http(url):
     if HTTP_TO_HTTPS:
         return re.sub(r'^http:', 'https:', url)
     return url
 
-def safe_quote_func(string, safe='', encoding=None, errors=None):
+
+def safe_quote_func(string, safe='', encoding=None, errors=None):  # pylint: disable=unused-argument
     return urllibquote(string, safe='', encoding=encoding, errors=errors)
+
 
 def remove_question_package(args):
     if '_question' in args:
         del args['_question']
     if '_package' in args:
         del args['_package']
+
+
+def encrypt_next(args):
+    if 'next' not in args:
+        return
+    args['next'] = re.sub(r'\s', '', encrypt_phrase(args['next'], app.secret_key)).rstrip('=')
+
 
 def get_url_from_file_reference(file_reference, **kwargs):
     if 'jsembed' in docassemble.base.functions.this_thread.misc or COOKIELESS_SESSIONS:
@@ -1594,20 +1752,23 @@ def get_url_from_file_reference(file_reference, **kwargs):
         return url_for('config_page', **kwargs)
     if file_reference == 'leave':
         remove_question_package(kwargs)
+        encrypt_next(kwargs)
         return url_for('leave', **kwargs)
     if file_reference == 'logout':
         remove_question_package(kwargs)
+        encrypt_next(kwargs)
         return url_for('user.logout', **kwargs)
     if file_reference == 'restart':
         remove_question_package(kwargs_with_i)
         return url_for('restart_session', **kwargs_with_i)
     if file_reference == 'new_session':
         remove_question_package(kwargs_with_i)
-        return url_for('new_session', **kwargs_with_i)
+        return url_for('new_session_endpoint', **kwargs_with_i)
     if file_reference == 'help':
         return 'javascript:daShowHelpTab()'
     if file_reference == 'interview':
         remove_question_package(kwargs)
+        docassemble.base.functions.modify_i_argument(kwargs)
         return url_for('index', **kwargs)
     if file_reference == 'flex_interview':
         remove_question_package(kwargs)
@@ -1651,9 +1812,11 @@ def get_url_from_file_reference(file_reference, **kwargs):
         return url_for('interview_list', **kwargs)
     if file_reference == 'exit':
         remove_question_package(kwargs_with_i)
+        encrypt_next(kwargs)
         return url_for('exit_endpoint', **kwargs_with_i)
     if file_reference == 'exit_logout':
         remove_question_package(kwargs_with_i)
+        encrypt_next(kwargs)
         return url_for('exit_logout', **kwargs_with_i)
     if file_reference == 'dispatch':
         remove_question_package(kwargs)
@@ -1744,6 +1907,7 @@ def get_url_from_file_reference(file_reference, **kwargs):
         url = url_if_exists(parts[0] + ':data/static/' + parts[1] + extn, **kwargs)
     return url
 
+
 def user_id_dict():
     output = {}
     for user in db.session.execute(select(UserModel).options(db.joinedload(UserModel.roles))).unique().scalars():
@@ -1758,6 +1922,7 @@ def user_id_dict():
     output[-1] = anon
     return output
 
+
 def get_base_words():
     documentation = get_info_from_file_reference('docassemble.base:data/sources/base-words.yml')
     if 'fullpath' in documentation and documentation['fullpath'] is not None:
@@ -1767,6 +1932,17 @@ def get_base_words():
             return ruamel.yaml.safe_load(content)
     return None
 
+
+def get_pg_code_cache():
+    documentation = get_info_from_file_reference('docassemble.base:data/questions/pgcodecache.yml')
+    if 'fullpath' in documentation and documentation['fullpath'] is not None:
+        with open(documentation['fullpath'], 'r', encoding='utf-8') as fp:
+            content = fp.read()
+            content = fix_tabs.sub('  ', content)
+            return ruamel.yaml.safe_load(content)
+    return None
+
+
 def get_documentation_dict():
     documentation = get_info_from_file_reference('docassemble.base:data/questions/documentation.yml')
     if 'fullpath' in documentation and documentation['fullpath'] is not None:
@@ -1775,6 +1951,7 @@ def get_documentation_dict():
             content = fix_tabs.sub('  ', content)
             return ruamel.yaml.safe_load(content)
     return None
+
 
 def get_name_info():
     docstring = get_info_from_file_reference('docassemble.base:data/questions/docstring.yml')
@@ -1794,6 +1971,7 @@ def get_name_info():
         return info
     return None
 
+
 def get_title_documentation():
     documentation = get_info_from_file_reference('docassemble.base:data/questions/title_documentation.yml')
     if 'fullpath' in documentation and documentation['fullpath'] is not None:
@@ -1803,16 +1981,15 @@ def get_title_documentation():
             return ruamel.yaml.safe_load(content)
     return None
 
-def _call_or_get(function_or_property):
-    return function_or_property() if callable(function_or_property) else function_or_property
 
 def pad_to_16(the_string):
     if len(the_string) >= 16:
         return the_string[:16]
     return str(the_string) + (16 - len(the_string)) * '0'
 
+
 def decrypt_session(secret, user_code=None, filename=None):
-    #logmessage("decrypt_session: user_code is " + str(user_code) + " and filename is " + str(filename))
+    # logmessage("decrypt_session: user_code is " + str(user_code) + " and filename is " + str(filename))
     nowtime = datetime.datetime.utcnow()
     if user_code is None or filename is None or secret is None:
         return
@@ -1833,8 +2010,9 @@ def decrypt_session(secret, user_code=None, filename=None):
         record.encrypted = False
     db.session.commit()
 
+
 def encrypt_session(secret, user_code=None, filename=None):
-    #logmessage("encrypt_session: user_code is " + str(user_code) + " and filename is " + str(filename))
+    # logmessage("encrypt_session: user_code is " + str(user_code) + " and filename is " + str(filename))
     nowtime = datetime.datetime.utcnow()
     if user_code is None or filename is None or secret is None:
         return
@@ -1855,6 +2033,7 @@ def encrypt_session(secret, user_code=None, filename=None):
         record.encrypted = True
     db.session.commit()
 
+
 def substitute_secret(oldsecret, newsecret, user=None, to_convert=None):
     if user is None:
         user = current_user
@@ -1864,11 +2043,11 @@ def substitute_secret(oldsecret, newsecret, user=None, to_convert=None):
     the_current_info = current_info(yaml=None, req=request, action=None, session_info=None, secret=oldsecret, device_id=device_id)
     docassemble.base.functions.this_thread.current_info = the_current_info
     temp_user = session.get('tempuser', None)
-    #logmessage("substitute_secret: " + repr(oldsecret) + " and " + repr(newsecret) + " and temp_user is " + repr(temp_user))
+    # logmessage("substitute_secret: " + repr(oldsecret) + " and " + repr(newsecret) + " and temp_user is " + repr(temp_user))
     if oldsecret in ('None', newsecret):
-        #logmessage("substitute_secret: returning new secret without doing anything")
+        # logmessage("substitute_secret: returning new secret without doing anything")
         return newsecret
-    #logmessage("substitute_secret: continuing")
+    # logmessage("substitute_secret: continuing")
     if temp_user is not None:
         temp_user_info = dict(email=None, the_user_id='t' + str(temp_user), theid=temp_user, roles=[])
         the_current_info['user'] = temp_user_info
@@ -1880,7 +2059,7 @@ def substitute_secret(oldsecret, newsecret, user=None, to_convert=None):
         db.session.commit()
     if to_convert is None:
         to_do = set()
-        if 'i' in session and 'uid' in session: #TEMPORARY
+        if 'i' in session and 'uid' in session:  # TEMPORARY
             get_session(session['i'])
         if 'sessions' in session:
             for filename, info in session['sessions'].items():
@@ -1895,8 +2074,8 @@ def substitute_secret(oldsecret, newsecret, user=None, to_convert=None):
         the_current_info['yaml_filename'] = filename
         the_current_info['session'] = user_code
         the_current_info['encrypted'] = True
-        #obtain_lock(user_code, filename)
-        #logmessage("substitute_secret: filename is " + str(filename) + " and key is " + str(user_code))
+        # obtain_lock(user_code, filename)
+        # logmessage("substitute_secret: filename is " + str(filename) + " and key is " + str(user_code))
         for record in db.session.execute(select(SpeakList).filter_by(key=user_code, filename=filename, encrypted=True).with_for_update()).scalars():
             try:
                 phrase = decrypt_phrase(record.phrase, oldsecret)
@@ -1904,17 +2083,17 @@ def substitute_secret(oldsecret, newsecret, user=None, to_convert=None):
             except:
                 pass
         db.session.commit()
-        for object_entry in db.session.execute(select(GlobalObjectStorage).where(and_(GlobalObjectStorage.key.like('da:uid:' + user_code + ':i:' + filename + ':%'), GlobalObjectStorage.encrypted == True)).with_for_update()).scalars():
+        for object_entry in db.session.execute(select(GlobalObjectStorage).where(and_(GlobalObjectStorage.key.like('da:uid:' + user_code + ':i:' + filename + ':%'), GlobalObjectStorage.encrypted == True)).with_for_update()).scalars():  # noqa: E712 # pylint: disable=singleton-comparison
             try:
                 object_entry.value = encrypt_object(decrypt_object(object_entry.value, oldsecret), newsecret)
             except:
                 pass
         db.session.commit()
         for record in db.session.execute(select(UserDict).filter_by(key=user_code, filename=filename, encrypted=True).order_by(UserDict.indexno).with_for_update()).scalars():
-            #logmessage("substitute_secret: record was encrypted")
+            # logmessage("substitute_secret: record was encrypted")
             try:
                 the_dict = decrypt_dictionary(record.dictionary, oldsecret)
-            except Exception:
+            except:
                 logmessage("substitute_secret: error decrypting dictionary for filename " + filename + " and uid " + user_code)
                 continue
             if not isinstance(the_dict, dict):
@@ -1933,7 +2112,7 @@ def substitute_secret(oldsecret, newsecret, user=None, to_convert=None):
             for record in db.session.execute(select(UserDict).filter_by(key=user_code, filename=filename, encrypted=False).order_by(UserDict.indexno).with_for_update()).scalars():
                 try:
                     the_dict = unpack_dictionary(record.dictionary)
-                except Exception:
+                except:
                     logmessage("substitute_secret: error unpacking dictionary for filename " + filename + " and uid " + user_code)
                     continue
                 if not isinstance(the_dict, dict):
@@ -1950,13 +2129,20 @@ def substitute_secret(oldsecret, newsecret, user=None, to_convert=None):
         for record in db.session.execute(select(ChatLog).filter_by(key=user_code, filename=filename, encrypted=True).with_for_update()).scalars():
             try:
                 phrase = decrypt_phrase(record.message, oldsecret)
-            except Exception as e:
+            except:
                 logmessage("substitute_secret: error decrypting phrase for filename " + filename + " and uid " + user_code)
                 continue
             record.message = encrypt_phrase(phrase, newsecret)
         db.session.commit()
-        #release_lock(user_code, filename)
+        # release_lock(user_code, filename)
+    for object_entry in db.session.execute(select(GlobalObjectStorage).where(and_(GlobalObjectStorage.user_id == user.id, GlobalObjectStorage.encrypted == True)).with_for_update()).scalars():  # noqa: E712 # pylint: disable=singleton-comparison
+        try:
+            object_entry.value = encrypt_object(decrypt_object(object_entry.value, oldsecret), newsecret)
+        except:
+            pass
+    db.session.commit()
     return newsecret
+
 
 def MD5Hash(data=None):
     if data is None:
@@ -1965,37 +2151,11 @@ def MD5Hash(data=None):
     h.update(bytearray(data, encoding='utf-8'))
     return h
 
+
 def set_request_active(value):
     global request_active
     request_active = value
 
-def syslog_message(message):
-    message = re.sub(r'\n', ' ', message)
-    if current_user and current_user.is_authenticated and not current_user.is_anonymous:
-        the_user = current_user.email
-    else:
-        the_user = "anonymous"
-    if request_active:
-        try:
-            sys_logger.debug('%s', LOGFORMAT % {'message': message, 'clientip': get_requester_ip(request), 'yamlfile': docassemble.base.functions.this_thread.current_info.get('yaml_filename', 'na'), 'user': the_user, 'session': docassemble.base.functions.this_thread.current_info.get('session', 'na')})
-        except Exception as err:
-            sys.stderr.write("Error writing log message " + str(message) + "\n")
-            try:
-                sys.stderr.write("Error was " + err.__class__.__name__ + ": " + str(err) + "\n")
-            except:
-                pass
-    else:
-        try:
-            sys_logger.debug('%s', LOGFORMAT % {'message': message, 'clientip': 'localhost', 'yamlfile': 'na', 'user': 'na', 'session': 'na'})
-        except Exception as err:
-            sys.stderr.write("Error writing log message " + str(message) + "\n")
-            try:
-                sys.stderr.write("Error was " + err.__class__.__name__ + ": " + str(err) + "\n")
-            except:
-                pass
-
-def syslog_message_with_timestamp(message):
-    syslog_message(time.strftime("%Y-%m-%d %H:%M:%S") + " " + message)
 
 def copy_playground_modules():
     root_dir = os.path.join(FULL_PACKAGE_DIRECTORY, 'docassemble')
@@ -2004,9 +2164,9 @@ def copy_playground_modules():
             try:
                 shutil.rmtree(os.path.join(root_dir, d))
             except:
-                sys.stderr.write("copy_playground_modules: error deleting " + os.path.join(root_dir, d) + "\n")
+                logmessage("copy_playground_modules: error deleting " + os.path.join(root_dir, d))
     devs = set()
-    for user in db.session.execute(select(UserModel.id).join(UserRoles, UserModel.id == UserRoles.user_id).join(Role, UserRoles.role_id == Role.id).where(and_(UserModel.active == True, or_(Role.name == 'admin', Role.name == 'developer')))):
+    for user in db.session.execute(select(UserModel.id).join(UserRoles, UserModel.id == UserRoles.user_id).join(Role, UserRoles.role_id == Role.id).where(and_(UserModel.active == True, or_(Role.name == 'admin', Role.name == 'developer')))):  # noqa: E712 # pylint: disable=singleton-comparison
         devs.add(user.id)
     for user_id in devs:
         mod_dir = SavedFile(user_id, fix=True, section='playgroundmodules')
@@ -2018,14 +2178,15 @@ def copy_playground_modules():
                 try:
                     shutil.rmtree(local_dir)
                 except:
-                    sys.stderr.write("copy_playground_modules: error deleting " + local_dir + " before replacing it\n")
+                    logmessage("copy_playground_modules: error deleting " + local_dir + " before replacing it")
             os.makedirs(local_dir, exist_ok=True)
-            #sys.stderr.write("Copying " + str(mod_directory) + " to " + str(local_dir) + "\n")
+            # logmessage("Copying " + str(mod_directory) + " to " + str(local_dir))
             for f in [f for f in os.listdir(mod_directory) if re.search(r'^[A-Za-z].*\.py$', f)]:
                 shutil.copyfile(os.path.join(mod_directory, f), os.path.join(local_dir, f))
-            #shutil.copytree(mod_dir.directory, local_dir)
+            # shutil.copytree(mod_dir.directory, local_dir)
             with open(os.path.join(local_dir, '__init__.py'), 'w', encoding='utf-8') as the_file:
                 the_file.write(init_py_file)
+
 
 def proc_example_list(example_list, package, directory, examples):
     for example in example_list:
@@ -2044,9 +2205,9 @@ def proc_example_list(example_list, package, directory, examples):
             result['image'] = url_for('static', filename=directory + example + ".png", v=da_version)
         else:
             result['image'] = url_for('package_static', package=package, filename=example + ".png")
-        #logmessage("Giving it " + example_file)
+        # logmessage("Giving it " + example_file)
         file_info = get_info_from_file_reference(example_file)
-        #logmessage("Got back " + file_info['fullpath'])
+        # logmessage("Got back " + file_info['fullpath'])
         start_block = 1
         end_block = 2
         if 'fullpath' not in file_info or file_info['fullpath'] is None:
@@ -2101,6 +2262,7 @@ def proc_example_list(example_list, package, directory, examples):
                 continue
         examples.append(result)
 
+
 def get_examples():
     examples = []
     file_list = daconfig.get('playground examples', ['docassemble.base:data/questions/example-list.yml'])
@@ -2127,8 +2289,9 @@ def get_examples():
                         proc_example_list(ruamel.yaml.safe_load(content), the_package, the_directory, examples)
                 except Exception as the_err:
                     logmessage("There was an error loading the Playground examples:" + str(the_err))
-    #logmessage("Examples: " + str(examples))
+    # logmessage("Examples: " + str(examples))
     return examples
+
 
 def add_timestamps(the_dict, manual_user_id=None):
     nowtime = datetime.datetime.utcnow()
@@ -2143,10 +2306,12 @@ def add_timestamps(the_dict, manual_user_id=None):
     else:
         the_dict['_internal']['accesstime'][-1] = nowtime
 
+
 def fresh_dictionary():
     the_dict = copy.deepcopy(initial_dict)
     add_timestamps(the_dict)
     return the_dict
+
 
 def manual_checkout(manual_session_id=None, manual_filename=None, user_id=None, delete_session=False, temp_user_id=None):
     if manual_filename is not None:
@@ -2186,8 +2351,9 @@ def manual_checkout(manual_session_id=None, manual_filename=None, user_id=None, 
     pipe.expire('da:ready' + endpart, 12)
     pipe.expire('da:block' + endpart, 12)
     pipe.execute()
-    #r.publish('da:monitor', json.dumps(dict(messagetype='refreshsessions')))
-    #logmessage("Done checking out from " + endpart)
+    # r.publish('da:monitor', json.dumps(dict(messagetype='refreshsessions')))
+    # logmessage("Done checking out from " + endpart)
+
 
 def chat_partners_available(session_id, yaml_filename, the_user_id, mode, partner_roles):
     key = 'da:session:uid:' + str(session_id) + ':i:' + str(yaml_filename) + ':userid:' + str(the_user_id)
@@ -2217,6 +2383,7 @@ def chat_partners_available(session_id, yaml_filename, the_user_id, mode, partne
     result.help = len(potential_partners)
     return result
 
+
 def do_redirect(url, is_ajax, is_json, js_target):
     if is_ajax:
         return jsonify(action='redirect', url=url, csrf_token=generate_csrf())
@@ -2232,10 +2399,12 @@ def do_redirect(url, is_ajax, is_json, js_target):
             url = url + '?js_target=' + js_target
     return redirect(url)
 
+
 def do_refresh(is_ajax, yaml_filename):
     if is_ajax:
         return jsonify(action='refresh', csrf_token=generate_csrf())
     return redirect(url_for('index', i=yaml_filename))
+
 
 def standard_scripts(interview_language=DEFAULT_LANGUAGE, external=False):
     if interview_language in ('ar', 'cs', 'et', 'he', 'ka', 'nl', 'ro', 'th', 'zh', 'az', 'da', 'fa', 'hu', 'kr', 'no', 'ru', 'tr', 'bg', 'de', 'fi', 'id', 'kz', 'pl', 'sk', 'uk', 'ca', 'el', 'fr', 'it', 'sl', 'uz', 'cr', 'es', 'gl', 'ja', 'lt', 'pt', 'sv', 'vi'):
@@ -2243,6 +2412,7 @@ def standard_scripts(interview_language=DEFAULT_LANGUAGE, external=False):
     else:
         fileinput_locale = ''
     return '\n    <script src="' + url_for('static', filename='app/bundle.js', v=da_version, _external=external) + '"></script>' + fileinput_locale
+
 
 def additional_scripts(interview_status, yaml_filename, as_javascript=False):
     scripts = ''
@@ -2283,7 +2453,12 @@ def additional_scripts(interview_status, yaml_filename, as_javascript=False):
           idToUse = daQuestionID['ga'];
         }
         if (idToUse != null){
-          gtag('config', """ + json.dumps(ga_id) + """, {""" + ("'cookie_flags': 'SameSite=None;Secure', " if app.config['SESSION_COOKIE_SECURE'] else '') + """'page_path': """ + json.dumps(interview_package) + """ + "/" + """ + json.dumps(interview_filename) + """ + "/" + idToUse.replace(/[^A-Za-z0-9]+/g, '_')});
+          if (!daGAConfigured){
+            gtag('config', """ + json.dumps(ga_id) + """, {'send_page_view': false""" + (", 'cookie_flags': 'SameSite=None;Secure'" if app.config['SESSION_COOKIE_SECURE'] else '') + """});
+            daGAConfigured = true;
+          }
+          gtag('set', 'page_path', """ + json.dumps(interview_package + "/" + interview_filename + "/") + """ + idToUse.replace(/[^A-Za-z0-9]+/g, '_'));
+          gtag('event', 'page_view', {'page_path': """ + json.dumps(interview_package + "/" + interview_filename + "/") + """ + idToUse.replace(/[^A-Za-z0-9]+/g, '_')});
         }
       }
 """
@@ -2294,16 +2469,17 @@ def additional_scripts(interview_status, yaml_filename, as_javascript=False):
     </script>
 """
         if as_javascript:
-# Not good to enable this, since most web sites would have Google Analytics already.
-#             output_js += """
-#       var daScript = document.createElement('script');
-#       daScript.src = "https://www.googletagmanager.com/gtag/js?id=""" + ga_id + """";
-#       document.head.appendChild(daScript);
-# """
+            # Not good to enable this, since most web sites would have Google Analytics already.
+            #             output_js += """
+            #       var daScript = document.createElement('script');
+            #       daScript.src = "https://www.googletagmanager.com/gtag/js?id=""" + ga_id + """";
+            #       document.head.appendChild(daScript);
+            # """
             output_js += the_js
     if as_javascript:
         return output_js
     return scripts
+
 
 def additional_css(interview_status, js_only=False):
     if 'segment id' in daconfig and interview_status.question.interview.options.get('analytics on', True):
@@ -2353,6 +2529,7 @@ def additional_css(interview_status, js_only=False):
         return the_js
     return start_output
 
+
 def standard_html_start(interview_language=DEFAULT_LANGUAGE, debug=False, bootstrap_theme=None, external=False, page_title=None, social=None, yaml_filename=None):
     if social is None:
         social = {}
@@ -2364,7 +2541,7 @@ def standard_html_start(interview_language=DEFAULT_LANGUAGE, debug=False, bootst
         bootstrap_part = '\n    <link href="' + url_for('static', filename='bootstrap/css/bootstrap.min.css', v=da_version, _external=external) + '" rel="stylesheet">'
     else:
         bootstrap_part = '\n    <link href="' + bootstrap_theme + '" rel="stylesheet">'
-    output = '<!DOCTYPE html>\n<html lang="' + interview_language + '">\n  <head>\n    <meta charset="utf-8">\n    <meta name="mobile-web-app-capable" content="yes">\n    <meta name="apple-mobile-web-app-capable" content="yes">\n    <meta http-equiv="X-UA-Compatible" content="IE=edge">\n    <meta name="viewport" content="width=device-width, initial-scale=1">\n    ' + ('<link rel="shortcut icon" href="' + url_for('favicon', _external=external, **app.config['FAVICON_PARAMS']) + '">\n    ' if app.config['USE_FAVICON'] else '') + ('<link rel="apple-touch-icon" sizes="180x180" href="' + url_for('apple_touch_icon', _external=external, **app.config['FAVICON_PARAMS']) + '">\n    ' if app.config['USE_APPLE_TOUCH_ICON'] else '') + ('<link rel="icon" type="image/png" href="' + url_for('favicon_md', _external=external, **app.config['FAVICON_PARAMS']) + '" sizes="32x32">\n    ' if app.config['USE_FAVICON_MD'] else '') + ('<link rel="icon" type="image/png" href="' + url_for('favicon_sm', _external=external, **app.config['FAVICON_PARAMS']) + '" sizes="16x16">\n    ' if app.config['USE_FAVICON_SM'] else '') + ('<link rel="manifest" href="' + url_for('favicon_site_webmanifest', _external=external, **app.config['FAVICON_PARAMS']) + '" crossorigin="use-credentials">\n    ' if app.config['USE_SITE_WEBMANIFEST'] else '') + ('<link rel="mask-icon" href="' + url_for('favicon_safari_pinned_tab', _external=external, **app.config['FAVICON_PARAMS']) + '" color="' + app.config['FAVICON_MASK_COLOR'] + '">\n    ' if app.config['USE_SAFARI_PINNED_TAB'] else '') + '<meta name="msapplication-TileColor" content="' + app.config['FAVICON_TILE_COLOR'] + '">\n    <meta name="theme-color" content="' + app.config['FAVICON_THEME_COLOR'] + '">\n    <script defer src="' + url_for('static', filename='fontawesome/js/all.min.js', v=da_version, _external=external) + '"></script>' + bootstrap_part + '\n    <link href="' + url_for('static', filename='app/bundle.css', v=da_version, _external=external) + '" rel="stylesheet">'
+    output = '<!DOCTYPE html>\n<html lang="' + interview_language + '" itemscope itemtype="http://schema.org/WebPage">\n  <head>\n    <meta charset="utf-8">\n    <meta name="mobile-web-app-capable" content="yes">\n    <meta name="apple-mobile-web-app-capable" content="yes">\n    <meta http-equiv="X-UA-Compatible" content="IE=edge">\n    <meta name="viewport" content="width=device-width, initial-scale=1">\n    ' + ('<link rel="shortcut icon" href="' + url_for('favicon', _external=external, **app.config['FAVICON_PARAMS']) + '">\n    ' if app.config['USE_FAVICON'] else '') + ('<link rel="apple-touch-icon" sizes="180x180" href="' + url_for('apple_touch_icon', _external=external, **app.config['FAVICON_PARAMS']) + '">\n    ' if app.config['USE_APPLE_TOUCH_ICON'] else '') + ('<link rel="icon" type="image/png" href="' + url_for('favicon_md', _external=external, **app.config['FAVICON_PARAMS']) + '" sizes="32x32">\n    ' if app.config['USE_FAVICON_MD'] else '') + ('<link rel="icon" type="image/png" href="' + url_for('favicon_sm', _external=external, **app.config['FAVICON_PARAMS']) + '" sizes="16x16">\n    ' if app.config['USE_FAVICON_SM'] else '') + ('<link rel="manifest" href="' + url_for('favicon_site_webmanifest', _external=external, **app.config['FAVICON_PARAMS']) + '" crossorigin="use-credentials">\n    ' if app.config['USE_SITE_WEBMANIFEST'] else '') + ('<link rel="mask-icon" href="' + url_for('favicon_safari_pinned_tab', _external=external, **app.config['FAVICON_PARAMS']) + '" color="' + app.config['FAVICON_MASK_COLOR'] + '">\n    ' if app.config['USE_SAFARI_PINNED_TAB'] else '') + '<meta name="msapplication-TileColor" content="' + app.config['FAVICON_TILE_COLOR'] + '">\n    <meta name="theme-color" content="' + app.config['FAVICON_THEME_COLOR'] + '">\n    <script defer src="' + url_for('static', filename='fontawesome/js/all.min.js', v=da_version, _external=external) + '"></script>' + bootstrap_part + '\n    <link href="' + url_for('static', filename='app/bundle.css', v=da_version, _external=external) + '" rel="stylesheet">'
     if debug:
         output += '\n    <link href="' + url_for('static', filename='app/pygments.min.css', v=da_version, _external=external) + '" rel="stylesheet">'
     page_title = page_title.replace('\n', ' ').replace('"', '&quot;').strip()
@@ -2403,6 +2580,7 @@ def standard_html_start(interview_language=DEFAULT_LANGUAGE, debug=False, bootst
         if 'type' not in social['og']:
             output += '\n    <meta name="og:type" content="website">'
     return output
+
 
 def process_file(saved_file, orig_file, mimetype, extension, initial=True):
     if extension == "gif" and daconfig.get('imagemagick', 'convert') is not None:
@@ -2495,9 +2673,10 @@ def process_file(saved_file, orig_file, mimetype, extension, initial=True):
             result = subprocess.run(call_array, timeout=120, check=False).returncode
         except subprocess.TimeoutExpired:
             result = 1
-    #if extension == "pdf":
+    # if extension == "pdf":
     #    make_image_files(saved_file.path)
     saved_file.finalize()
+
 
 def sub_temp_user_dict_key(temp_user_id, user_id):
     temp_interviews = []
@@ -2507,6 +2686,7 @@ def sub_temp_user_dict_key(temp_user_id, user_id):
         temp_interviews.append((record.filename, record.key))
     db.session.commit()
     return temp_interviews
+
 
 def sub_temp_other(user):
     if 'tempuser' in session:
@@ -2547,17 +2727,18 @@ def sub_temp_other(user):
                     object_entry.value = encrypt_object(decrypt_object(object_entry.value, str(request.cookies.get('secret', None))), session['newsecret'])
                 except Exception as err:
                     logmessage("Failure to change encryption of object " + object_entry.key + ": " + str(err))
-        for object_entry in db.session.execute(select(GlobalObjectStorage).filter(and_(GlobalObjectStorage.temp_user_id == None, GlobalObjectStorage.user_id == None, GlobalObjectStorage.key.like('da:daglobal:userid:t{:d}:%'.format(session['tempuser'])))).with_for_update()).scalars():
+        for object_entry in db.session.execute(select(GlobalObjectStorage).filter(and_(GlobalObjectStorage.temp_user_id == None, GlobalObjectStorage.user_id == None, GlobalObjectStorage.key.like('da:daglobal:userid:t{:d}:%'.format(session['tempuser'])))).with_for_update()).scalars():  # noqa: E711 # pylint: disable=singleton-comparison
             new_key = re.sub(r'^da:daglobal:userid:t{:d}:'.format(session['tempuser']), 'da:daglobal:userid:{:d}:'.format(user.id), object_entry.key)
             object_entry.key = new_key
             if new_key in keys_in_use:
                 ids_to_delete.extend(keys_in_use[new_key])
         for the_id in ids_to_delete:
-            db.session.execute(delete(GlobalObjectStorage).filter_by(id=the_id))
+            db.session.execute(sqldelete(GlobalObjectStorage).filter_by(id=the_id))
         db.session.commit()
         db.session.execute(update(UploadsUserAuth).where(UploadsUserAuth.temp_user_id == int(session['tempuser'])).values(user_id=user.id, temp_user_id=None))
         db.session.commit()
         del session['tempuser']
+
 
 def save_user_dict_key(session_id, filename, priors=False, user=None):
     if user is not None:
@@ -2573,7 +2754,7 @@ def save_user_dict_key(session_id, filename, priors=False, user=None):
             if user_id is None:
                 logmessage("save_user_dict_key: no user ID available for saving")
                 return
-    #logmessage("save_user_dict_key: called")
+    # logmessage("save_user_dict_key: called")
     the_interview_list = set([filename])
     found = set()
     if priors:
@@ -2594,8 +2775,9 @@ def save_user_dict_key(session_id, filename, priors=False, user=None):
         db.session.add(new_record)
         db.session.commit()
 
+
 def save_user_dict(user_code, user_dict, filename, secret=None, changed=False, encrypt=True, manual_user_id=None, steps=None, max_indexno=None):
-    #logmessage("save_user_dict: called with encrypt " + str(encrypt))
+    # logmessage("save_user_dict: called with encrypt " + str(encrypt))
     if REQUIRE_IDEMPOTENT:
         for var_name in ('x', 'i', 'j', 'k', 'l', 'm', 'n'):
             if var_name in user_dict:
@@ -2649,6 +2831,7 @@ def save_user_dict(user_code, user_dict, filename, secret=None, changed=False, e
                     record.encrypted = False
             db.session.commit()
 
+
 def process_bracket_expression(match):
     if match.group(1) in ('B', 'R'):
         try:
@@ -2659,21 +2842,27 @@ def process_bracket_expression(match):
         inner = match.group(2)
     return "[" + repr(inner) + "]"
 
+
 def myb64unquote(the_string):
     return codecs.decode(repad(bytearray(the_string, encoding='utf-8')), 'base64').decode('utf-8')
+
 
 def safeid(text):
     return re.sub(r'[\n=]', '', codecs.encode(text.encode('utf-8'), 'base64').decode())
 
+
 def from_safeid(text):
     return codecs.decode(repad(bytearray(text, encoding='utf-8')), 'base64').decode('utf-8')
+
 
 def repad(text):
     return text + (equals_byte * ((4 - len(text) % 4) % 4))
 
+
 def test_for_valid_var(varname):
     if not valid_python_var.match(varname):
         raise DAError(varname + " is not a valid name.  A valid name consists only of letters, numbers, and underscores, and begins with a letter.")
+
 
 def navigation_bar(nav, interview, wrapper=True, inner_div_class=None, inner_div_extra=None, show_links=None, hide_inactive_subs=True, a_class=None, show_nesting=True, include_arrows=False, always_open=False, return_dict=None):
     if show_links is None:
@@ -2687,7 +2876,7 @@ def navigation_bar(nav, interview, wrapper=True, inner_div_class=None, inner_div
         muted_class = ' text-muted'
     else:
         muted_class = ''
-    #logmessage("navigation_bar: starting: " + str(section))
+    # logmessage("navigation_bar: starting: " + str(section))
     the_language = docassemble.base.functions.get_language()
     non_progressive = bool(hasattr(nav, 'progressive') and not nav.progressive)
     auto_open = bool(always_open or (hasattr(nav, 'auto_open') and nav.auto_open))
@@ -2697,7 +2886,7 @@ def navigation_bar(nav, interview, wrapper=True, inner_div_class=None, inner_div
         the_language = '*'
     if the_language not in nav.sections:
         return ''
-        #raise DAError("Could not find a navigation bar to display.  " + str(nav.sections))
+        # raise DAError("Could not find a navigation bar to display.  " + str(nav.sections))
     the_sections = nav.sections[the_language]
     if len(the_sections) == 0:
         return ''
@@ -2705,8 +2894,8 @@ def navigation_bar(nav, interview, wrapper=True, inner_div_class=None, inner_div
         the_section = docassemble.base.functions.this_thread.current_question.section
     else:
         the_section = nav.current
-    #logmessage("Current section is " + repr(the_section))
-    #logmessage("Past sections are: " + str(nav.past))
+    # logmessage("Current section is " + repr(the_section))
+    # logmessage("Past sections are: " + str(nav.past))
     if the_section is None:
         if isinstance(the_sections[0], dict):
             the_section = list(the_sections[0])[0]
@@ -2720,7 +2909,7 @@ def navigation_bar(nav, interview, wrapper=True, inner_div_class=None, inner_div
     indexno = 0
     seen = set()
     on_first = True
-    #logmessage("Sections is " + repr(the_sections))
+    # logmessage("Sections is " + repr(the_sections))
     for x in the_sections:
         if include_arrows and not on_first:
             output += '<span class="dainlinearrow"><i class="fas fa-chevron-right"></i></span>'
@@ -2730,7 +2919,7 @@ def navigation_bar(nav, interview, wrapper=True, inner_div_class=None, inner_div
         subitems = None
         currently_active = False
         if isinstance(x, dict):
-            #logmessage("It is a dict")
+            # logmessage("It is a dict")
             if len(x) == 2 and 'subsections' in x:
                 for key, val in x.items():
                     if key == 'subsections':
@@ -2740,7 +2929,7 @@ def navigation_bar(nav, interview, wrapper=True, inner_div_class=None, inner_div
                         test_for_valid_var(the_key)
                         the_title = val
             elif len(x) == 1:
-                #logmessage("The len is one")
+                # logmessage("The len is one")
                 the_key = list(x)[0]
                 value = x[the_key]
                 if isinstance(value, list):
@@ -2752,11 +2941,11 @@ def navigation_bar(nav, interview, wrapper=True, inner_div_class=None, inner_div
             else:
                 raise DAError("navigation_bar: too many keys in dict.  " + str(the_sections))
         else:
-            #logmessage("It is not a dict")
+            # logmessage("It is not a dict")
             the_key = None
             the_title = str(x)
         if (the_key is not None and the_section == the_key) or the_section == the_title:
-            #output += '<li role="presentation" class="' + li_class + ' active">'
+            # output += '<li role="presentation" class="' + li_class + ' active">'
             section_reached = True
             currently_active = True
             active_class = ' active'
@@ -2767,24 +2956,24 @@ def navigation_bar(nav, interview, wrapper=True, inner_div_class=None, inner_div
                 return_dict['title'] = the_title
         else:
             active_class = ''
-            #output += '<li class="' + li_class + '" role="presentation">'
+            # output += '<li class="' + li_class + '" role="presentation">'
         new_key = the_title if the_key is None else the_key
         seen.add(new_key)
-        #logmessage("new_key is: " + str(new_key))
-        #logmessage("seen sections are: " + str(seen))
-        #logmessage("nav past sections are: " + repr(nav.past))
+        # logmessage("new_key is: " + str(new_key))
+        # logmessage("seen sections are: " + str(seen))
+        # logmessage("nav past sections are: " + repr(nav.past))
         relevant_past = nav.past.intersection(set(nav.section_ids()))
         seen_more = bool(len(relevant_past.difference(seen)) > 0 or new_key in nav.past or the_title in nav.past)
         if non_progressive:
             seen_more = True
             section_reached = False
-        #logmessage("the title is " + str(the_title) + " and non_progressive is " + str(non_progressive) + " and show links is " + str(show_links) + " and seen_more is " + str(seen_more) + " and active_class is " + repr(active_class) + " and currently_active is " + str(currently_active) + " and section_reached is " + str(section_reached) + " and the_key is " + str(the_key) + " and interview is " + str(interview) + " and in q is " + ('in q' if the_key in interview.questions else 'not in q'))
+        # logmessage("the title is " + str(the_title) + " and non_progressive is " + str(non_progressive) + " and show links is " + str(show_links) + " and seen_more is " + str(seen_more) + " and active_class is " + repr(active_class) + " and currently_active is " + str(currently_active) + " and section_reached is " + str(section_reached) + " and the_key is " + str(the_key) + " and interview is " + str(interview) + " and in q is " + ('in q' if the_key in interview.questions else 'not in q'))
         if show_links and (seen_more or currently_active or not section_reached) and the_key is not None and interview is not None and the_key in interview.questions:
-            #url = docassemble.base.functions.interview_url_action(the_key)
+            # url = docassemble.base.functions.interview_url_action(the_key)
             if section_reached and not currently_active and not seen_more:
                 output += '<span tabindex="-1" data-index="' + str(indexno) + '" class="' + a_class + ' danotavailableyet' + muted_class + '">' + str(the_title) + '</span>'
             else:
-                if active_class == '' and not (seen_more and not section_reached):
+                if active_class == '' and not section_reached and not seen_more:
                     output += '<span tabindex="-1" data-index="' + str(indexno) + '" class="' + a_class + ' inactive' + muted_class + '">' + str(the_title) + '</span>'
                 else:
                     output += '<a href="#" data-key="' + the_key + '" data-index="' + str(indexno) + '" class="daclickable ' + a_class + active_class + '">' + str(the_title) + '</a>'
@@ -2792,7 +2981,7 @@ def navigation_bar(nav, interview, wrapper=True, inner_div_class=None, inner_div
             if section_reached and not currently_active and not seen_more:
                 output += '<span tabindex="-1" data-index="' + str(indexno) + '" class="' + a_class + ' danotavailableyet' + muted_class + '">' + str(the_title) + '</span>'
             else:
-                if active_class == '' and not (seen_more and not section_reached):
+                if active_class == '' and not section_reached and not seen_more:
                     output += '<span tabindex="-1" data-index="' + str(indexno) + '" class="' + a_class + ' inactive' + muted_class + '">' + str(the_title) + '</span>'
                 else:
                     output += '<a tabindex="-1" data-index="' + str(indexno) + '" class="' + a_class + active_class + '">' + str(the_title) + '</a>'
@@ -2816,7 +3005,7 @@ def navigation_bar(nav, interview, wrapper=True, inner_div_class=None, inner_div
                     sub_key = None
                     sub_title = str(y)
                 if (sub_key is not None and the_section == sub_key) or the_section == sub_title:
-                    #suboutput += '<li class="' + li_class + ' active" role="presentation">'
+                    # suboutput += '<li class="' + li_class + ' active" role="presentation">'
                     section_reached = True
                     current_is_within = True
                     sub_currently_active = True
@@ -2826,26 +3015,26 @@ def navigation_bar(nav, interview, wrapper=True, inner_div_class=None, inner_div
                         return_dict['title'] = sub_title
                 else:
                     sub_active_class = ''
-                    #suboutput += '<li class="' + li_class + '" role="presentation">'
+                    # suboutput += '<li class="' + li_class + '" role="presentation">'
                 new_sub_key = sub_title if sub_key is None else sub_key
                 seen.add(new_sub_key)
-                #logmessage("sub: seen sections are: " + str(seen))
+                # logmessage("sub: seen sections are: " + str(seen))
                 relevant_past = nav.past.intersection(set(nav.section_ids()))
                 seen_more = bool(len(relevant_past.difference(seen)) > 0 or new_sub_key in nav.past or sub_title in nav.past)
                 if non_progressive:
-                    #logmessage("Setting seen_more to True bc non-progressive")
+                    # logmessage("Setting seen_more to True bc non-progressive")
                     seen_more = True
                     section_reached = False
-                #logmessage("First sub is %s, indexno is %d, sub_currently_active is %s, sub_key is %s, sub_title is %s, section_reached is %s, current_is_within is %s, sub_active_class is %s, new_sub_key is %s, seen_more is %s, section_reached is %s, show_links is %s" % (str(first_sub), indexno, str(sub_currently_active), sub_key, sub_title, section_reached, current_is_within, sub_active_class, new_sub_key, str(seen_more), str(section_reached), str(show_links)))
+                # logmessage("First sub is %s, indexno is %d, sub_currently_active is %s, sub_key is %s, sub_title is %s, section_reached is %s, current_is_within is %s, sub_active_class is %s, new_sub_key is %s, seen_more is %s, section_reached is %s, show_links is %s" % (str(first_sub), indexno, str(sub_currently_active), sub_key, sub_title, section_reached, current_is_within, sub_active_class, new_sub_key, str(seen_more), str(section_reached), str(show_links)))
                 if show_links and (seen_more or sub_currently_active or not section_reached) and sub_key is not None and interview is not None and sub_key in interview.questions:
-                    #url = docassemble.base.functions.interview_url_action(sub_key)
+                    # url = docassemble.base.functions.interview_url_action(sub_key)
                     suboutput += '<a href="#" data-key="' + sub_key + '" data-index="' + str(indexno) + '" class="daclickable ' + a_class + sub_active_class + '">' + str(sub_title) + '</a>'
                 else:
                     if section_reached and not sub_currently_active and not seen_more:
                         suboutput += '<span tabindex="-1" data-index="' + str(indexno) + '" class="' + a_class + ' danotavailableyet' + muted_class + '">' + str(sub_title) + '</span>'
                     else:
                         suboutput += '<a tabindex="-1" data-index="' + str(indexno) + '" class="' + a_class + sub_active_class + ' inactive">' + str(sub_title) + '</a>'
-                #suboutput += "</li>"
+                # suboutput += "</li>"
             if currently_active or current_is_within or hide_inactive_subs is False or show_nesting:
                 if currently_active or current_is_within or auto_open:
                     suboutput = '<div class="' + inner_div_class + '"' + inner_div_extra + '>' + suboutput
@@ -2855,12 +3044,13 @@ def navigation_bar(nav, interview, wrapper=True, inner_div_class=None, inner_div
                 output += suboutput
             else:
                 indexno = oldindexno
-        #output += "</li>"
+        # output += "</li>"
     if wrapper:
         output += "\n</div>\n</div>\n"
     if (not non_progressive) and (not section_reached):
         logmessage("Section \"" + str(the_section) + "\" did not exist.")
     return output
+
 
 def progress_bar(progress, interview):
     if progress is None:
@@ -2874,6 +3064,7 @@ def progress_bar(progress, interview):
     else:
         percentage = ''
     return '<div class="progress mt-2"><div class="progress-bar" aria-label="' + noquote(word('Interview Progress')) + '" role="progressbar" aria-valuenow="' + str(progress) + '" aria-valuemin="0" aria-valuemax="100" style="width: ' + str(progress) + '%;">' + percentage + '</div></div>\n'
+
 
 def get_unique_name(filename, secret):
     nowtime = datetime.datetime.utcnow()
@@ -2889,15 +3080,16 @@ def get_unique_name(filename, secret):
         db.session.commit()
         return newname
 
+
 def obtain_lock(user_code, filename):
     key = 'da:lock:' + user_code + ':' + filename
-    #sys.stderr.write("obtain_lock: getting " + key + "\n")
+    # logmessage("obtain_lock: getting " + key)
     found = False
-    count = 4
+    count = CONCURRENCY_LOCK_TIMEOUT * 3
     while count > 0:
         record = r.get(key)
         if record:
-            sys.stderr.write("obtain_lock: waiting for " + key + "\n")
+            logmessage("obtain_lock: waiting for " + key)
             time.sleep(1.0)
         else:
             found = False
@@ -2905,22 +3097,23 @@ def obtain_lock(user_code, filename):
         found = True
         count -= 1
     if found:
-        sys.stderr.write("Request for " + key + " deadlocked\n")
+        logmessage("Request for " + key + " deadlocked")
         release_lock(user_code, filename)
     pipe = r.pipeline()
     pipe.set(key, 1)
-    pipe.expire(key, 4)
+    pipe.expire(key, CONCURRENCY_LOCK_TIMEOUT)
     pipe.execute()
+
 
 def obtain_lock_patiently(user_code, filename):
     key = 'da:lock:' + user_code + ':' + filename
-    #sys.stderr.write("obtain_lock: getting " + key + "\n")
+    # logmessage("obtain_lock: getting " + key)
     found = False
-    count = 20
+    count = 200
     while count > 0:
         record = r.get(key)
         if record:
-            sys.stderr.write("obtain_lock: waiting for " + key + "\n")
+            logmessage("obtain_lock: waiting for " + key)
             time.sleep(3.0)
         else:
             found = False
@@ -2928,28 +3121,31 @@ def obtain_lock_patiently(user_code, filename):
         found = True
         count -= 1
     if found:
-        sys.stderr.write("Request for " + key + " deadlocked\n")
-        release_lock(user_code, filename)
+        # logmessage("Request for " + key + " deadlocked")
+        # release_lock(user_code, filename)
+        raise Exception("obtain_lock_patiently: aborting attempt to obtain lock on " + user_code + " for " + filename + " due to deadlock")
     pipe = r.pipeline()
     pipe.set(key, 1)
-    pipe.expire(key, 4)
+    pipe.expire(key, CONCURRENCY_LOCK_TIMEOUT)
     pipe.execute()
+
 
 def release_lock(user_code, filename):
     key = 'da:lock:' + user_code + ':' + filename
-    #sys.stderr.write("obtain_lock: releasing " + key + "\n")
+    # logmessage("release_lock: releasing " + key)
     r.delete(key)
 
-def make_navbar(status, steps, show_login, chat_info, debug_mode, index_params, extra_class=None):
+
+def make_navbar(status, steps, show_login, chat_info, debug_mode, index_params, extra_class=None):  # pylint: disable=unused-argument
     if 'inverse navbar' in status.question.interview.options:
         if status.question.interview.options['inverse navbar']:
             inverse = 'navbar-dark bg-dark '
         else:
-            inverse = 'navbar-light bg-light '
+            inverse = 'bg-light '
     elif daconfig.get('inverse navbar', True):
         inverse = 'navbar-dark bg-dark '
     else:
-        inverse = 'navbar-light bg-light '
+        inverse = 'bg-light '
     if 'jsembed' in docassemble.base.functions.this_thread.misc:
         fixed_top = ''
     else:
@@ -3090,28 +3286,29 @@ def make_navbar(status, steps, show_login, chat_info, debug_mode, index_params, 
                         navbar += '<a class="dropdown-item" href="' + url_for('train') + '">' + word('Train') + '</a>'
                     if current_user.has_role('admin', 'developer'):
                         if app.config['ALLOW_UPDATES']:
-                            navbar +='<a class="dropdown-item" href="' + url_for('update_package') + '">' + word('Package Management') + '</a>'
-                        navbar +='<a class="dropdown-item" href="' + url_for('logs') + '">' + word('Logs') + '</a>'
+                            navbar += '<a class="dropdown-item" href="' + url_for('update_package') + '">' + word('Package Management') + '</a>'
+                        if app.config['ALLOW_LOG_VIEWING']:
+                            navbar += '<a class="dropdown-item" href="' + url_for('logs') + '">' + word('Logs') + '</a>'
                         if app.config['ENABLE_PLAYGROUND']:
-                            navbar +='<a class="dropdown-item" href="' + url_for('playground_page') + '">' + word('Playground') + '</a>'
-                        navbar +='<a class="dropdown-item" href="' + url_for('utilities') + '">' + word('Utilities') + '</a>'
+                            navbar += '<a class="dropdown-item" href="' + url_for('playground_page') + '">' + word('Playground') + '</a>'
+                        navbar += '<a class="dropdown-item" href="' + url_for('utilities') + '">' + word('Utilities') + '</a>'
                     if current_user.has_role('admin', 'advocate') or current_user.can_do('access_user_info'):
-                        navbar +='<a class="dropdown-item" href="' + url_for('user_list') + '">' + word('User List') + '</a>'
-                    if current_user.has_role('admin'):
-                        navbar +='<a class="dropdown-item" href="' + url_for('config_page') + '">' + word('Configuration') + '</a>'
+                        navbar += '<a class="dropdown-item" href="' + url_for('user_list') + '">' + word('User List') + '</a>'
+                    if current_user.has_role('admin') and app.config['ALLOW_CONFIGURATION_EDITING']:
+                        navbar += '<a class="dropdown-item" href="' + url_for('config_page') + '">' + word('Configuration') + '</a>'
                     if app.config['SHOW_DISPATCH']:
                         navbar += '<a class="dropdown-item" href="' + url_for('interview_start') + '">' + word('Available Interviews') + '</a>'
                     for item in app.config['ADMIN_INTERVIEWS']:
                         if item.can_use() and docassemble.base.functions.this_thread.current_info.get('yaml_filename', '') != item.interview:
-                            navbar += '<a class="dropdown-item" href="' + url_for('index', i=item.interview, new_session='1') + '">' + item.get_title(docassemble.base.functions.get_language()) + '</a>'
+                            navbar += '<a class="dropdown-item" href="' + url_for_interview(i=item.interview, new_session='1') + '">' + item.get_title(docassemble.base.functions.get_language()) + '</a>'
                     if app.config['SHOW_MY_INTERVIEWS'] or current_user.has_role('admin'):
                         navbar += '<a class="dropdown-item" href="' + url_for('interview_list') + '">' + word('My Interviews') + '</a>'
                     if current_user.has_role('admin', 'developer'):
                         navbar += '<a class="dropdown-item" href="' + url_for('user_profile_page') + '">' + word('Profile') + '</a>'
                     else:
-                        if app.config['SHOW_PROFILE'] or current_user.has_role('admin'):
+                        if app.config['SHOW_PROFILE'] or current_user.has_role('admin', 'developer'):
                             navbar += '<a class="dropdown-item" href="' + url_for('user_profile_page') + '">' + word('Profile') + '</a>'
-                        else:
+                        elif current_user.social_id.startswith('local') and app.config['ALLOW_CHANGING_PASSWORD']:
                             navbar += '<a class="dropdown-item" href="' + url_for('user.change_password') + '">' + word('Change Password') + '</a>'
                     navbar += '<a class="dropdown-item" href="' + url_for('user.logout') + '">' + word('Sign Out') + '</a>'
                 navbar += '</div></li>'
@@ -3119,10 +3316,10 @@ def make_navbar(status, steps, show_login, chat_info, debug_mode, index_params, 
         if custom_menu:
             navbar += '            <li class="nav-item dropdown"><a class="nav-link dropdown-toggle" href="#" class="dropdown-toggle d-none d-md-block" data-bs-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">' + word("Menu") + '</a><div class="dropdown-menu dropdown-menu-end">' + custom_menu
             if not status.question.interview.options.get('hide standard menu', False):
-                navbar += '<a class="dropdown-item" href="' + exit_href(status) + '">' + status.exit_label + '</a>'
+                navbar += '<a class="dropdown-item" href="' + exit_href() + '">' + status.exit_label + '</a>'
             navbar += '</div></li>'
         else:
-            navbar += '            <li class="nav-item"><a class="nav-link" href="' + exit_href(status) + '">' + status.exit_label + '</a></li>'
+            navbar += '            <li class="nav-item"><a class="nav-link" href="' + exit_href() + '">' + status.exit_label + '</a></li>'
     navbar += """
           </ul>"""
     if daconfig.get('login link style', 'normal') == 'button' and show_login and current_user.is_anonymous and not custom_menu:
@@ -3134,8 +3331,15 @@ def make_navbar(status, steps, show_login, chat_info, debug_mode, index_params, 
 """
     return navbar
 
-def exit_href(status):
-    return docassemble.base.functions.url_action('_da_exit')
+
+def exit_href(data=False):
+    url = docassemble.base.functions.url_action('_da_exit')
+    if not data:
+        action_search = re.search(r'[\?\&]action=([^\&]+)', url)
+        if action_search:
+            return url + '" data-embaction="' + action_search.group(1)
+    return url
+
 
 def delete_session_for_interview(i=None):
     if i is not None:
@@ -3144,14 +3348,17 @@ def delete_session_for_interview(i=None):
         if key in session:
             del session[key]
 
+
 def delete_session_sessions():
     if 'sessions' in session:
         del session['sessions']
+
 
 def delete_session_info():
     for key in ('i', 'uid', 'key_logged', 'tempuser', 'user_id', 'encrypted', 'chatstatus', 'observer', 'monitor', 'variablefile', 'doing_sms', 'playgroundfile', 'playgroundtemplate', 'playgroundstatic', 'playgroundsources', 'playgroundmodules', 'playgroundpackages', 'taskwait', 'phone_number', 'otp_secret', 'validated_user', 'github_next', 'next', 'sessions'):
         if key in session:
             del session[key]
+
 
 def backup_session():
     backup = {}
@@ -3160,22 +3367,25 @@ def backup_session():
             backup[key] = session[key]
     return backup
 
+
 def restore_session(backup):
     for key in ('i', 'uid', 'key_logged', 'tempuser', 'user_id', 'encrypted', 'google_id', 'google_email', 'chatstatus', 'observer', 'monitor', 'variablefile', 'doing_sms', 'taskwait', 'phone_number', 'otp_secret', 'validated_user', 'github_next', 'next', 'sessions'):
         if key in backup:
             session[key] = backup[key]
 
+
 def get_existing_session(yaml_filename, secret):
     keys = [result.key for result in db.session.execute(select(UserDictKeys.filename, UserDictKeys.key).where(and_(UserDictKeys.user_id == current_user.id, UserDictKeys.filename == yaml_filename)).order_by(UserDictKeys.indexno))]
     for key in keys:
         try:
-            steps, user_dict, is_encrypted = fetch_user_dict(key, yaml_filename, secret=secret)
+            steps, user_dict, is_encrypted = fetch_user_dict(key, yaml_filename, secret=secret)  # pylint: disable=unused-variable
         except:
             logmessage("get_existing_session: unable to decrypt existing interview session " + key)
             continue
         update_session(yaml_filename, uid=key, key_logged=True, encrypted=is_encrypted)
         return key, is_encrypted
     return None, True
+
 
 def reset_session(yaml_filename, secret):
     user_dict = fresh_dictionary()
@@ -3185,11 +3395,13 @@ def reset_session(yaml_filename, secret):
     update_session(yaml_filename, uid=user_code)
     return (user_code, user_dict)
 
+
 def _endpoint_url(endpoint, **kwargs):
     url = url_for('index')
     if endpoint:
         url = url_for(endpoint, **kwargs)
     return url
+
 
 def user_can_edit_package(pkgname=None, giturl=None):
     if current_user.has_role('admin'):
@@ -3202,10 +3414,9 @@ def user_can_edit_package(pkgname=None, giturl=None):
         pkgname = pkgname.strip()
         if pkgname == '' or re.search(r'\s', pkgname):
             return False
-        results = db.session.execute(select(Package.id, PackageAuth.user_id, PackageAuth.authtype).outerjoin(PackageAuth, Package.id == PackageAuth.package_id).where(and_(Package.name == pkgname, Package.active == True))).all()
+        results = db.session.execute(select(Package.id, PackageAuth.user_id, PackageAuth.authtype).outerjoin(PackageAuth, Package.id == PackageAuth.package_id).where(and_(Package.name == pkgname, Package.active == True))).all()  # noqa: E712 # pylint: disable=singleton-comparison
         the_count = 0
-        for result in results:
-            the_count += 1
+        the_count += len(results)
         if the_count == 0:
             return True
         for d in results:
@@ -3215,10 +3426,8 @@ def user_can_edit_package(pkgname=None, giturl=None):
         giturl = giturl.strip()
         if giturl == '' or re.search(r'\s', giturl):
             return False
-        results = db.session.execute(select(Package.id, PackageAuth.user_id, PackageAuth.authtype).outerjoin(PackageAuth, Package.id == PackageAuth.package_id).where(and_(or_(Package.giturl == giturl + '/', Package.giturl == giturl), Package.active == True))).all()
-        the_count = 0
-        for result in results:
-            the_count += 1
+        results = db.session.execute(select(Package.id, PackageAuth.user_id, PackageAuth.authtype).outerjoin(PackageAuth, Package.id == PackageAuth.package_id).where(and_(or_(Package.giturl == giturl + '/', Package.giturl == giturl), Package.active == True))).all()  # noqa: E712 # pylint: disable=singleton-comparison
+        the_count = len(results)
         if the_count == 0:
             return True
         for d in results:
@@ -3226,21 +3435,23 @@ def user_can_edit_package(pkgname=None, giturl=None):
                 return True
     return False
 
+
 def uninstall_package(packagename):
-    #logmessage("server uninstall_package: " + packagename)
+    # logmessage("server uninstall_package: " + packagename)
     existing_package = db.session.execute(select(Package).filter_by(name=packagename, active=True).order_by(Package.id.desc())).first()
     if existing_package is None:
         flash(word("Package did not exist"), 'error')
         return
-    db.session.execute(update(Package).where(Package.name == packagename, Package.active == True).values(active=False))
+    db.session.execute(update(Package).where(Package.name == packagename, Package.active == True).values(active=False))  # noqa: E712 # pylint: disable=singleton-comparison
     db.session.commit()
+
 
 def summarize_results(results, logmessages, html=True):
     if html:
         output = '<br>'.join([x + ':&nbsp;' + results[x] for x in sorted(results.keys())])
         if len(logmessages) > 0:
             if len(output) > 0:
-                output += '<br><br><strong>'+ word("pip log") + ':</strong><br>'
+                output += '<br><br><strong>' + word("pip log") + ':</strong><br>'
             else:
                 output = ''
             output += re.sub(r'\n', r'<br>', logmessages)
@@ -3254,8 +3465,9 @@ def summarize_results(results, logmessages, html=True):
         output += logmessages
     return output
 
+
 def install_zip_package(packagename, file_number):
-    #logmessage("install_zip_package: " + packagename + " " + str(file_number))
+    # logmessage("install_zip_package: " + packagename + " " + str(file_number))
     existing_package = db.session.execute(select(Package).filter_by(name=packagename).order_by(Package.id.desc()).with_for_update()).scalar()
     if existing_package is None:
         package_auth = PackageAuth(user_id=current_user.id)
@@ -3276,8 +3488,9 @@ def install_zip_package(packagename, file_number):
         existing_package.version += 1
     db.session.commit()
 
+
 def install_git_package(packagename, giturl, branch):
-    #logmessage("install_git_package: " + packagename + " " + str(giturl))
+    # logmessage("install_git_package: " + packagename + " " + str(giturl))
     giturl = str(giturl).rstrip('/')
     if branch is None or str(branch).lower().strip() in ('none', ''):
         branch = GITHUB_BRANCH
@@ -3308,8 +3521,9 @@ def install_git_package(packagename, giturl, branch):
             logmessage("install_git_package: package " + str(giturl) + " appeared to exist but could not be found")
     db.session.commit()
 
+
 def install_pip_package(packagename, limitation):
-    #logmessage("install_pip_package: " + packagename + " " + str(limitation))
+    # logmessage("install_pip_package: " + packagename + " " + str(limitation))
     existing_package = db.session.execute(select(Package).filter_by(name=packagename).order_by(Package.id.desc()).with_for_update()).scalar()
     if existing_package is None:
         package_auth = PackageAuth(user_id=current_user.id)
@@ -3330,7 +3544,8 @@ def install_pip_package(packagename, limitation):
         existing_package.active = True
     db.session.commit()
 
-def get_package_info(exclude_core=False):
+
+def get_package_info():
     is_admin = current_user.has_role('admin')
     package_list = []
     package_auth = {}
@@ -3340,8 +3555,8 @@ def get_package_info(exclude_core=False):
             package_auth[auth.package_id] = {}
         package_auth[auth.package_id][auth.user_id] = auth.authtype
     for package in db.session.execute(select(Package).filter_by(active=True).order_by(Package.name, Package.id.desc())).scalars():
-        #if exclude_core and package.name in ('docassemble', 'docassemble.base', 'docassemble.webapp'):
-        #    continue
+        # if exclude_core and package.name in ('docassemble', 'docassemble.base', 'docassemble.webapp'):
+        #     continue
         if package.name in seen:
             continue
         seen[package.name] = 1
@@ -3357,6 +3572,7 @@ def get_package_info(exclude_core=False):
             package_list.append(Object(package=package, can_update=can_update, can_uninstall=can_uninstall))
     return package_list, package_auth
 
+
 def name_of_user(user, include_email=False):
     output = ''
     if user.first_name:
@@ -3371,6 +3587,7 @@ def name_of_user(user, include_email=False):
         output += user.email
     return output
 
+
 def flash_as_html(message, message_type="info", is_ajax=True):
     if message_type == 'error':
         message_type = 'danger'
@@ -3378,6 +3595,7 @@ def flash_as_html(message, message_type="info", is_ajax=True):
     if not is_ajax:
         flash(message, message_type)
     return output
+
 
 def make_example_html(examples, first_id, example_html, data_dict):
     example_html.append('          <ul class="nav flex-column nav-pills da-example-list da-example-hidden">\n')
@@ -3393,10 +3611,12 @@ def make_example_html(examples, first_id, example_html, data_dict):
         data_dict[example['id']] = example
     example_html.append('          </ul>')
 
+
 def public_method(method, the_class):
     if isinstance(method, the_method_type) and method.__name__ != 'init' and not method.__name__.startswith('_') and method.__name__ in the_class.__dict__:
         return True
     return False
+
 
 def noquotetrunc(string):
     string = noquote(string)
@@ -3409,6 +3629,7 @@ def noquotetrunc(string):
             string = string[:160] + '...'
     return string
 
+
 def noquote(string):
     if string is None:
         return string
@@ -3418,6 +3639,7 @@ def noquote(string):
     string = gt_match.sub('&gt;', string)
     return string
 
+
 def infobutton(title):
     docstring = ''
     if 'doc' in title_documentation[title]:
@@ -3425,8 +3647,9 @@ def infobutton(title):
     if 'url' in title_documentation[title]:
         docstring += "<br><a target='_blank' href='" + title_documentation[title]['url'] + "'>" + word("View documentation") + "</a>"
     return '&nbsp;<a tabindex="0" role="button" class="daquestionsign" data-bs-container="body" data-bs-toggle="popover" data-bs-placement="auto" data-bs-content="' + docstring + '" title="' + noquote(title_documentation[title].get('title', title)) + '"><i class="fas fa-question-circle"></i></a>'
-    #title=' + json.dumps(word("Help"))
-    #data-bs-selector="true"
+    # title=' + json.dumps(word("Help"))
+    # data-bs-selector="true"
+
 
 def search_button(var, field_origins, name_origins, interview_source, all_sources):
     in_this_file = False
@@ -3481,6 +3704,7 @@ search_key = """
                   <tr><td><a tabindex="0" class="dasearchicon dasearchthis"><i class="fas fa-search"></i></a> """ + word("means the name is located in this file") + """</td></tr>
                   <tr><td><a tabindex="0" class="dasearchicon dasearchother"><i class="fas fa-search"></i></a> """ + word("means the name may be located in a file included by reference, such as:") + """</td></tr>"""
 
+
 def find_needed_names(interview, needed_names, the_name=None, the_question=None):
     if the_name is not None:
         needed_names.add(the_name)
@@ -3496,9 +3720,10 @@ def find_needed_names(interview, needed_names, the_name=None, the_question=None)
                 find_needed_names(interview, needed_names, the_name=name)
     else:
         for question in interview.questions_list:
-            #if not (question.is_mandatory or question.is_initial):
-            #    continue
+            # if not (question.is_mandatory or question.is_initial):
+            #     continue
             find_needed_names(interview, needed_names, the_question=question)
+
 
 def get_ml_info(varname, default_package, default_file):
     parts = varname.split(':')
@@ -3524,13 +3749,14 @@ def get_ml_info(varname, default_package, default_file):
         the_varname = varname
     return (the_package, the_file, the_varname)
 
-pg_code_cache = {}
+pg_code_cache = get_pg_code_cache()
+
 
 def source_code_url(the_name, datatype=None):
     if datatype == 'module':
         try:
             if (not hasattr(the_name, '__path__')) or (not the_name.__path__):
-                #logmessage("Nothing for module " + the_name)
+                # logmessage("Nothing for module " + the_name)
                 return None
             source_file = re.sub(r'\.pyc$', r'.py', the_name.__path__[0])
             line_number = 1
@@ -3541,13 +3767,13 @@ def source_code_url(the_name, datatype=None):
             source_file = inspect.getsourcefile(the_name)
             line_number = inspect.findsource(the_name)[1]
         except:
-            #logmessage("Nothing for class " + the_name)
+            # logmessage("Nothing for class " + the_name)
             return None
     elif hasattr(the_name, '__code__'):
         source_file = the_name.__code__.co_filename
         line_number = the_name.__code__.co_firstlineno
     else:
-        #logmessage("Nothing for " + the_name)
+        # logmessage("Nothing for " + the_name)
         return None
     source_file = re.sub(r'.*/site-packages/', '', source_file)
     m = re.search(r'^docassemble/(base|webapp|demo)/', source_file)
@@ -3556,13 +3782,14 @@ def source_code_url(the_name, datatype=None):
         if line_number == 1:
             return output
         return output + '#L' + str(line_number)
-    #logmessage("no match for " + str(source_file))
+    # logmessage("no match for " + str(source_file))
     return None
+
 
 def get_vars_in_use(interview, interview_status, debug_mode=False, return_json=False, show_messages=True, show_jinja_help=False, current_project='default', use_playground=True):
     user_dict = fresh_dictionary()
-    #if 'uid' not in session:
-    #    session['uid'] = random_alphanumeric(32)
+    # if 'uid' not in session:
+    #     session['uid'] = random_alphanumeric(32)
     if debug_mode:
         has_error = True
         error_message = "Not checking variables because in debug mode."
@@ -3620,16 +3847,17 @@ def get_vars_in_use(interview, interview_status, debug_mode=False, return_json=F
     classes = set()
     name_info = copy.deepcopy(base_name_info)
     if use_playground:
-        area = SavedFile(current_user.id, fix=True, section='playgroundtemplate')
+        playground_user = get_playground_user()
+        area = SavedFile(playground_user.id, fix=True, section='playgroundtemplate')
         the_directory = directory_for(area, current_project)
         templates = sorted([f for f in os.listdir(the_directory) if os.path.isfile(os.path.join(the_directory, f)) and re.search(r'^[A-Za-z0-9]', f)])
-        area = SavedFile(current_user.id, fix=True, section='playgroundstatic')
+        area = SavedFile(playground_user.id, fix=True, section='playgroundstatic')
         the_directory = directory_for(area, current_project)
         static = sorted([f for f in os.listdir(the_directory) if os.path.isfile(os.path.join(the_directory, f)) and re.search(r'^[A-Za-z0-9]', f)])
-        area = SavedFile(current_user.id, fix=True, section='playgroundsources')
+        area = SavedFile(playground_user.id, fix=True, section='playgroundsources')
         the_directory = directory_for(area, current_project)
         sources = sorted([f for f in os.listdir(the_directory) if os.path.isfile(os.path.join(the_directory, f)) and re.search(r'^[A-Za-z0-9]', f)])
-        area = SavedFile(current_user.id, fix=True, section='playgroundmodules')
+        area = SavedFile(playground_user.id, fix=True, section='playgroundmodules')
         the_directory = directory_for(area, current_project)
         avail_modules = sorted([re.sub(r'.py$', '', f) for f in os.listdir(the_directory) if os.path.isfile(os.path.join(the_directory, f)) and re.search(r'^[A-Za-z0-9]', f)])
     else:
@@ -3662,7 +3890,7 @@ def get_vars_in_use(interview, interview_status, debug_mode=False, return_json=F
                     if x.__name__ != 'DAObject':
                         bases.append(x.__name__)
                 try:
-                    methods = inspect.getmembers(user_dict[val], predicate=lambda x: public_method(x, user_dict[val]))
+                    methods = inspect.getmembers(user_dict[val], predicate=lambda x, the_val=val: public_method(x, user_dict[the_val]))
                 except:
                     methods = []
                 method_list = []
@@ -3738,7 +3966,7 @@ def get_vars_in_use(interview, interview_status, debug_mode=False, return_json=F
     vocab_dict = {}
     vocab_set = (names_used | functions | classes | modules | fields_used | set(key for key in base_name_info if not re.search(r'\.', key)) | set(key for key in name_info if not re.search(r'\.', key)) | set(templates) | set(static) | set(sources) | set(avail_modules) | set(interview.images.keys()))
     vocab_set = set(i for i in vocab_set if not extraneous_var.search(i))
-    names_used = names_used.difference( functions | classes | modules | set(avail_modules) )
+    names_used = names_used.difference(functions | classes | modules | set(avail_modules))
     undefined_names = names_used.difference(fields_used | set(base_name_info.keys()) | set(x for x in names_used if '.' in x))
     implicitly_defined = set()
     for var in fields_used:
@@ -3755,7 +3983,7 @@ def get_vars_in_use(interview, interview_status, debug_mode=False, return_json=F
         undefined_names.discard(var)
     for var in user_dict:
         undefined_names.discard(var)
-    names_used = names_used.difference( undefined_names )
+    names_used = names_used.difference(undefined_names)
     if return_json:
         if len(names_used) > 0:
             has_parent = {}
@@ -3768,9 +3996,9 @@ def get_vars_in_use(interview, interview_status, debug_mode=False, return_json=F
             var_list = []
             for var in sorted(names_used):
                 var_trans = re.sub(r'\[[0-9]+\]', '[i]', var)
-                #var_trans = re.sub(r'\[i\](.*)\[i\](.*)\[i\](.*)\[i\](.*)\[i\](.*)\[i\]', r'[i]\1[j]\2[k]\3[l]\4[m]\5[n]', var_trans)
-                #var_trans = re.sub(r'\[i\](.*)\[i\](.*)\[i\](.*)\[i\](.*)\[i\]', r'[i]\1[j]\2[k]\3[l]\4[m]', var_trans)
-                #var_trans = re.sub(r'\[i\](.*)\[i\](.*)\[i\](.*)\[i\]', r'[i]\1[j]\2[k]\3[l]', var_trans)
+                # var_trans = re.sub(r'\[i\](.*)\[i\](.*)\[i\](.*)\[i\](.*)\[i\](.*)\[i\]', r'[i]\1[j]\2[k]\3[l]\4[m]\5[n]', var_trans)
+                # var_trans = re.sub(r'\[i\](.*)\[i\](.*)\[i\](.*)\[i\](.*)\[i\]', r'[i]\1[j]\2[k]\3[l]\4[m]', var_trans)
+                # var_trans = re.sub(r'\[i\](.*)\[i\](.*)\[i\](.*)\[i\]', r'[i]\1[j]\2[k]\3[l]', var_trans)
                 var_trans = re.sub(r'\[i\](.*)\[i\](.*)\[i\]', r'[i]\1[j]\2[k]', var_trans)
                 var_trans = re.sub(r'\[i\](.*)\[i\]', r'[i]\1[j]', var_trans)
                 info = dict(var=var, to_insert=var)
@@ -3870,8 +4098,8 @@ def get_vars_in_use(interview, interview_status, debug_mode=False, return_json=F
                     info['url'] = the_ref
                 images_list.append(info)
         if use_playground:
-            return dict(undefined_names=list(sorted(undefined_names)), var_list=var_list, functions_list=functions_list, classes_list=classes_list, modules_list=modules_list, modules_available_list=modules_available_list, templates_list=templates_list, sources_list=sources_list, images_list=images_list, static_list=static_list), sorted(vocab_set)
-        return dict(undefined_names=list(sorted(undefined_names)), var_list=var_list, functions_list=functions_list, classes_list=classes_list, modules_list=modules_list, images_list=images_list), sorted(vocab_set)
+            return dict(undefined_names=list(sorted(undefined_names)), var_list=var_list, functions_list=functions_list, classes_list=classes_list, modules_list=modules_list, modules_available_list=modules_available_list, templates_list=templates_list, sources_list=sources_list, images_list=images_list, static_list=static_list), sorted(vocab_set), vocab_dict
+        return dict(undefined_names=list(sorted(undefined_names)), var_list=var_list, functions_list=functions_list, classes_list=classes_list, modules_list=modules_list, images_list=images_list), sorted(vocab_set), vocab_dict
     if len(undefined_names) > 0:
         content += '\n                  <tr><td><h4>' + word('Undefined names') + infobutton('undefined') + '</h4></td></tr>'
         for var in sorted(undefined_names):
@@ -3914,15 +4142,15 @@ def get_vars_in_use(interview, interview_status, debug_mode=False, return_json=F
             if var in has_children:
                 content += '&nbsp;<a tabindex="0" class="dashowattributes" role="button" data-name="' + noquote(var) + '" title=' + json.dumps(attr_documentation) + '><i class="fas fa-ellipsis-h"></i></a>'
             if var in name_info and 'type' in name_info[var] and name_info[var]['type']:
-                content +='&nbsp;<span data-ref="' + noquote(name_info[var]['type']) + '" class="daparenthetical">(' + name_info[var]['type'] + ')</span>'
+                content += '&nbsp;<span data-ref="' + noquote(name_info[var]['type']) + '" class="daparenthetical">(' + name_info[var]['type'] + ')</span>'
             elif var in interview.mlfields:
-                content +='&nbsp;<span data-ref="DAModel" class="daparenthetical">(DAModel)</span>'
+                content += '&nbsp;<span data-ref="DAModel" class="daparenthetical">(DAModel)</span>'
             if var in name_info and 'doc' in name_info[var] and name_info[var]['doc']:
                 if 'git' in name_info[var] and name_info[var]['git']:
                     git_link = noquote("<a class='float-end' target='_blank' href='" + name_info[var]['git'] + "'><i class='fas fa-code'></i></a>")
                 else:
                     git_link = ''
-                content += '&nbsp;<a tabindex="0" class="dainfosign" role="button" data-bs-container="body" data-bs-toggle="popover" data-bs-placement="auto" data-bs-content="' + name_info[var]['doc'] + '"  title="' + var + git_link + '"><i class="fas fa-info-circle"></i></a>' #data-bs-selector="true" title=' + json.dumps(word_documentation) + '
+                content += '&nbsp;<a tabindex="0" class="dainfosign" role="button" data-bs-container="body" data-bs-toggle="popover" data-bs-placement="auto" data-bs-content="' + name_info[var]['doc'] + '"  title="' + var + git_link + '"><i class="fas fa-info-circle"></i></a>'  # data-bs-selector="true" title=' + json.dumps(word_documentation) + '
             if var in interview.mlfields:
                 if 'ml_group' in interview.mlfields[var] and not interview.mlfields[var]['ml_group'].uses_mako:
                     (ml_package, ml_file, ml_group_id) = get_ml_info(interview.mlfields[var]['ml_group'].original_text, ml_parts[0], ml_parts[1])
@@ -3935,7 +4163,7 @@ def get_vars_in_use(interview, interview_status, debug_mode=False, return_json=F
             content += '\n                <tr><td>'
             content += '\n                  <ul>'
             for path in sorted([x.path for x in all_sources]):
-                content += '\n                    <li><a target="_blank" href="' + url_for('view_source', i=path, project=current_project)+ '">' + path + '<a></li>'
+                content += '\n                    <li><a target="_blank" href="' + url_for('view_source', i=path, project=current_project) + '">' + path + '<a></li>'
             content += '\n                  </ul>'
             content += '\n                </td></tr>'
     if len(functions) > 0:
@@ -3949,7 +4177,7 @@ def get_vars_in_use(interview, interview_status, debug_mode=False, return_json=F
                     git_link = noquote("<a class='float-end' target='_blank' href='" + name_info[var]['git'] + "'><i class='fas fa-code'></i></a>")
                 else:
                     git_link = ''
-                content += '&nbsp;<a tabindex="0" class="dainfosign" role="button" data-bs-container="body" data-bs-toggle="popover" data-bs-placement="auto" data-bs-content="' + name_info[var]['doc'] + '" title="' + var + git_link + '"><i class="fas fa-info-circle"></i></a>' #data-bs-selector="true" title=' + json.dumps(word_documentation) + '
+                content += '&nbsp;<a tabindex="0" class="dainfosign" role="button" data-bs-container="body" data-bs-toggle="popover" data-bs-placement="auto" data-bs-content="' + name_info[var]['doc'] + '" title="' + var + git_link + '"><i class="fas fa-info-circle"></i></a>'  # data-bs-selector="true" title=' + json.dumps(word_documentation) + '
             content += '</td></tr>'
     if len(classes) > 0:
         content += '\n                  <tr><td><h4>' + word('Classes') + infobutton('classes') + '</h4></td></tr>'
@@ -3963,7 +4191,7 @@ def get_vars_in_use(interview, interview_status, debug_mode=False, return_json=F
                     git_link = noquote("<a class='float-end' target='_blank' href='" + name_info[var]['git'] + "'><i class='fas fa-code'></i></a>")
                 else:
                     git_link = ''
-                content += '&nbsp;<a tabindex="0" class="dainfosign" role="button" data-bs-container="body" data-bs-toggle="popover" data-bs-placement="auto" data-bs-content="' + name_info[var]['doc'] + '" title="' + var + git_link + '"><i class="fas fa-info-circle"></i></a>' #data-bs-selector="true" title=' + json.dumps(word_documentation) + '
+                content += '&nbsp;<a tabindex="0" class="dainfosign" role="button" data-bs-container="body" data-bs-toggle="popover" data-bs-placement="auto" data-bs-content="' + name_info[var]['doc'] + '" title="' + var + git_link + '"><i class="fas fa-info-circle"></i></a>'  # data-bs-selector="true" title=' + json.dumps(word_documentation) + '
             if len(name_info[var]['methods']) > 0:
                 content += '&nbsp;<a tabindex="0" class="dashowmethods" role="button" data-showhide="XMETHODX' + var + '" title=' + json.dumps(word('Methods')) + '><i class="fas fa-cog"></i></a>'
                 content += '<div style="display: none;" id="XMETHODX' + var + '"><table><tbody>'
@@ -3973,9 +4201,9 @@ def get_vars_in_use(interview, interview_status, debug_mode=False, return_json=F
                     else:
                         git_link = ''
                     content += '<tr><td><a tabindex="0" role="button" data-name="' + noquote(method_info['name']) + '" data-insert="' + noquote(method_info['insert']) + '" class="btn btn-sm btn-warning playground-variable">' + method_info['tag'] + '</a>'
-                    #vocab_dict[method_info['name']] = method_info['insert']
+                    # vocab_dict[method_info['name']] = method_info['insert']
                     if method_info['doc']:
-                        content += '&nbsp;<a tabindex="0" class="dainfosign" role="button" data-bs-container="body" data-bs-toggle="popover" data-bs-placement="auto" data-bs-content="' + method_info['doc'] + '" data-bs-title="' + noquote(method_info['name']) + git_link + '"><i class="fas fa-info-circle"></i></a>' #data-bs-selector="true" title=' + json.dumps(word_documentation) + '
+                        content += '&nbsp;<a tabindex="0" class="dainfosign" role="button" data-bs-container="body" data-bs-toggle="popover" data-bs-placement="auto" data-bs-content="' + method_info['doc'] + '" data-bs-title="' + noquote(method_info['name']) + git_link + '"><i class="fas fa-info-circle"></i></a>'  # data-bs-selector="true" title=' + json.dumps(word_documentation) + '
                     content += '</td></tr>'
                 content += '</tbody></table></div>'
             content += '</td></tr>'
@@ -3989,7 +4217,7 @@ def get_vars_in_use(interview, interview_status, debug_mode=False, return_json=F
                     git_link = noquote("<a class='float-end' target='_blank' href='" + name_info[var]['git'] + "'><i class='fas fa-code'></i></a>")
                 else:
                     git_link = ''
-                content += '&nbsp;<a tabindex="0" class="dainfosign" role="button" data-bs-container="body" data-bs-toggle="popover" data-bs-placement="auto" data-bs-content="' + name_info[var]['doc'] + '" data-bs-title="' + noquote(var) + git_link + '"><i class="fas fa-info-circle"></i></a>' #data-bs-selector="true" title=' + json.dumps(word_documentation) + '
+                content += '&nbsp;<a tabindex="0" class="dainfosign" role="button" data-bs-container="body" data-bs-toggle="popover" data-bs-placement="auto" data-bs-content="' + name_info[var]['doc'] + '" data-bs-title="' + noquote(var) + git_link + '"><i class="fas fa-info-circle"></i></a>'  # data-bs-selector="true" title=' + json.dumps(word_documentation) + '
             content += '</td></tr>'
     if len(avail_modules) > 0:
         content += '\n                  <tr><td><h4>' + word('Modules available in Playground') + infobutton('playground_modules') + '</h4></td></tr>'
@@ -4038,8 +4266,10 @@ def get_vars_in_use(interview, interview_status, debug_mode=False, return_json=F
             vocab_dict[item] = base_name_info.get('insert', item)
     return content, sorted(vocab_set), vocab_dict
 
+
 def ocr_google_in_background(image_file, raw_result, user_code):
     return docassemble.webapp.worker.ocr_google.delay(image_file, raw_result, user_code)
+
 
 def make_png_for_pdf(doc, prefix, page=None):
     if prefix == 'page':
@@ -4050,12 +4280,14 @@ def make_png_for_pdf(doc, prefix, page=None):
     task = docassemble.webapp.worker.make_png_for_pdf.delay(doc, prefix, resolution, session_id, PDFTOPPM_COMMAND, page=page)
     return task.id
 
+
 def fg_make_png_for_pdf(doc, prefix, page=None):
     if prefix == 'page':
         resolution = PNG_RESOLUTION
     else:
         resolution = PNG_SCREEN_RESOLUTION
     docassemble.base.util.make_png_for_pdf(doc, prefix, resolution, PDFTOPPM_COMMAND, page=page)
+
 
 def fg_make_png_for_pdf_path(path, prefix, page=None):
     if prefix == 'page':
@@ -4064,10 +4296,12 @@ def fg_make_png_for_pdf_path(path, prefix, page=None):
         resolution = PNG_SCREEN_RESOLUTION
     docassemble.base.util.make_png_for_pdf_path(path, prefix, resolution, PDFTOPPM_COMMAND, page=page)
 
+
 def fg_make_pdf_for_word_path(path, extension):
     success = docassemble.base.pandoc.word_to_pdf(path, extension, path + ".pdf")
     if not success:
         raise DAError("fg_make_pdf_for_word_path: unable to make PDF from " + path + " using extension " + extension + " and writing to " + path + ".pdf")
+
 
 def task_ready(task_id):
     result = docassemble.webapp.worker.workerapp.AsyncResult(id=task_id)
@@ -4075,18 +4309,19 @@ def task_ready(task_id):
         return True
     return False
 
+
 def wait_for_task(task_id, timeout=None):
     if timeout is None:
         timeout = 3
-    #logmessage("wait_for_task: starting")
+    # logmessage("wait_for_task: starting")
     try:
         result = docassemble.webapp.worker.workerapp.AsyncResult(id=task_id)
         if result.ready():
-            #logmessage("wait_for_task: was ready")
+            # logmessage("wait_for_task: was ready")
             return True
-        #logmessage("wait_for_task: waiting for task to complete")
+        # logmessage("wait_for_task: waiting for task to complete")
         result.get(timeout=timeout)
-        #logmessage("wait_for_task: returning true")
+        # logmessage("wait_for_task: returning true")
         return True
     except docassemble.webapp.worker.TimeoutError:
         logmessage("wait_for_task: timed out")
@@ -4106,27 +4341,29 @@ def wait_for_task(task_id, timeout=None):
 #         if result > 0:
 #             raise DAError("Call to pdftoppm failed")
 
+
 def trigger_update(except_for=None):
-    sys.stderr.write("trigger_update: except_for is " + str(except_for) + " and hostname is " + hostname + "\n")
+    logmessage("trigger_update: except_for is " + str(except_for) + " and hostname is " + hostname)
     if USING_SUPERVISOR:
         to_delete = set()
         for host in db.session.execute(select(Supervisors)).scalars():
             if host.url and not (except_for and host.hostname == except_for):
                 if host.hostname == hostname:
                     the_url = 'http://localhost:9001'
-                    sys.stderr.write("trigger_update: using http://localhost:9001\n")
+                    logmessage("trigger_update: using http://localhost:9001")
                 else:
                     the_url = host.url
-                args = [SUPERVISORCTL, '-s', the_url, 'start', 'update']
+                args = SUPERVISORCTL + ['-s', the_url, 'start', 'update']
                 result = subprocess.run(args, check=False).returncode
                 if result == 0:
-                    sys.stderr.write("trigger_update: sent update to " + str(host.hostname) + " using " + the_url + "\n")
+                    logmessage("trigger_update: sent update to " + str(host.hostname) + " using " + the_url)
                 else:
-                    sys.stderr.write("trigger_update: call to supervisorctl on " + str(host.hostname) + " was not successful\n")
+                    logmessage("trigger_update: call to supervisorctl on " + str(host.hostname) + " was not successful")
                     to_delete.add(host.id)
         for id_to_delete in to_delete:
-            db.session.execute(delete(Supervisors).filter_by(id=id_to_delete))
+            db.session.execute(sqldelete(Supervisors).filter_by(id=id_to_delete))
             db.session.commit()
+
 
 def restart_on(host):
     logmessage("restart_on: " + str(host.hostname))
@@ -4134,7 +4371,7 @@ def restart_on(host):
         the_url = 'http://localhost:9001'
     else:
         the_url = host.url
-    args = [SUPERVISORCTL, '-s', the_url, 'start', 'reset']
+    args = SUPERVISORCTL + ['-s', the_url, 'start', 'reset']
     result = subprocess.run(args, check=False).returncode
     if result == 0:
         logmessage("restart_on: sent reset to " + str(host.hostname))
@@ -4143,15 +4380,26 @@ def restart_on(host):
         return False
     return True
 
+
 def restart_all():
     logmessage("restarting all")
     for interview_path in [x.decode() for x in r.keys('da:interviewsource:*')]:
         r.delete(interview_path)
-    restart_others()
+    if not SINGLE_SERVER:
+        restart_others()
     restart_this()
+
 
 def restart_this():
     logmessage("restart_this: hostname is " + str(hostname))
+    if SINGLE_SERVER:
+        args = SUPERVISORCTL + ['-s', 'http://localhost:9001', 'start', 'reset']
+        result = subprocess.run(args, check=False).returncode
+        if result == 0:
+            logmessage("restart_this: sent reset")
+        else:
+            logmessage("restart_this: call to supervisorctl with reset was not successful")
+        return
     if USING_SUPERVISOR:
         to_delete = set()
         for host in db.session.execute(select(Supervisors)).scalars():
@@ -4162,7 +4410,7 @@ def restart_this():
                     if not result:
                         to_delete.add(host.id)
         for id_to_delete in to_delete:
-            db.session.execute(delete(Supervisors).filter_by(id=id_to_delete))
+            db.session.execute(sqldelete(Supervisors).filter_by(id=id_to_delete))
             db.session.commit()
     else:
         logmessage("restart_this: touching wsgi file")
@@ -4170,6 +4418,7 @@ def restart_this():
         if os.path.isfile(wsgi_file):
             with open(wsgi_file, 'a', encoding='utf-8'):
                 os.utime(wsgi_file, None)
+
 
 def restart_others():
     logmessage("restart_others: starting")
@@ -4195,8 +4444,9 @@ def restart_others():
                 if not result:
                     to_delete.add(host.id)
         for id_to_delete in to_delete:
-            db.session.execute(delete(Supervisors).filter_by(id=id_to_delete))
+            db.session.execute(sqldelete(Supervisors).filter_by(id=id_to_delete))
             db.session.commit()
+
 
 def get_requester_ip(req):
     if not req:
@@ -4208,8 +4458,9 @@ def get_requester_ip(req):
             return req.headers['X-Forwarded-For']
     return req.remote_addr
 
-def current_info(yaml=None, req=None, action=None, location=None, interface='web', session_info=None, secret=None, device_id=None, session_uid=None):
-    #logmessage("interface is " + str(interface))
+
+def current_info(yaml=None, req=None, action=None, location=None, interface='web', session_info=None, secret=None, device_id=None, session_uid=None):  # pylint: disable=redefined-outer-name
+    # logmessage("interface is " + str(interface))
     if current_user.is_authenticated and not current_user.is_anonymous:
         role_list = [str(role.name) for role in current_user.roles]
         if len(role_list) == 0:
@@ -4240,7 +4491,7 @@ def current_info(yaml=None, req=None, action=None, location=None, interface='web
                 session_uid = ''
             if session_uid == '':
                 session_uid = app.session_interface.manual_save_session(app, session).decode()[5:15]
-        #logmessage("unique id is " + session_uid)
+        # logmessage("unique id is " + session_uid)
     if device_id is None:
         device_id = random_string(16)
     if secret is not None:
@@ -4255,7 +4506,7 @@ def current_info(yaml=None, req=None, action=None, location=None, interface='web
         encrypted = True
     return_val = {'session': user_code, 'secret': secret, 'yaml_filename': yaml, 'interface': interface, 'url': url, 'url_root': url_root, 'encrypted': encrypted, 'user': {'is_anonymous': bool(current_user.is_anonymous), 'is_authenticated': bool(current_user.is_authenticated), 'session_uid': session_uid, 'device_id': device_id}, 'headers': headers, 'clientip': clientip, 'method': method}
     if action is not None:
-        #logmessage("current_info: setting an action " + repr(action))
+        # logmessage("current_info: setting an action " + repr(action))
         return_val.update(action)
         # return_val['orig_action'] = action['action']
         # return_val['orig_arguments'] = action['arguments']
@@ -4266,38 +4517,42 @@ def current_info(yaml=None, req=None, action=None, location=None, interface='web
     return_val['user'].update(ext)
     return return_val
 
+
 def html_escape(text):
     text = re.sub('&', '&amp;', text)
     text = re.sub('<', '&lt;', text)
     text = re.sub('>', '&gt;', text)
     return text
 
+
 def indent_by(text, num):
     if not text:
         return ""
     return (" " * num) + re.sub(r'\n', "\n" + (" " * num), text).rstrip() + "\n"
 
+
 def call_sync():
     if not USING_SUPERVISOR:
         return
-    args = [SUPERVISORCTL, '-s', 'http://localhost:9001', 'start', 'sync']
+    args = SUPERVISORCTL + ['-s', 'http://localhost:9001', 'start', 'sync']
     result = subprocess.run(args, check=False).returncode
     if result == 0:
         pass
-        #logmessage("call_sync: sent message to " + hostname)
+        # logmessage("call_sync: sent message to " + hostname)
     else:
         logmessage("call_sync: call to supervisorctl on " + hostname + " was not successful")
         abort(404)
     in_process = 1
     counter = 10
-    check_args = [SUPERVISORCTL, '-s', 'http://localhost:9001', 'status', 'sync']
+    check_args = SUPERVISORCTL + ['-s', 'http://localhost:9001', 'status', 'sync']
     while in_process == 1 and counter > 0:
-        output, err = Popen(check_args, stdout=PIPE, stderr=PIPE).communicate()
+        output, err = Popen(check_args, stdout=PIPE, stderr=PIPE).communicate()  # pylint: disable=unused-variable
         if not re.search(r'RUNNING', output.decode()):
             in_process = 0
         else:
             time.sleep(1)
         counter -= 1
+
 
 def formatted_current_time():
     if current_user.timezone:
@@ -4306,6 +4561,7 @@ def formatted_current_time():
         the_timezone = zoneinfo.ZoneInfo(get_default_timezone())
     return datetime.datetime.utcnow().replace(tzinfo=tz.tzutc()).astimezone(the_timezone).strftime('%H:%M:%S %Z')
 
+
 def formatted_current_date():
     if current_user.timezone:
         the_timezone = zoneinfo.ZoneInfo(current_user.timezone)
@@ -4313,17 +4569,21 @@ def formatted_current_date():
         the_timezone = zoneinfo.ZoneInfo(get_default_timezone())
     return datetime.datetime.utcnow().replace(tzinfo=tz.tzutc()).astimezone(the_timezone).strftime("%Y-%m-%d")
 
+
 class Object:
+
     def __init__(self, **kwargs):
         for key, value in kwargs.items():
             setattr(self, key, value)
-    pass
+
 
 class FakeUser:
     pass
 
+
 class FakeRole:
     pass
+
 
 class OAuthSignIn:
     providers = {}
@@ -4355,7 +4615,9 @@ class OAuthSignIn:
             cls.providers_obtained = True
         return cls.providers[provider_name]
 
+
 class GoogleSignIn(OAuthSignIn):
+
     def __init__(self):
         super().__init__('google')
         self.service = OAuth2Service(
@@ -4366,6 +4628,7 @@ class GoogleSignIn(OAuthSignIn):
             access_token_url=None,
             base_url=None
         )
+
     def authorize(self):
         result = urllib.parse.parse_qs(request.data.decode())
         # logmessage("GoogleSignIn, args: " + str([str(arg) + ": " + str(request.args[arg]) for arg in request.args]))
@@ -4384,8 +4647,8 @@ class GoogleSignIn(OAuthSignIn):
         return response
 
     def callback(self):
-        #logmessage("GoogleCallback, args: " + str([str(arg) + ": " + str(request.args[arg]) for arg in request.args]))
-        #logmessage("GoogleCallback, request: " + str(request.data))
+        # logmessage("GoogleCallback, args: " + str([str(arg) + ": " + str(request.args[arg]) for arg in request.args]))
+        # logmessage("GoogleCallback, request: " + str(request.data))
         email = session.get('google_email', None)
         google_id = session.get('google_id', None)
         google_name = session.get('google_name', None)
@@ -4404,7 +4667,9 @@ class GoogleSignIn(OAuthSignIn):
             )
         raise Exception("Could not get Google authorization information")
 
+
 class FacebookSignIn(OAuthSignIn):
+
     def __init__(self):
         super().__init__('facebook')
         self.service = OAuth2Service(
@@ -4415,12 +4680,14 @@ class FacebookSignIn(OAuthSignIn):
             access_token_url='https://graph.facebook.com/v3.0/oauth/access_token',
             base_url='https://graph.facebook.com/v3.0'
         )
+
     def authorize(self):
         return redirect(self.service.get_authorize_url(
             scope='public_profile,email',
             response_type='code',
             redirect_uri=self.get_callback_url())
         )
+
     def callback(self):
         if 'code' not in request.args:
             return None, None, None, None
@@ -4430,7 +4697,7 @@ class FacebookSignIn(OAuthSignIn):
                   'redirect_uri': self.get_callback_url()}
         )
         me = oauth_session.get('me', params={'fields': 'id,name,first_name,middle_name,last_name,name_format,email'}).json()
-        #logmessage("Facebook: returned " + json.dumps(me))
+        # logmessage("Facebook: returned " + json.dumps(me))
         return (
             'facebook$' + str(me['id']),
             me.get('email').split('@')[0],
@@ -4442,7 +4709,9 @@ class FacebookSignIn(OAuthSignIn):
              'name_format': me.get('name_format', None)}
         )
 
+
 class AzureSignIn(OAuthSignIn):
+
     def __init__(self):
         super().__init__('azure')
         self.service = OAuth2Service(
@@ -4453,12 +4722,14 @@ class AzureSignIn(OAuthSignIn):
             access_token_url='https://login.microsoftonline.com/common/oauth2/token',
             base_url='https://graph.microsoft.com/v1.0/'
         )
+
     def authorize(self):
         return redirect(self.service.get_authorize_url(
             response_type='code',
             client_id=self.consumer_id,
             redirect_uri=self.get_callback_url())
         )
+
     def callback(self):
         if 'code' not in request.args:
             return None, None, None, None
@@ -4481,10 +4752,13 @@ class AzureSignIn(OAuthSignIn):
              'name': me.get('displayName', me.get('userPrincipalName', None))}
         )
 
+
 def safe_json_loads(data):
     return json.loads(data.decode("utf-8", "strict"))
 
+
 class Auth0SignIn(OAuthSignIn):
+
     def __init__(self):
         super().__init__('auth0')
         self.service = OAuth2Service(
@@ -4495,6 +4769,7 @@ class Auth0SignIn(OAuthSignIn):
             access_token_url='https://' + str(self.consumer_domain) + '/oauth/token',
             base_url='https://' + str(self.consumer_domain)
         )
+
     def authorize(self):
         if 'oauth' in daconfig and 'auth0' in daconfig['oauth'] and daconfig['oauth']['auth0'].get('enable', True) and self.consumer_domain is None:
             raise Exception("To use Auth0, you need to set your domain in the configuration.")
@@ -4504,6 +4779,7 @@ class Auth0SignIn(OAuthSignIn):
             audience='https://' + str(self.consumer_domain) + '/userinfo',
             redirect_uri=self.get_callback_url())
         )
+
     def callback(self):
         if 'code' not in request.args:
             return None, None, None, None
@@ -4514,7 +4790,7 @@ class Auth0SignIn(OAuthSignIn):
                   'redirect_uri': self.get_callback_url()}
         )
         me = oauth_session.get('userinfo').json()
-        #logmessage("Auth0 returned " + json.dumps(me))
+        # logmessage("Auth0 returned " + json.dumps(me))
         user_id = me.get('sub', me.get('user_id'))
         social_id = 'auth0$' + str(user_id)
         username = me.get('name')
@@ -4523,7 +4799,9 @@ class Auth0SignIn(OAuthSignIn):
             raise Exception("Error: could not get necessary information from Auth0")
         return social_id, username, email, {'name': me.get('name', None)}
 
+
 class KeycloakSignIn(OAuthSignIn):
+
     def __init__(self):
         super().__init__('keycloak')
         try:
@@ -4538,6 +4816,7 @@ class KeycloakSignIn(OAuthSignIn):
             access_token_url='https://' + str(self.consumer_domain) + '/auth/realms/' + str(realm) + '/protocol/openid-connect/token',
             base_url='https://' + str(self.consumer_domain)
         )
+
     def authorize(self):
         if 'oauth' in daconfig and 'keycloak' in daconfig['oauth'] and daconfig['oauth']['keycloak'].get('enable', True) and self.consumer_domain is None:
             raise Exception("To use keycloak, you need to set your domain in the configuration.")
@@ -4546,6 +4825,7 @@ class KeycloakSignIn(OAuthSignIn):
             scope='openid profile email',
             redirect_uri=self.get_callback_url())
         )
+
     def callback(self):
         if 'code' not in request.args:
             return None, None, None, None
@@ -4556,7 +4836,7 @@ class KeycloakSignIn(OAuthSignIn):
                   'redirect_uri': self.get_callback_url()}
         )
         me = oauth_session.get('auth/realms/' + daconfig['oauth']['keycloak']['realm'] + '/protocol/openid-connect/userinfo').json()
-        #logmessage("keycloak returned " + json.dumps(me))
+        # logmessage("keycloak returned " + json.dumps(me))
         user_id = me.get('sub')
         social_id = 'keycloak$' + str(user_id)
         username = me.get('preferred_username')
@@ -4565,7 +4845,9 @@ class KeycloakSignIn(OAuthSignIn):
             raise Exception("Error: could not get necessary information from keycloak")
         return social_id, username, email, {'name': me.get('name', None)}
 
+
 class TwitterSignIn(OAuthSignIn):
+
     def __init__(self):
         super().__init__('twitter')
         self.service = OAuth1Service(
@@ -4577,12 +4859,14 @@ class TwitterSignIn(OAuthSignIn):
             access_token_url='https://api.twitter.com/oauth/access_token',
             base_url='https://api.twitter.com/1.1/'
         )
+
     def authorize(self):
         request_token = self.service.get_request_token(
             params={'oauth_callback': self.get_callback_url()}
         )
         session['request_token'] = request_token
         return redirect(self.service.get_authorize_url(request_token[0]))
+
     def callback(self):
         request_token = session.pop('request_token')
         if 'oauth_verifier' not in request.args:
@@ -4593,24 +4877,28 @@ class TwitterSignIn(OAuthSignIn):
             data={'oauth_verifier': request.args['oauth_verifier']}
         )
         me = oauth_session.get('account/verify_credentials.json', params={'skip_status': 'true', 'include_email': 'true', 'include_entites': 'false'}).json()
-        #logmessage("Twitter returned " + json.dumps(me))
+        # logmessage("Twitter returned " + json.dumps(me))
         social_id = 'twitter$' + str(me.get('id_str'))
         username = me.get('screen_name')
         email = me.get('email')
         return social_id, username, email, {'name': me.get('name', None)}
+
 
 @flaskbabel.localeselector
 def get_locale():
     translations = [str(translation) for translation in flaskbabel.list_translations()]
     return request.accept_languages.best_match(translations)
 
+
 def get_user_object(user_id):
     the_user = db.session.execute(select(UserModel).options(db.joinedload(UserModel.roles)).where(UserModel.id == user_id)).scalar()
     return the_user
 
+
 @lm.user_loader
 def load_user(the_id):
     return UserModel.query.options(db.joinedload(UserModel.roles)).get(int(the_id))
+
 
 @app.route('/goto', methods=['GET'])
 def run_temp():
@@ -4635,6 +4923,7 @@ def run_temp():
         r.delete(the_key)
         url = data.decode()
     return redirect(url)
+
 
 @app.route('/user/autologin', methods=['GET'])
 def auto_login():
@@ -4678,10 +4967,12 @@ def auto_login():
     response.set_cookie('secret', info['secret'], httponly=True, secure=app.config['SESSION_COOKIE_SECURE'], samesite=app.config['SESSION_COOKIE_SAMESITE'])
     return response
 
+
 @app.route('/headers', methods=['POST', 'GET'])
 @csrf.exempt
 def show_headers():
     return jsonify(headers=dict(request.headers), ipaddress=request.remote_addr)
+
 
 @app.route('/authorize/<provider>', methods=['POST', 'GET'])
 @csrf.exempt
@@ -4693,6 +4984,7 @@ def oauth_authorize(provider):
     if next_url:
         session['next'] = next_url
     return oauth.authorize()
+
 
 @app.route('/callback/<provider>')
 @csrf.exempt
@@ -4724,7 +5016,7 @@ def oauth_callback(provider):
         db.session.commit()
     login_user(user, remember=False)
     update_last_login(user)
-    if 'i' in session: #TEMPORARY
+    if 'i' in session:  # TEMPORARY
         get_session(session['i'])
     to_convert = []
     if 'tempuser' in session:
@@ -4735,7 +5027,7 @@ def oauth_callback(provider):
                 to_convert.append((filename, info['uid']))
                 save_user_dict_key(info['uid'], filename, priors=True, user=user)
                 update_session(filename, key_logged=True)
-    #logmessage("oauth_callback: calling substitute_secret")
+    # logmessage("oauth_callback: calling substitute_secret")
     secret = substitute_secret(str(request.cookies.get('secret', None)), pad_to_16(MD5Hash(data=social_id).hexdigest()), to_convert=to_convert)
     sub_temp_other(user)
     if 'next' in session:
@@ -4747,12 +5039,13 @@ def oauth_callback(provider):
     response.set_cookie('secret', secret, httponly=True, secure=app.config['SESSION_COOKIE_SECURE'], samesite=app.config['SESSION_COOKIE_SAMESITE'])
     return response
 
+
 @app.route('/phone_login', methods=['POST', 'GET'])
 def phone_login():
     if not app.config['USE_PHONE_LOGIN']:
         return ('File not found', 404)
     form = PhoneLoginForm(request.form)
-    #next = request.args.get('next', url_for('interview_list'))
+    # next = request.args.get('next', url_for('interview_list'))
     if request.method == 'POST' and form.submit.data:
         ok = True
         if form.validate():
@@ -4796,7 +5089,7 @@ def phone_login():
             pipe.set(key, verification_code)
             pipe.expire(key, daconfig['verification code timeout'])
             pipe.execute()
-            #logmessage("Writing code " + str(verification_code) + " to " + key)
+            # logmessage("Writing code " + str(verification_code) + " to " + key)
             docassemble.base.functions.this_thread.current_info = current_info(req=request)
             success = docassemble.base.util.send_sms(to=phone_number, body=message)
             if success:
@@ -4806,6 +5099,7 @@ def phone_login():
             return redirect(url_for('user.login'))
         flash(word("Please enter a valid phone number"), 'error')
     return render_template('flask_user/phone_login.html', form=form, version_warning=None, title=word("Sign in with your mobile phone"), tab_title=word("Sign In"), page_title=word("Sign in"))
+
 
 @app.route('/pv', methods=['POST', 'GET'])
 def phone_login_verify():
@@ -4836,7 +5130,7 @@ def phone_login_verify():
             update_last_login(user)
             r.delete('da:phonelogin:ip:' + str(get_requester_ip(request)) + ':phone:' + phone_number)
             to_convert = []
-            if 'i' in session: #TEMPORARY
+            if 'i' in session:  # TEMPORARY
                 get_session(session['i'])
             if 'tempuser' in session:
                 to_convert.extend(sub_temp_user_dict_key(session['tempuser'], user.id))
@@ -4854,6 +5148,7 @@ def phone_login_verify():
         flash(word("Your verification code is invalid or expired.  Please try again."), 'error')
         return redirect(url_for('user.login'))
     return render_template('flask_user/phone_login_verify.html', form=form, version_warning=None, title=word("Verify your phone"), tab_title=word("Enter code"), page_title=word("Enter code"), description=word("We just sent you a text message with a verification code.  Enter the verification code to proceed."))
+
 
 @app.route('/mfa_setup', methods=['POST', 'GET'])
 def mfa_setup():
@@ -4917,6 +5212,7 @@ def mfa_setup():
     session['otp_secret'] = otp_secret
     return render_template('flask_user/mfa_setup.html', form=form, version_warning=None, title=word("Two-factor authentication"), tab_title=word("Authentication"), page_title=word("Authentication"), description=word("Scan the barcode with your phone's authenticator app and enter the verification code."), the_qrcode=Markup(the_qrcode))
 
+
 @login_required
 @app.route('/mfa_reconfigure', methods=['POST', 'GET'])
 def mfa_reconfigure():
@@ -4949,6 +5245,7 @@ def mfa_reconfigure():
         return render_template('flask_user/mfa_reconfigure.html', form=form, version_warning=None, title=word("Two-factor authentication"), tab_title=word("Authentication"), page_title=word("Authentication"), allow_disable=False, description=word("Would you like to reconfigure two-factor authentication?"))
     return render_template('flask_user/mfa_reconfigure.html', form=form, version_warning=None, title=word("Two-factor authentication"), tab_title=word("Authentication"), page_title=word("Authentication"), allow_disable=True, description=word("Your account already has two-factor authentication enabled.  Would you like to reconfigure or disable two-factor authentication?"))
 
+
 @app.route('/mfa_choose', methods=['POST', 'GET'])
 def mfa_choose():
     in_login = False
@@ -4979,6 +5276,7 @@ def mfa_choose():
             return redirect(url_for('user.login'))
         return redirect(url_for('user_profile_page'))
     return render_template('flask_user/mfa_choose.html', form=form, version_warning=None, title=word("Two-factor authentication"), tab_title=word("Authentication"), page_title=word("Authentication"), description=Markup(word("""Which type of two-factor authentication would you like to use?  The first option is to use an authentication app like <a target="_blank" href="https://en.wikipedia.org/wiki/Google_Authenticator">Google Authenticator</a> or <a target="_blank" href="https://authy.com/">Authy</a>.  The second option is to receive a text (SMS) message containing a verification code.""")))
+
 
 @app.route('/mfa_sms_setup', methods=['POST', 'GET'])
 def mfa_sms_setup():
@@ -5021,6 +5319,7 @@ def mfa_sms_setup():
         flash(word("Invalid phone number."), 'error')
     return render_template('flask_user/mfa_sms_setup.html', form=form, version_warning=None, title=word("Two-factor authentication"), tab_title=word("Authentication"), page_title=word("Authentication"), description=word("""Enter your phone number.  A confirmation code will be sent to you."""))
 
+
 @app.route('/mfa_verify_sms_setup', methods=['POST', 'GET'])
 def mfa_verify_sms_setup():
     in_login = False
@@ -5059,6 +5358,7 @@ def mfa_verify_sms_setup():
             return redirect(url_for('user_profile_page'))
     return render_template('flask_user/mfa_verify_sms_setup.html', form=form, version_warning=None, title=word("Two-factor authentication"), tab_title=word("Authentication"), page_title=word("Authentication"), description=word('We just sent you a text message with a verification code.  Enter the verification code to proceed.'))
 
+
 @app.route('/mfa_login', methods=['POST', 'GET'])
 def mfa_login():
     if not app.config['USE_MFA']:
@@ -5084,10 +5384,11 @@ def mfa_login():
             del session['next']
         else:
             safe_next = form.next.data
-        fail_key = 'da:failedlogin:ip:' + str(get_requester_ip(request))
-        failed_attempts = r.get(fail_key)
-        if failed_attempts is not None and int(failed_attempts) > daconfig['attempt limit']:
-            return ('File not found', 404)
+        if BAN_IP_ADDRESSES:
+            fail_key = 'da:failedlogin:ip:' + str(get_requester_ip(request))
+            failed_attempts = r.get(fail_key)
+            if failed_attempts is not None and int(failed_attempts) > daconfig['attempt limit']:
+                return ('File not found', 404)
         supplied_verification_code = re.sub(r'[^0-9]', '', form.verification_code.data)
         if user.otp_secret.startswith(':phone:'):
             phone_number = re.sub(r'^:phone:', '', user.otp_secret)
@@ -5121,6 +5422,7 @@ def mfa_login():
     else:
         description += "  " + word("Please enter the verification code from your authentication app.")
     return render_template('flask_user/mfa_login.html', form=form, version_warning=None, title=word("Two-factor authentication"), tab_title=word("Authentication"), page_title=word("Authentication"), description=description)
+
 
 @app.route('/user/manage', methods=['POST', 'GET'])
 def manage_account():
@@ -5167,6 +5469,7 @@ def manage_account():
         description = word("""You can delete your account on this page.  Type "delete my account" (in lowercase, without the quotes) into the box below and then press the "Delete account" button.  This will erase your interview sessions.""")
     return render_template('pages/manage_account.html', form=form, version_warning=None, title=word("Manage account"), tab_title=word("Manage account"), page_title=word("Manage account"), description=description, logged_in=logged_in)
 
+
 def get_github_flow():
     app_credentials = current_app.config['OAUTH_CREDENTIALS'].get('github', {})
     client_id = app_credentials.get('id', None)
@@ -5184,12 +5487,14 @@ def get_github_flow():
         prompt='consent')
     return flow
 
+
 def delete_ssh_keys():
     area = SavedFile(current_user.id, fix=True, section='playgroundpackages')
     area.delete_file('.ssh-private')
     area.delete_file('.ssh-public')
-    #area.delete_file('.ssh_command.sh')
+    # area.delete_file('.ssh_command.sh')
     area.finalize()
+
 
 def get_ssh_keys(email):
     area = SavedFile(current_user.id, fix=True, section='playgroundpackages')
@@ -5204,12 +5509,14 @@ def get_ssh_keys(email):
         area.finalize()
     return (private_key_file, public_key_file)
 
+
 def get_next_link(resp):
     if 'link' in resp and resp['link']:
         link_info = links_from_header.extract(resp['link'])
         if 'next' in link_info:
             return link_info['next']
     return None
+
 
 @app.route('/github_menu', methods=['POST', 'GET'])
 @login_required
@@ -5249,6 +5556,7 @@ def github_menu():
         description = word("If you have a GitHub account, you can turn on GitHub integration.  This will allow you to use GitHub as a version control system for packages from inside the Playground.")
     return render_template('pages/github.html', form=form, version_warning=None, title=word("GitHub Integration"), tab_title=word("GitHub"), page_title=word("GitHub"), description=description, uses_github=uses_github, bodyclass='daadminbody')
 
+
 @app.route('/github_configure', methods=['POST', 'GET'])
 @login_required
 @roles_required(['admin', 'developer'])
@@ -5258,7 +5566,7 @@ def github_configure():
     if not app.config['USE_GITHUB']:
         return ('File not found', 404)
     setup_translation()
-    storage = RedisCredStorage(app='github')
+    storage = RedisCredStorage(oauth_app='github')
     credentials = storage.get()
     if not credentials or credentials.invalid:
         state_string = random_string(16)
@@ -5301,7 +5609,7 @@ def github_configure():
     if found:
         flash(word("Your GitHub integration has already been configured."), 'info')
     if not found:
-        (private_key_file, public_key_file) = get_ssh_keys(user_info['email'])
+        (private_key_file, public_key_file) = get_ssh_keys(user_info['email'])  # pylint: disable=unused-variable
         with open(public_key_file, 'r', encoding='utf-8') as fp:
             public_key = fp.read()
         headers = {'Content-Type': 'application/json'}
@@ -5314,6 +5622,7 @@ def github_configure():
     r.set('da:using_github:userid:' + str(current_user.id), json.dumps(dict(shared=True, orgs=True)))
     return redirect(url_for('github_menu'))
 
+
 @app.route('/github_unconfigure', methods=['POST', 'GET'])
 @login_required
 @roles_required(['admin', 'developer'])
@@ -5323,7 +5632,7 @@ def github_unconfigure():
     if not app.config['USE_GITHUB']:
         return ('File not found', 404)
     setup_translation()
-    storage = RedisCredStorage(app='github')
+    storage = RedisCredStorage(oauth_app='github')
     credentials = storage.get()
     if not credentials or credentials.invalid:
         state_string = random_string(16)
@@ -5365,6 +5674,7 @@ def github_unconfigure():
     flash(word("GitHub integration was successfully disconnected."), 'info')
     return redirect(url_for('user_profile_page'))
 
+
 @app.route('/github_oauth_callback', methods=['POST', 'GET'])
 @login_required
 @roles_required(['admin', 'developer'])
@@ -5394,33 +5704,44 @@ def github_oauth_callback():
         return ('File not found', 404)
     flow = get_github_flow()
     credentials = flow.step2_exchange(request.args['code'])
-    storage = RedisCredStorage(app='github')
+    storage = RedisCredStorage(oauth_app='github')
     storage.put(credentials)
     return redirect(github_next['path'], **github_next['arguments'])
+
 
 @app.route('/user/google-sign-in')
 def google_page():
     return render_template('flask_user/google_login.html', version_warning=None, title=word("Sign In"), tab_title=word("Sign In"), page_title=word("Sign in"))
 
+
 @app.route("/user/post-sign-in", methods=['GET'])
 def post_sign_in():
     return redirect(url_for('interview_list', from_login='1'))
 
+
 @app.route("/leave", methods=['GET'])
 def leave():
-    the_exit_page = exit_page
+    the_exit_page = None
+    if 'next' in request.args and request.args['next'] != '':
+        try:
+            the_exit_page = decrypt_phrase(repad(bytearray(request.args['next'], encoding='utf-8')).decode(), app.secret_key)
+        except:
+            pass
+    if the_exit_page is None:
+        the_exit_page = exit_page
     # if current_user.is_authenticated:
     #     flask_user.signals.user_logged_out.send(current_app._get_current_object(), user=current_user)
     #     logout_user()
-    #delete_session_for_interview(i=request.args.get('i', None))
-    #delete_session_info()
-    #response = redirect(exit_page)
-    #response.set_cookie('remember_token', '', expires=0)
-    #response.set_cookie('visitor_secret', '', expires=0)
-    #response.set_cookie('secret', '', expires=0)
-    #response.set_cookie('session', '', expires=0)
-    #return response
+    # delete_session_for_interview(i=request.args.get('i', None))
+    # delete_session_info()
+    # response = redirect(exit_page)
+    # response.set_cookie('remember_token', '', expires=0)
+    # response.set_cookie('visitor_secret', '', expires=0)
+    # response.set_cookie('secret', '', expires=0)
+    # response.set_cookie('session', '', expires=0)
+    # return response
     return redirect(the_exit_page)
+
 
 @app.route("/restart_session", methods=['GET'])
 def restart_session():
@@ -5440,7 +5761,7 @@ def restart_session():
         secret = str(secret)
     docassemble.base.functions.this_thread.current_info = current_info(yaml=yaml_filename, req=request, interface='vars', device_id=request.cookies.get('ds', None), session_uid=current_user.email)
     try:
-        steps, user_dict, is_encrypted = fetch_user_dict(session_id, yaml_filename, secret=secret)
+        steps, user_dict, is_encrypted = fetch_user_dict(session_id, yaml_filename, secret=secret)  # pylint: disable=unused-variable
     except:
         return redirect(url_for('index', i=yaml_filename))
     url_args = user_dict['url_args']
@@ -5448,8 +5769,9 @@ def restart_session():
     url_args['i'] = yaml_filename
     return redirect(url_for('index', **url_args))
 
+
 @app.route("/new_session", methods=['GET'])
-def new_session():
+def new_session_endpoint():
     yaml_filename = request.args.get('i', None)
     if yaml_filename is None:
         return redirect(url_for('index'))
@@ -5457,9 +5779,17 @@ def new_session():
     url_args = dict(i=yaml_filename, new_session='1')
     return redirect(url_for('index', **url_args))
 
+
 @app.route("/exit", methods=['GET'])
 def exit_endpoint():
-    the_exit_page = exit_page
+    the_exit_page = None
+    if 'next' in request.args and request.args['next'] != '':
+        try:
+            the_exit_page = decrypt_phrase(repad(bytearray(request.args['next'], encoding='utf-8')).decode(), app.secret_key)
+        except:
+            pass
+    if the_exit_page is None:
+        the_exit_page = exit_page
     yaml_filename = request.args.get('i', None)
     if yaml_filename is not None:
         session_info = get_session(yaml_filename)
@@ -5469,9 +5799,17 @@ def exit_endpoint():
     delete_session_for_interview(i=yaml_filename)
     return redirect(the_exit_page)
 
+
 @app.route("/exit_logout", methods=['GET'])
 def exit_logout():
-    the_exit_page = exit_page
+    the_exit_page = None
+    if 'next' in request.args and request.args['next'] != '':
+        try:
+            the_exit_page = decrypt_phrase(repad(bytearray(request.args['next'], encoding='utf-8')).decode(), app.secret_key)
+        except:
+            pass
+    if the_exit_page is None:
+        the_exit_page = exit_page
     yaml_filename = request.args.get('i', guess_yaml_filename())
     if yaml_filename is not None:
         session_info = get_session(yaml_filename)
@@ -5489,29 +5827,31 @@ def exit_logout():
     response.set_cookie('session', '', expires=0)
     return response
 
+
 @app.route("/cleanup_sessions", methods=['GET'])
 def cleanup_sessions():
     kv_session.cleanup_sessions()
     return render_template('base_templates/blank.html')
 
-ready_file = os.path.join(os.path.dirname(WEBAPP_PATH), 'ready')
 
 @app.route("/health_status", methods=['GET'])
 def health_status():
     ok = True
     if request.args.get('ready', False):
-        if not os.path.isfile(ready_file):
+        if not os.path.isfile(READY_FILE):
             ok = False
     return jsonify({'ok': ok, 'server_start_time': START_TIME, 'version': da_version})
+
 
 @app.route("/health_check", methods=['GET'])
 def health_check():
     if request.args.get('ready', False):
-        if not os.path.isfile(ready_file):
+        if not os.path.isfile(READY_FILE):
             return ('', 400)
     response = make_response(render_template('pages/health_check.html', content="OK"), 200)
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
+
 
 @app.route("/checkout", methods=['POST'])
 def checkout():
@@ -5521,23 +5861,28 @@ def checkout():
         return jsonify(success=False)
     return jsonify(success=True)
 
+
 @app.route("/restart_ajax", methods=['POST'])
 @login_required
 @roles_required(['admin', 'developer'])
 def restart_ajax():
-    #logmessage("restart_ajax: action is " + str(request.form.get('action', None)))
-    #if current_user.has_role('admin', 'developer'):
-    #    logmessage("restart_ajax: user has permission")
-    #else:
-    #    logmessage("restart_ajax: user has no permission")
+    if not app.config['ALLOW_RESTARTING']:
+        return ('File not found', 404)
+    # logmessage("restart_ajax: action is " + str(request.form.get('action', None)))
+    # if current_user.has_role('admin', 'developer'):
+    #     logmessage("restart_ajax: user has permission")
+    # else:
+    #     logmessage("restart_ajax: user has no permission")
     if request.form.get('action', None) == 'restart' and current_user.has_role('admin', 'developer'):
         logmessage("restart_ajax: restarting")
         restart_all()
         return jsonify(success=True)
     return jsonify(success=False)
 
+
 class ChatPartners:
     pass
+
 
 def get_current_chat_log(yaml_filename, session_id, secret, utc=True, timezone=None):
     if timezone is None:
@@ -5552,7 +5897,7 @@ def get_current_chat_log(yaml_filename, session_id, secret, utc=True, timezone=N
             try:
                 message = decrypt_phrase(record.message, secret)
             except:
-                sys.stderr.write("get_current_chat_log: Could not decrypt phrase with secret " + secret + "\n")
+                logmessage("get_current_chat_log: Could not decrypt phrase with secret " + secret)
                 continue
         else:
             message = unpack_phrase(record.message)
@@ -5565,7 +5910,7 @@ def get_current_chat_log(yaml_filename, session_id, secret, utc=True, timezone=N
         #     owner_last_name = user_cache[record.owner_id].last_name
         #     owner_email = user_cache[record.owner_id].email
         # else:
-        #     sys.stderr.write("get_current_chat_log: Invalid owner ID in chat log\n")
+        #     logmessage("get_current_chat_log: Invalid owner ID in chat log")
         #     continue
         if record.temp_user_id:
             user_first_name = None
@@ -5578,7 +5923,7 @@ def get_current_chat_log(yaml_filename, session_id, secret, utc=True, timezone=N
         else:
             new_user = get_user_object(record.user_id)
             if new_user is None:
-                sys.stderr.write("get_current_chat_log: Invalid user ID in chat log\n")
+                logmessage("get_current_chat_log: Invalid user ID in chat log")
                 continue
             user_cache[record.user_id] = new_user
             user_first_name = user_cache[record.user_id].first_name
@@ -5591,10 +5936,12 @@ def get_current_chat_log(yaml_filename, session_id, secret, utc=True, timezone=N
         output.append(dict(message=message, datetime=the_datetime, user_email=user_email, user_first_name=user_first_name, user_last_name=user_last_name))
     return output
 
+
 def jsonify_with_cache(*pargs, **kwargs):
     response = jsonify(*pargs, **kwargs)
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
+
 
 @app.route("/checkin", methods=['POST', 'GET'])
 def checkin():
@@ -5624,28 +5971,28 @@ def checkin():
     the_current_info = current_info(yaml=yaml_filename, req=request, action=None, session_info=session_info, secret=secret, device_id=request.cookies.get('ds', None))
     docassemble.base.functions.this_thread.current_info = the_current_info
     if request.form.get('action', None) == 'chat_log':
-        #sys.stderr.write("checkin: fetch_user_dict1\n")
+        # logmessage("checkin: fetch_user_dict1")
         steps, user_dict, is_encrypted = fetch_user_dict(session_id, yaml_filename, secret=secret)
         if user_dict is None or user_dict['_internal']['livehelp']['availability'] != 'available':
             return jsonify_with_cache(success=False)
-        the_current_info['encrypted'] == is_encrypted
+        the_current_info['encrypted'] = is_encrypted
         messages = get_chat_log(user_dict['_internal']['livehelp']['mode'], yaml_filename, session_id, auth_user_id, temp_user_id, secret, auth_user_id, temp_user_id)
         return jsonify_with_cache(success=True, messages=messages)
     if request.form.get('action', None) == 'checkin':
         commands = []
         checkin_code = request.form.get('checkinCode', None)
         do_action = request.form.get('do_action', None)
-        #logmessage("in checkin")
+        # logmessage("in checkin")
         if do_action is not None:
             parameters = {}
             form_parameters = request.form.get('parameters', None)
             if form_parameters is not None:
                 parameters = json.loads(form_parameters)
-            #logmessage("Action was " + str(do_action) + " and parameters were " + repr(parameters))
+            # logmessage("Action was " + str(do_action) + " and parameters were " + repr(parameters))
             obtain_lock(session_id, yaml_filename)
-            #sys.stderr.write("checkin: fetch_user_dict2\n")
+            # logmessage("checkin: fetch_user_dict2")
             steps, user_dict, is_encrypted = fetch_user_dict(session_id, yaml_filename, secret=secret)
-            the_current_info['encrypted'] == is_encrypted
+            the_current_info['encrypted'] = is_encrypted
             interview = docassemble.base.interview_cache.get_interview(yaml_filename)
             interview_status = docassemble.base.parse.InterviewStatus(current_info=the_current_info)
             interview_status.checkin = True
@@ -5655,7 +6002,10 @@ def checkin():
             if interview_status.question.question_type == "backgroundresponse":
                 the_response = interview_status.question.backgroundresponse
                 if isinstance(the_response, dict) and 'pargs' in the_response and isinstance(the_response['pargs'], list) and len(the_response['pargs']) == 2 and the_response['pargs'][1] in ('javascript', 'flash', 'refresh', 'fields'):
-                    commands.append(dict(action=do_action, value=docassemble.base.functions.safe_json(the_response['pargs'][0]), extra=the_response['pargs'][1]))
+                    if the_response['pargs'][1] == 'refresh':
+                        commands.append(dict(action=do_action, value=None, extra=the_response['pargs'][1]))
+                    else:
+                        commands.append(dict(action=do_action, value=docassemble.base.functions.safe_json(the_response['pargs'][0]), extra=the_response['pargs'][1]))
                 elif isinstance(the_response, list) and len(the_response) == 2 and the_response[1] in ('javascript', 'flash', 'refresh', 'fields'):
                     commands.append(dict(action=do_action, value=docassemble.base.functions.safe_json(the_response[0]), extra=the_response[1]))
                 elif isinstance(the_response, str) and the_response == 'refresh':
@@ -5702,12 +6052,12 @@ def checkin():
                         break
         chat_session_key = 'da:interviewsession:uid:' + str(session_id) + ':i:' + str(yaml_filename) + ':userid:' + str(the_user_id)
         potential_partners = []
-        if str(chatstatus) != 'off': #in ('waiting', 'standby', 'ringing', 'ready', 'on', 'hangup', 'observeonly'):
-            #sys.stderr.write("checkin: fetch_user_dict3\n")
+        if str(chatstatus) != 'off':  # in ('waiting', 'standby', 'ringing', 'ready', 'on', 'hangup', 'observeonly'):
+            # logmessage("checkin: fetch_user_dict3")
             steps, user_dict, is_encrypted = fetch_user_dict(session_id, yaml_filename, secret=secret)
-            the_current_info['encrypted'] == is_encrypted
+            the_current_info['encrypted'] = is_encrypted
             if user_dict is None:
-                sys.stderr.write("checkin: error accessing dictionary for %s and %s" % (session_id, yaml_filename))
+                logmessage("checkin: error accessing dictionary for %s and %s" % (session_id, yaml_filename))
                 return jsonify_with_cache(success=False)
             obj['chatstatus'] = chatstatus
             obj['secret'] = secret
@@ -5744,7 +6094,7 @@ def checkin():
             if len(potential_partners) > 0:
                 if chatstatus == 'ringing':
                     lkey = 'da:ready:uid:' + str(session_id) + ':i:' + str(yaml_filename) + ':userid:' + str(the_user_id)
-                    #logmessage("Writing to " + str(lkey))
+                    # logmessage("Writing to " + str(lkey))
                     pipe = r.pipeline()
                     failure = True
                     for user_id in potential_partners:
@@ -5871,16 +6221,19 @@ def checkin():
         return jsonify_with_cache(success=True, chat_status=chatstatus, phone=call_forwarding_message, observerControl=observer_control, commands=commands, checkin_code=checkin_code)
     return jsonify_with_cache(success=False)
 
+
 @app.before_first_request
 def setup_celery():
     docassemble.webapp.worker.workerapp.set_current()
 
+
 @app.before_request
 def setup_variables():
-    #sys.stderr.write("Request on " + str(os.getpid()) + " " + str(threading.current_thread().ident) + " for " + request.path + " at " + time.strftime("%Y-%m-%d %H:%M:%S") + "\n")
-    #g.request_start_time = time.time()
-    #docassemble.base.functions.reset_thread_variables()
+    # logmessage("Request on " + str(os.getpid()) + " " + str(threading.current_thread().ident) + " for " + request.path + " at " + time.strftime("%Y-%m-%d %H:%M:%S"))
+    # g.request_start_time = time.time()
+    # docassemble.base.functions.reset_thread_variables()
     docassemble.base.functions.reset_local_variables()
+
 
 @app.after_request
 def apply_security_headers(response):
@@ -5900,7 +6253,7 @@ def apply_security_headers(response):
 # @app.after_request
 # def print_time_of_request(response):
 #     time_spent = time.time() - g.request_start_time
-#     sys.stderr.write("Request on " + str(os.getpid()) + " " + str(threading.current_thread().ident) + " complete after " + str("%.5fs" % time_spent) + "\n")
+#     logmessage("Request on " + str(os.getpid()) + " " + str(threading.current_thread().ident) + " complete after " + str("%.5fs" % time_spent))
 #     if time_spent > 3.0:
 #         if hasattr(g, 'start_index'):
 #             logmessage("Duration to beginning: %fs" % (g.start_index - g.request_start_time))
@@ -5932,6 +6285,7 @@ def apply_security_headers(response):
 #     g.request_start_time = time.time()
 #     g.request_time = lambda: "%.5fs" % (time.time() - g.request_start_time)
 
+
 @app.route("/vars", methods=['POST', 'GET'])
 def get_variables():
     if not daconfig.get('allow vars route access', True):
@@ -5949,10 +6303,10 @@ def get_variables():
         secret = request.cookies.get('secret', None)
     if secret is not None:
         secret = str(secret)
-    #session_cookie_id = request.cookies.get('session', None)
+    # session_cookie_id = request.cookies.get('session', None)
     if session_id is None or yaml_filename is None:
         return jsonify(success=False)
-    #sys.stderr.write("get_variables: fetch_user_dict\n")
+    # logmessage("get_variables: fetch_user_dict")
     docassemble.base.functions.this_thread.current_info = current_info(yaml=yaml_filename, req=request, interface='vars', device_id=request.cookies.get('ds', None))
     try:
         steps, user_dict, is_encrypted = fetch_user_dict(session_id, yaml_filename, secret=secret)
@@ -5962,8 +6316,9 @@ def get_variables():
     if (not DEBUG) and '_internal' in user_dict and 'misc' in user_dict['_internal'] and 'variable_access' in user_dict['_internal']['misc'] and user_dict['_internal']['misc']['variable_access'] is False:
         return jsonify(success=False)
     variables = docassemble.base.functions.serializable_dict(user_dict, include_internal=True)
-    #variables['_internal'] = docassemble.base.functions.serializable_dict(user_dict['_internal'])
+    # variables['_internal'] = docassemble.base.functions.serializable_dict(user_dict['_internal'])
     return jsonify(success=True, variables=variables, steps=steps, encrypted=is_encrypted, uid=session_id, i=yaml_filename)
+
 
 @app.route("/", methods=['GET'])
 def rootindex():
@@ -5993,12 +6348,14 @@ def rootindex():
     request.args = the_args
     return index(refer=['root'])
 
+
 def title_converter(content, part, status):
     if part in ('exit link', 'exit url', 'title url', 'title url opens in other window'):
         return content
     if part in ('title', 'subtitle', 'short title', 'tab title', 'exit label', 'back button label', 'corner back button label', 'logo', 'short logo', 'navigation bar html'):
         return docassemble.base.util.markdown_to_html(content, status=status, trim=True, do_terms=False)
     return docassemble.base.util.markdown_to_html(content, status=status)
+
 
 @app.route("/test_embed", methods=['GET'])
 @login_required
@@ -6023,8 +6380,10 @@ def test_embed():
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
 
+
 @app.route("/launch", methods=['GET'])
 def launch():
+    # setup_translation()
     if COOKIELESS_SESSIONS:
         return html_index()
     code = request.args.get('c', None)
@@ -6049,6 +6408,7 @@ def launch():
     request.args = args
     return index(refer=['launch'])
 
+
 @app.route("/resume", methods=['POST'])
 @csrf.exempt
 def resume():
@@ -6066,6 +6426,7 @@ def resume():
             return jsonify(action='redirect', url=url_for('index', **post_data), csrf_token=generate_csrf())
     return redirect(url_for('index', **post_data))
 
+
 def tidy_action(action):
     result = {}
     if not isinstance(action, dict):
@@ -6076,7 +6437,9 @@ def tidy_action(action):
         result['arguments'] = action['arguments']
     return result
 
+
 def make_response_wrapper(set_cookie, secret, set_device_id, device_id, expire_visitor_secret):
+
     def the_wrapper(response):
         if set_cookie:
             response.set_cookie('secret', secret, httponly=True, secure=app.config['SESSION_COOKIE_SECURE'], samesite=app.config['SESSION_COOKIE_SAMESITE'])
@@ -6085,6 +6448,7 @@ def make_response_wrapper(set_cookie, secret, set_device_id, device_id, expire_v
         if set_device_id:
             response.set_cookie('ds', device_id, httponly=True, secure=app.config['SESSION_COOKIE_SECURE'], samesite=app.config['SESSION_COOKIE_SAMESITE'], expires=datetime.datetime.now() + datetime.timedelta(weeks=520))
     return the_wrapper
+
 
 def populate_social(social, metadata):
     for key in ('image', 'description'):
@@ -6110,6 +6474,7 @@ else:
     index_path = '/interview'
     html_index_path = '/i'
 
+
 def refresh_or_continue(interview, post_data):
     return_val = False
     try:
@@ -6118,6 +6483,7 @@ def refresh_or_continue(interview, post_data):
     except:
         pass
     return return_val
+
 
 def update_current_info_with_session_info(the_current_info, session_info):
     if session_info is not None:
@@ -6128,21 +6494,9 @@ def update_current_info_with_session_info(the_current_info, session_info):
         encrypted = True
     the_current_info.update({'session': user_code, 'encrypted': encrypted})
 
+
 @app.route(index_path, methods=['POST', 'GET'])
 def index(action_argument=None, refer=None):
-    import pprint
-    print("session")
-    pprint.pprint(session)
-    print("cookies")
-    pprint.pprint(request.cookies)
-    print("request args")
-    pprint.pprint(request.args)
-    print("request form")
-    pprint.pprint(request.form)
-    print("action_argument")
-    pprint.pprint(action_argument)
-    print("refer")
-    pprint.pprint(refer)
     is_ajax = bool(request.method == 'POST' and 'ajax' in request.form and int(request.form['ajax']))
     docassemble.base.functions.this_thread.misc['call'] = refer
     return_fake_html = False
@@ -6209,10 +6563,10 @@ def index(action_argument=None, refer=None):
         yaml_filename = request.args.get('i', guess_yaml_filename())
     if yaml_filename is None:
         if current_user.is_anonymous and not daconfig.get('allow anonymous access', True):
-            sys.stderr.write("Redirecting to login because no YAML filename provided and no anonymous access is allowed.\n")
+            logmessage("Redirecting to login because no YAML filename provided and no anonymous access is allowed.")
             return redirect(url_for('user.login'))
         if len(daconfig['dispatch']) > 0:
-            sys.stderr.write("Redirecting to dispatch page because no YAML filename provided.\n")
+            logmessage("Redirecting to dispatch page because no YAML filename provided.")
             return redirect(url_for('interview_start'))
         yaml_filename = final_default_yaml_filename
     action = None
@@ -6249,7 +6603,7 @@ def index(action_argument=None, refer=None):
         if (PREVENT_DEMO) and (yaml_filename.startswith('docassemble.base:') or yaml_filename.startswith('docassemble.demo:')) and (current_user.is_anonymous or not (current_user.has_role('admin', 'developer') or current_user.can_do('demo_interviews'))):
             raise DAError(word("Not authorized"), code=403)
         if current_user.is_anonymous and not daconfig.get('allow anonymous access', True):
-            sys.stderr.write("Redirecting to login because no anonymous access allowed.\n")
+            logmessage("Redirecting to login because no anonymous access allowed.")
             return redirect(url_for('user.login', next=url_for('index', **request.args)))
         if yaml_filename.startswith('docassemble.playground'):
             if not app.config['ENABLE_PLAYGROUND']:
@@ -6266,10 +6620,10 @@ def index(action_argument=None, refer=None):
         if session_parameter is None:
             if show_flash:
                 if current_user.is_authenticated:
-                    #word("Starting a new interview.  To go back to your previous interview, go to My Interviews on the menu.")
+                    # word("Starting a new interview.  To go back to your previous interview, go to My Interviews on the menu.")
                     message = "Starting a new interview.  To go back to your previous interview, go to My Interviews on the menu."
                 else:
-                    #word("Starting a new interview.  To go back to your previous interview, log in to see a list of your interviews.")
+                    # word("Starting a new interview.  To go back to your previous interview, log in to see a list of your interviews.")
                     message = "Starting a new interview.  To go back to your previous interview, log in to see a list of your interviews."
             if reset_interview and session_info is not None:
                 reset_user_dict(session_info['uid'], yaml_filename)
@@ -6277,7 +6631,7 @@ def index(action_argument=None, refer=None):
             if unique_sessions is not False and not current_user.is_authenticated:
                 delete_session_for_interview(yaml_filename)
                 flash(word("You need to be logged in to access this interview."), "info")
-                sys.stderr.write("Redirecting to login because sessions are unique.\n")
+                logmessage("Redirecting to login because sessions are unique.")
                 return redirect(url_for('user.login', next=url_for('index', **request.args)))
             if interview.consolidated_metadata.get('temporary session', False):
                 if session_info is not None:
@@ -6296,7 +6650,7 @@ def index(action_argument=None, refer=None):
                 if (not interview.allowed_to_initiate(is_anonymous=True)) or (not interview.allowed_to_access(is_anonymous=True)):
                     delete_session_for_interview(yaml_filename)
                     flash(word("You need to be logged in to access this interview."), "info")
-                    sys.stderr.write("Redirecting to login because anonymous user not allowed to access this interview.\n")
+                    logmessage("Redirecting to login because anonymous user not allowed to access this interview.")
                     return redirect(url_for('user.login', next=url_for('index', **request.args)))
             elif not interview.allowed_to_initiate(has_roles=[role.name for role in current_user.roles]):
                 delete_session_for_interview(yaml_filename)
@@ -6321,13 +6675,13 @@ def index(action_argument=None, refer=None):
             if unique_sessions is not False and not current_user.is_authenticated:
                 delete_session_for_interview(yaml_filename)
                 flash(word("You need to be logged in to access this interview."), "info")
-                sys.stderr.write("Redirecting to login because sessions are unique.\n")
+                logmessage("Redirecting to login because sessions are unique.")
                 return redirect(url_for('user.login', next=url_for('index', **request.args)))
             if current_user.is_anonymous:
                 if (not interview.allowed_to_initiate(is_anonymous=True)) or (not interview.allowed_to_access(is_anonymous=True)):
                     delete_session_for_interview(yaml_filename)
                     flash(word("You need to be logged in to access this interview."), "info")
-                    sys.stderr.write("Redirecting to login because anonymous user not allowed to access this interview.\n")
+                    logmessage("Redirecting to login because anonymous user not allowed to access this interview.")
                     return redirect(url_for('user.login', next=url_for('index', **request.args)))
             elif not interview.allowed_to_initiate(has_roles=[role.name for role in current_user.roles]):
                 delete_session_for_interview(yaml_filename)
@@ -6351,10 +6705,10 @@ def index(action_argument=None, refer=None):
                 need_to_reset = True
             if show_flash:
                 if current_user.is_authenticated:
-                    #word("Entering a different interview.  To go back to your previous interview, go to My Interviews on the menu.")
+                    # word("Entering a different interview.  To go back to your previous interview, go to My Interviews on the menu.")
                     message = "Entering a different interview.  To go back to your previous interview, go to My Interviews on the menu."
                 else:
-                    #word("Entering a different interview.  To go back to your previous interview, log in to see a list of your interviews.")
+                    # word("Entering a different interview.  To go back to your previous interview, log in to see a list of your interviews.")
                     message = "Entering a different interview.  To go back to your previous interview, log in to see a list of your interviews."
         if show_flash:
             flash(word(message), 'info')
@@ -6371,9 +6725,9 @@ def index(action_argument=None, refer=None):
         steps, user_dict, is_encrypted = fetch_user_dict(user_code, yaml_filename, secret=secret)
     except Exception as the_err:
         try:
-            sys.stderr.write("index: there was an exception " + str(the_err.__class__.__name__) + ": " + str(the_err) + " after fetch_user_dict with %s and %s, so we need to reset\n" % (user_code, yaml_filename))
+            logmessage("index: there was an exception " + str(the_err.__class__.__name__) + ": " + str(the_err) + " after fetch_user_dict with %s and %s, so we need to reset" % (user_code, yaml_filename))
         except:
-            sys.stderr.write("index: there was an exception " + str(the_err.__class__.__name__) + " after fetch_user_dict with %s and %s, so we need to reset\n" % (user_code, yaml_filename))
+            logmessage("index: there was an exception " + str(the_err.__class__.__name__) + " after fetch_user_dict with %s and %s, so we need to reset" % (user_code, yaml_filename))
         release_lock(user_code, yaml_filename)
         logmessage("index: dictionary fetch failed")
         clear_session(yaml_filename)
@@ -6381,24 +6735,24 @@ def index(action_argument=None, refer=None):
             redirect_url = daconfig.get('session error redirect url', None)
             if isinstance(redirect_url, str) and redirect_url:
                 redirect_url = redirect_url.format(i=urllibquote(yaml_filename), error=urllibquote('answers_fetch_fail'))
-                sys.stderr.write("Session error because failure to get user dictionary.\n")
+                logmessage("Session error because failure to get user dictionary.")
                 return do_redirect(redirect_url, is_ajax, is_json, js_target)
-        sys.stderr.write("Redirecting back to index because of failure to get user dictionary.\n")
+        logmessage("Redirecting back to index because of failure to get user dictionary.")
         response = do_redirect(url_for('index', i=yaml_filename), is_ajax, is_json, js_target)
         if session_parameter is not None:
             flash(word("Unable to retrieve interview session.  Starting a new session instead."), "error")
         return response
     if user_dict is None:
-        sys.stderr.write("index: no user_dict found after fetch_user_dict with %s and %s, so we need to reset\n" % (user_code, yaml_filename))
+        logmessage("index: no user_dict found after fetch_user_dict with %s and %s, so we need to reset" % (user_code, yaml_filename))
         release_lock(user_code, yaml_filename)
         logmessage("index: dictionary fetch returned no results")
         clear_session(yaml_filename)
         redirect_url = daconfig.get('session error redirect url', None)
         if isinstance(redirect_url, str) and redirect_url:
             redirect_url = redirect_url.format(i=urllibquote(yaml_filename), error=urllibquote('answers_missing'))
-            sys.stderr.write("Session error because user dictionary was None.\n")
+            logmessage("Session error because user dictionary was None.")
             return do_redirect(redirect_url, is_ajax, is_json, js_target)
-        sys.stderr.write("Redirecting back to index because user dictionary was None.\n")
+        logmessage("Redirecting back to index because user dictionary was None.")
         response = do_redirect(url_for('index', i=yaml_filename), is_ajax, is_json, js_target)
         flash(word("Unable to locate interview session.  Starting a new session instead."), "error")
         return response
@@ -6484,7 +6838,7 @@ def index(action_argument=None, refer=None):
             if m:
                 if safeid(m.group(1)) in known_varnames:
                     visible_fields.add(safeid(from_safeid(known_varnames[safeid(m.group(1))]) + m.group(2)))
-        except Exception as the_err:
+        except:
             pass
         raw_visible_fields.add(field_name)
         if field_name in known_varnames:
@@ -6517,7 +6871,7 @@ def index(action_argument=None, refer=None):
                 list_collect_list = the_list
                 exec(list_collect_list + '._allow_appending()', user_dict)
         if '_checkboxes' in post_data:
-            checkbox_fields = json.loads(myb64unquote(post_data['_checkboxes'])) #post_data['_checkboxes'].split(",")
+            checkbox_fields = json.loads(myb64unquote(post_data['_checkboxes']))  # post_data['_checkboxes'].split(",")
             for checkbox_field, checkbox_value in checkbox_fields.items():
                 if checkbox_field in visible_fields and checkbox_field not in post_data and not (checkbox_field in numbered_fields and numbered_fields[checkbox_field] in post_data):
                     post_data.add(checkbox_field, checkbox_value)
@@ -6547,7 +6901,7 @@ def index(action_argument=None, refer=None):
         if '_datatypes' in post_data:
             known_datatypes = json.loads(myb64unquote(post_data['_datatypes']))
             for data_type in known_datatypes.values():
-                if data_type.startswith('object'):
+                if data_type.startswith('object') or data_type in ('integer', 'float', 'currency', 'number'):
                     should_assemble = True
     if not should_assemble:
         for key in post_data:
@@ -6606,7 +6960,7 @@ def index(action_argument=None, refer=None):
         known_datatypes = field_info['datatypes']
         list_collect_list = field_info['list_collect_list']
         if list_collect_list is not None:
-            exec(list_collect_list + '._allow_appending()' , user_dict)
+            exec(list_collect_list + '._allow_appending()', user_dict)
         for checkbox_field, checkbox_value in field_info['checkboxes'].items():
             if checkbox_field in visible_fields and checkbox_field not in post_data and not (checkbox_field in numbered_fields and numbered_fields[checkbox_field] in post_data):
                 post_data.add(checkbox_field, checkbox_value)
@@ -6752,7 +7106,7 @@ def index(action_argument=None, refer=None):
                 changed = True
             except Exception as errMess:
                 try:
-                    sys.stderr.write(errMess.__class__.__name__ + ": " + str(errMess) + " after running " + the_string)
+                    logmessage(errMess.__class__.__name__ + ": " + str(errMess) + " after running " + the_string)
                 except:
                     pass
                 error_messages.append(("error", "Error: " + errMess.__class__.__name__ + ": " + str(errMess)))
@@ -6760,7 +7114,6 @@ def index(action_argument=None, refer=None):
         next_action_to_set = json.loads(myb64unquote(post_data['_next_action_to_set']))
     else:
         next_action_to_set = None
-    next_action = None
     if '_question_name' in post_data and post_data['_question_name'] in interview.questions_by_name:
         if already_assembled:
             the_question = interview_status.question
@@ -6879,7 +7232,7 @@ def index(action_argument=None, refer=None):
                 it_exists = True
             else:
                 try:
-                    the_object = eval(whole_key, user_dict)
+                    the_object = eval(whole_key, user_dict)  # noqa: F841 # pylint: disable=unused-variable
                     it_exists = True
                 except:
                     it_exists = False
@@ -6953,19 +7306,22 @@ def index(action_argument=None, refer=None):
                 if data == "True":
                     data = "True"
                     test_data = True
-                else:
+                elif data == "False":
                     data = "False"
                     test_data = False
+                else:
+                    data = "None"
+                    test_data = None
             elif known_datatypes[real_key] == 'threestate':
                 if data == "True":
                     data = "True"
                     test_data = True
-                elif data == "None":
-                    data = "None"
-                    test_data = None
-                else:
+                elif data == "False":
                     data = "False"
                     test_data = False
+                else:
+                    data = "None"
+                    test_data = None
             elif known_datatypes[real_key] in ('date', 'datetime', 'datetime-local'):
                 if isinstance(data, str):
                     data = data.strip()
@@ -7006,6 +7362,7 @@ def index(action_argument=None, refer=None):
                 else:
                     data = repr('')
             elif known_datatypes[real_key] == 'integer':
+                data = data.replace(',', '')
                 if data.strip() == '':
                     data = 0
                 try:
@@ -7019,10 +7376,10 @@ def index(action_argument=None, refer=None):
             elif known_datatypes[real_key] in ('ml', 'mlarea'):
                 is_ml = True
             elif known_datatypes[real_key] in ('number', 'float', 'currency', 'range'):
+                data = data.replace('%', '')
+                data = data.replace(',', '')
                 if data == '':
                     data = 0.0
-                if isinstance(data, str):
-                    data = re.sub(r'[,\%]', '', data)
                 try:
                     test_data = float(data)
                 except:
@@ -7053,13 +7410,12 @@ def index(action_argument=None, refer=None):
                 if set_to_empty:
                     if info['skip_if_empty']:
                         continue
+                    test_data = info['class'].empty()
+                    if is_object:
+                        user_dict['__DANEWOBJECT'] = data
+                        data = '__DANEWOBJECT'
                     else:
-                        test_data = info['class'].empty()
-                        if is_object:
-                            user_dict['__DANEWOBJECT'] = data
-                            data = '__DANEWOBJECT'
-                        else:
-                            data = repr(test_data)
+                        data = repr(test_data)
                 else:
                     try:
                         if not info['class'].validate(data):
@@ -7098,19 +7454,22 @@ def index(action_argument=None, refer=None):
                 if data == "True":
                     data = "True"
                     test_data = True
-                else:
+                elif data == "False":
                     data = "False"
                     test_data = False
+                else:
+                    data = "None"
+                    test_data = None
             elif known_datatypes[orig_key] == 'threestate':
                 if data == "True":
                     data = "True"
                     test_data = True
-                elif data == "None":
-                    data = "None"
-                    test_data = None
-                else:
+                elif data == "False":
                     data = "False"
                     test_data = False
+                else:
+                    data = "None"
+                    test_data = None
             elif known_datatypes[orig_key] in ('date', 'datetime'):
                 if isinstance(data, str):
                     data = data.strip()
@@ -7151,17 +7510,24 @@ def index(action_argument=None, refer=None):
                 else:
                     data = repr('')
             elif known_datatypes[orig_key] == 'integer':
-                if data == '':
+                data = data.replace(',', '')
+                if data.strip() == '':
                     data = 0
-                test_data = int(data)
+                try:
+                    test_data = int(data)
+                except:
+                    validated = False
+                    field_error[orig_key] = word("You need to enter a valid number.")
+                    new_values[key] = repr(data)
+                    continue
                 data = "int(" + repr(data) + ")"
             elif known_datatypes[orig_key] in ('ml', 'mlarea'):
                 is_ml = True
             elif known_datatypes[orig_key] in ('number', 'float', 'currency', 'range'):
+                data = data.replace(',', '')
+                data = data.replace('%', '')
                 if data == '':
                     data = 0.0
-                if isinstance(data, str):
-                    data = re.sub(r'[,\%]', '', data)
                 test_data = float(data)
                 data = "float(" + repr(data) + ")"
             elif known_datatypes[orig_key] in ('object', 'object_radio'):
@@ -7177,9 +7543,8 @@ def index(action_argument=None, refer=None):
                 if set_to_empty:
                     if info['skip_if_empty']:
                         continue
-                    else:
-                        test_data = info['class'].empty()
-                        data = repr(test_data)
+                    test_data = info['class'].empty()
+                    data = repr(test_data)
                 else:
                     try:
                         if not info['class'].validate(data):
@@ -7303,21 +7668,21 @@ def index(action_argument=None, refer=None):
                 continue
             if empty_fields[orig_key] in ('object_multiselect', 'object_checkboxes'):
                 docassemble.base.parse.ensure_object_exists(key, empty_fields[orig_key], user_dict)
-                exec(key + '.clear()' , user_dict)
-                exec(key + '.gathered = True' , user_dict)
+                exec(key + '.clear()', user_dict)
+                exec(key + '.gathered = True', user_dict)
             elif empty_fields[orig_key] in ('object', 'object_radio'):
                 process_set_variable(key, user_dict, vars_set, old_values)
                 try:
                     eval(key, user_dict)
                 except:
-                    exec(key + ' = None' , user_dict)
+                    exec(key + ' = None', user_dict)
                     new_values[key] = 'None'
     if validated and special_question is None:
         if '_order_changes' in post_data:
             orderChanges = json.loads(post_data['_order_changes'])
             for tableName, changes in orderChanges.items():
                 tableName = myb64unquote(tableName)
-                #if STRICT_MODE and tableName not in authorized_fields:
+                # if STRICT_MODE and tableName not in authorized_fields:
                 #    raise DAError("The variable " + repr(tableName) + " was not in the allowed fields, which were " + repr(authorized_fields))
                 if illegal_variable_name(tableName):
                     error_messages.append(("error", "Error: Invalid character in table reorder: " + str(tableName)))
@@ -7366,7 +7731,7 @@ def index(action_argument=None, refer=None):
                 for orig_file_field_raw in file_fields:
                     if orig_file_field_raw in known_varnames:
                         orig_file_field_raw = known_varnames[orig_file_field_raw]
-                    set_empty = bool(orig_file_field_raw not in visible_fields)
+                    # set_empty = bool(orig_file_field_raw not in visible_fields)
                     if not validated:
                         break
                     orig_file_field = orig_file_field_raw
@@ -7453,7 +7818,7 @@ def index(action_argument=None, refer=None):
                                 changed = True
                             except Exception as errMess:
                                 try:
-                                    sys.stderr.write("Error: " + errMess.__class__.__name__ + ": " + str(errMess) + " after trying to run " + the_string + "\n")
+                                    logmessage("Error: " + errMess.__class__.__name__ + ": " + str(errMess) + " after trying to run " + the_string)
                                 except:
                                     pass
                                 error_messages.append(("error", "Error: " + errMess.__class__.__name__ + ": " + str(errMess)))
@@ -7475,7 +7840,7 @@ def index(action_argument=None, refer=None):
                             exec(the_string, user_dict)
                             changed = True
                         except Exception as errMess:
-                            sys.stderr.write("Error: " + errMess.__class__.__name__ + ": " + str(errMess) + " after running " + the_string + "\n")
+                            logmessage("Error: " + errMess.__class__.__name__ + ": " + str(errMess) + " after running " + the_string)
                             error_messages.append(("error", "Error: " + errMess.__class__.__name__ + ": " + str(errMess)))
         if '_files' in post_data or (STRICT_MODE and (not disregard_input) and len(field_info['files']) > 0):
             if STRICT_MODE:
@@ -7590,7 +7955,7 @@ def index(action_argument=None, refer=None):
                                     exec(the_string, user_dict)
                                     changed = True
                                 except Exception as errMess:
-                                    sys.stderr.write("Error: " + errMess.__class__.__name__ + ": " + str(errMess) + "after running " + the_string + "\n")
+                                    logmessage("Error: " + errMess.__class__.__name__ + ": " + str(errMess) + "after running " + the_string)
                                     error_messages.append(("error", "Error: " + errMess.__class__.__name__ + ": " + str(errMess)))
                     else:
                         try:
@@ -7611,7 +7976,7 @@ def index(action_argument=None, refer=None):
                             exec(the_string, user_dict)
                             changed = True
                         except Exception as errMess:
-                            sys.stderr.write("Error: " + errMess.__class__.__name__ + ": " + str(errMess) + "after running " + the_string + "\n")
+                            logmessage("Error: " + errMess.__class__.__name__ + ": " + str(errMess) + "after running " + the_string)
                             error_messages.append(("error", "Error: " + errMess.__class__.__name__ + ": " + str(errMess)))
         if validated:
             if 'informed' in request.form:
@@ -7668,17 +8033,17 @@ def index(action_argument=None, refer=None):
                     is_ok = False
             if is_ok:
                 if not illegal_variable_name(list_collect_list):
-                    exec(list_collect_list + ' ._remove_items_by_number(' + ', '.join(map(lambda y: str(y), to_delete)) + ')' , user_dict)
+                    exec(list_collect_list + ' ._remove_items_by_number(' + ', '.join(map(str, to_delete)) + ')', user_dict)
                     changed = True
         if '_collect' in post_data and list_collect_list is not None:
             collect = json.loads(myb64unquote(post_data['_collect']))
             # if STRICT_MODE and collect['list'] not in authorized_fields:
             #     raise DAError("The variable " + repr(collect['list']) + " was not in the allowed fields, which were " + repr(authorized_fields))
-            #if not illegal_variable_name(collect['list']):
+            # if not illegal_variable_name(collect['list']):
             if collect['function'] == 'add':
                 add_action_to_stack(interview_status, user_dict, '_da_list_add', {'list': list_collect_list})
         if list_collect_list is not None:
-            exec(list_collect_list + '._disallow_appending()' , user_dict)
+            exec(list_collect_list + '._disallow_appending()', user_dict)
         if the_question is not None and the_question.validation_code:
             try:
                 exec(the_question.validation_code, user_dict)
@@ -7763,7 +8128,7 @@ def index(action_argument=None, refer=None):
         reset_user_dict(user_code, yaml_filename)
         delete_session_for_interview(i=yaml_filename)
         release_lock(user_code, yaml_filename)
-        sys.stderr.write("Redirecting because of an exit.\n")
+        logmessage("Redirecting because of an exit.")
         if interview_status.questionText != '':
             response = do_redirect(interview_status.questionText, is_ajax, is_json, js_target)
         else:
@@ -7779,7 +8144,7 @@ def index(action_argument=None, refer=None):
             reset_user_dict(user_code, yaml_filename)
         release_lock(user_code, yaml_filename)
         delete_session_info()
-        sys.stderr.write("Redirecting because of a logout.\n")
+        logmessage("Redirecting because of a logout.")
         if interview_status.questionText != '':
             response = do_redirect(interview_status.questionText, is_ajax, is_json, js_target)
         else:
@@ -7796,7 +8161,6 @@ def index(action_argument=None, refer=None):
         if return_fake_html:
             fake_up(response, current_language)
         return response
-    will_save = True
     if interview_status.question.question_type == "refresh":
         release_lock(user_code, yaml_filename)
         response = do_refresh(is_ajax, yaml_filename)
@@ -7807,7 +8171,7 @@ def index(action_argument=None, refer=None):
         return response
     if interview_status.question.question_type == "signin":
         release_lock(user_code, yaml_filename)
-        sys.stderr.write("Redirecting because of a signin.\n")
+        logmessage("Redirecting because of a signin.")
         response = do_redirect(url_for('user.login', next=url_for('index', i=yaml_filename, session=user_code)), is_ajax, is_json, js_target)
         if return_fake_html:
             fake_up(response, current_language)
@@ -7816,7 +8180,7 @@ def index(action_argument=None, refer=None):
         return response
     if interview_status.question.question_type == "register":
         release_lock(user_code, yaml_filename)
-        sys.stderr.write("Redirecting because of a register.\n")
+        logmessage("Redirecting because of a register.")
         response = do_redirect(url_for('user.register', next=url_for('index', i=yaml_filename, session=user_code)), is_ajax, is_json, js_target)
         if return_fake_html:
             fake_up(response, current_language)
@@ -7825,7 +8189,7 @@ def index(action_argument=None, refer=None):
         return response
     if interview_status.question.question_type == "leave":
         release_lock(user_code, yaml_filename)
-        sys.stderr.write("Redirecting because of a leave.\n")
+        logmessage("Redirecting because of a leave.")
         if interview_status.questionText != '':
             response = do_redirect(interview_status.questionText, is_ajax, is_json, js_target)
         else:
@@ -7886,7 +8250,7 @@ def index(action_argument=None, refer=None):
         response_to_send = send_file(the_path, mimetype=interview_status.extras['content_type'])
         response_to_send.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     elif interview_status.question.question_type == "redirect":
-        sys.stderr.write("Redirecting because of a redirect.\n")
+        logmessage("Redirecting because of a redirect.")
         response_to_send = do_redirect(interview_status.questionText, is_ajax, is_json, js_target)
     else:
         response_to_send = None
@@ -8081,6 +8445,7 @@ def index(action_argument=None, refer=None):
       var daAllowGoingBack = """ + ('true' if allow_going_back else 'false') + """;
       var daSteps = """ + str(steps) + """;
       var daIsUser = """ + is_user + """;
+      var daUserId = """ + ('null' if current_user.is_anonymous else str(current_user.id)) + """;
       var daChatStatus = """ + json.dumps(chat_status) + """;
       var daChatAvailable = """ + json.dumps(chat_available) + """;
       var daChatPartnersAvailable = 0;
@@ -8096,6 +8461,7 @@ def index(action_argument=None, refer=None):
       var daSpinnerTimeout = null;
       var daSubmitter = null;
       var daUsingGA = """ + ("true" if ga_id is not None else 'false') + """;
+      var daGAConfigured = false;
       var daUsingSegment = """ + ("true" if segment_id is not None else 'false') + """;
       var daDoAction = """ + do_action + """;
       var daQuestionID = """ + json.dumps(question_id_dict) + """;
@@ -8333,7 +8699,7 @@ def index(action_argument=None, refer=None):
         }
         var returnVal = null;
         for (var i = 0; i < possibleElements.length; ++i){
-          if (!$(possibleElements[i]).prop('disabled')){
+          if (!$(possibleElements[i]).prop('disabled') || $(possibleElements[i]).parents(".file-input.is-locked").length > 0 ){
             var showifParents = $(possibleElements[i]).parents(".dajsshowif,.dashowif");
             if (showifParents.length == 0 || $(showifParents[0]).data("isVisible") == '1'){
               if (notInDiv && $.contains(notInDiv, possibleElements[i])){
@@ -8508,9 +8874,13 @@ def index(action_argument=None, refer=None):
         return url;
       }
       var da_url_action = url_action;
-      function action_call(action, args, callback){
+      function action_call(action, args, callback, forgetPrior=false){
         if (args == null){
             args = {};
+        }
+        if (forgetPrior){
+          args = {_action: action, _arguments: args};
+          action = '_da_priority_action';
         }
         if (callback == null){
             callback = function(){};
@@ -8540,9 +8910,13 @@ def index(action_argument=None, refer=None):
       }
       var da_action_call = action_call;
       var url_action_call = action_call;
-      function action_perform(action, args){
+      function action_perform(action, args, forgetPrior=false){
         if (args == null){
-            args = {};
+          args = {};
+        }
+        if (forgetPrior){
+          args = {_action: action, _arguments: args};
+          action = '_da_priority_action';
         }
         var data = {action: action, arguments: args};
         daSpinnerTimeout = setTimeout(daShowSpinner, 1000);
@@ -8569,10 +8943,14 @@ def index(action_argument=None, refer=None):
       }
       var da_action_perform = action_perform;
       var url_action_perform = action_perform;
-      function action_perform_with_next(action, args, next_data){
+      function action_perform_with_next(action, args, next_data, forgetPrior=false){
         //console.log("action_perform_with_next: " + action + " | " + next_data)
         if (args == null){
             args = {};
+        }
+        if (forgetPrior){
+          args = {_action: action, _arguments: args};
+          action = '_da_priority_action';
         }
         var data = {action: action, arguments: args};
         daSpinnerTimeout = setTimeout(daShowSpinner, 1000);
@@ -10377,17 +10755,21 @@ def index(action_argument=None, refer=None):
         })
         $('.dacurrency').each(function(){
           var theVal = $(this).val().toString();
-          if (theVal.indexOf('.') >= 0 || theVal.indexOf(',') >= 0){
+          if (theVal.indexOf('.') >= 0){
+            theVal = theVal.replace(',', '');
             var num = parseFloat(theVal);
-            var cleanNum = num.toFixed(""" + str(daconfig.get('currency decimal places', 2)) + """);
-            $(this).val(cleanNum);
+            var cleanNum = num.toFixed(""" + str(daconfig.get('currency decimal places', 2)) + """).toString();
+            if (cleanNum != 'NaN') {
+              $(this).val(cleanNum);
+            }
           }
         });
         $('.dacurrency').on('blur', function(){
           var theVal = $(this).val().toString();
-          if (theVal.indexOf('.') >= 0 || theVal.indexOf(',') >= 0){
+          if (theVal.indexOf('.') >= 0){
+            theVal = theVal.replace(',', '');
             var num = parseFloat(theVal);
-            var cleanNum = num.toFixed(""" + str(daconfig.get('currency decimal places', 2)) + """);
+            var cleanNum = num.toFixed(""" + str(daconfig.get('currency decimal places', 2)) + """).toString();
             if (cleanNum != 'NaN') {
               $(this).val(cleanNum);
             }
@@ -10916,6 +11298,7 @@ def index(action_argument=None, refer=None):
               $("#" + showIfVarEscaped).change(showHideDivFast);
               $("input[type='radio'][name='" + showIfVarEscaped + "']").change(showHideDivFast);
               $("input[type='checkbox'][name='" + showIfVarEscaped + "']").change(showHideDivFast);
+              $("input.dafile[name='" + showIfVarEscaped + "']").on('filecleared', showHideDivFast);
               $("#" + showIfVarEscaped).on('daManualTrigger', showHideDivImmediate);
               $("input[type='radio'][name='" + showIfVarEscaped + "']").on('daManualTrigger', showHideDivImmediate);
               $("input[type='checkbox'][name='" + showIfVarEscaped + "']").on('daManualTrigger', showHideDivImmediate);
@@ -11081,6 +11464,7 @@ def index(action_argument=None, refer=None):
             $("input[type='radio'][name='" + showIfVarEscaped + "']").on('daManualTrigger', showHideDivImmediate);
             $("input[type='checkbox'][name='" + showIfVarEscaped + "']").change(showHideDivFast);
             $("input[type='checkbox'][name='" + showIfVarEscaped + "']").on('daManualTrigger', showHideDivImmediate);
+            $("input.dafile[name='" + showIfVarEscaped + "']").on('filecleared', showHideDivFast);
           }
         });
         function daTriggerAllShowHides(){
@@ -11480,7 +11864,7 @@ def index(action_argument=None, refer=None):
           }
         } catch (e) {}
         return false;
-      });"""
+      });"""  # noqa: W605
         for custom_type in interview.custom_data_types:
             info = docassemble.base.functions.custom_types[custom_type]
             if isinstance(info['javascript'], str):
@@ -11488,7 +11872,7 @@ def index(action_argument=None, refer=None):
         if interview.options.get('send question data', False):
             the_js += "\n      daQuestionData = " + json.dumps(interview_status.as_data(user_dict))
         scripts += """
-    <script type="text/javascript" charset="utf-8">
+    <script type="text/javascript">
 """ + the_js + """
     </script>"""
     if interview_status.question.language != '*':
@@ -11527,14 +11911,14 @@ def index(action_argument=None, refer=None):
     if interview_status.question.question_type == "signature":
         interview_status.extra_scripts.append('<script>$( document ).ready(function() {daInitializeSignature();});</script>')
         if interview.options.get('hide navbar', False):
-            bodyclass="dasignature navbarhidden"
+            bodyclass = "dasignature navbarhidden"
         else:
-            bodyclass="dasignature"
+            bodyclass = "dasignature"
     else:
         if interview.options.get('hide navbar', False):
-            bodyclass="dabody"
+            bodyclass = "dabody"
         else:
-            bodyclass="dabody da-pad-for-navbar"
+            bodyclass = "dabody da-pad-for-navbar"
     if 'cssClass' in interview_status.extras:
         bodyclass += ' ' + re.sub(r'[^A-Za-z0-9\_]+', '-', interview_status.extras['cssClass'])
     elif hasattr(interview_status.question, 'id'):
@@ -11547,6 +11931,7 @@ def index(action_argument=None, refer=None):
         interview_status.initialize_screen_reader()
         util_language = docassemble.base.functions.get_language()
         util_dialect = docassemble.base.functions.get_dialect()
+        util_voice = docassemble.base.functions.get_voice()
         question_language = interview_status.question.language
         if len(interview.translations) > 0:
             the_language = util_language
@@ -11560,9 +11945,19 @@ def index(action_argument=None, refer=None):
             logmessage("index: unable to determine dialect; reverting to default")
             the_language = DEFAULT_LANGUAGE
             the_dialect = DEFAULT_DIALECT
+        if the_language == util_language and the_dialect == util_dialect and util_voice is not None:
+            the_voice = util_voice
+        elif voicerss_config and 'voices' in voicerss_config and isinstance(voicerss_config['voices'], dict) and the_language in voicerss_config['voices'] and isinstance(voicerss_config['voices'][the_language], dict) and the_dialect in voicerss_config['voices'][the_language]:
+            the_voice = voicerss_config['voices'][the_language][the_dialect]
+        elif voicerss_config and 'voices' in voicerss_config and isinstance(voicerss_config['voices'], dict) and the_language in voicerss_config['voices'] and isinstance(voicerss_config['voices'][the_language], str):
+            the_voice = voicerss_config['voices'][the_language]
+        elif the_language == DEFAULT_LANGUAGE and the_dialect == DEFAULT_DIALECT:
+            the_voice = DEFAULT_VOICE
+        else:
+            the_voice = None
         for question_type in ('question', 'help'):
             for audio_format in ('mp3', 'ogg'):
-                interview_status.screen_reader_links[question_type].append([url_for('speak_file', i=yaml_filename, question=interview_status.question.number, digest='XXXTHEXXX' + question_type + 'XXXHASHXXX', type=question_type, format=audio_format, language=the_language, dialect=the_dialect), audio_mimetype_table[audio_format]])
+                interview_status.screen_reader_links[question_type].append([url_for('speak_file', i=yaml_filename, question=interview_status.question.number, digest='XXXTHEXXX' + question_type + 'XXXHASHXXX', type=question_type, format=audio_format, language=the_language, dialect=the_dialect, voice=the_voice or ''), audio_mimetype_table[audio_format]])
     if (not validated) and the_question.name == interview_status.question.name:
         for def_key, def_val in new_values.items():
             safe_def_key = safeid(def_key)
@@ -11607,7 +12002,7 @@ def index(action_argument=None, refer=None):
             current_dict = {}
             dropdown_nav_bar = navigation_bar(user_dict['nav'], interview, wrapper=False, a_class='dropdown-item', hide_inactive_subs=False, always_open=True, return_dict=current_dict)
             if dropdown_nav_bar != '':
-                dropdown_nav_bar = '        <div class="col d-md-none text-end">\n          <div class="dropdown">\n            <button class="btn btn-primary dropdown-toggle" type="button" id="daDropdownSections" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">' + current_dict.get('title', word("Sections")) + '</button>\n            <div class="dropdown-menu" aria-labelledby="daDropdownSections">' + dropdown_nav_bar + '\n          </div>\n          </div>\n        </div>\n'
+                dropdown_nav_bar = '        <div class="col d-md-none text-end">\n          <div class="dropdown danavlinks">\n            <button class="btn btn-primary dropdown-toggle" type="button" id="daDropdownSections" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">' + current_dict.get('title', word("Sections")) + '</button>\n            <div class="dropdown-menu" aria-labelledby="daDropdownSections">' + dropdown_nav_bar + '\n          </div>\n          </div>\n        </div>\n'
         else:
             dropdown_nav_bar = ''
         if interview.use_navigation == 'horizontal':
@@ -11663,7 +12058,7 @@ def index(action_argument=None, refer=None):
         readability_report = ''
         for question_type in ('question', 'help'):
             if question_type in readability:
-                readability_report += '          <div id="dareadability-' + question_type +'"' + (' style="display: none;"' if question_type == 'help' else '') + '>\n'
+                readability_report += '          <div id="dareadability-' + question_type + '"' + (' style="display: none;"' if question_type == 'help' else '') + '>\n'
                 if question_type == 'question':
                     readability_report += '            <h3>' + word("Readability of question") + '</h3>\n'
                 else:
@@ -11671,7 +12066,7 @@ def index(action_argument=None, refer=None):
                 readability_report += '            <table class="table">' + "\n"
                 readability_report += '              <tr><th>' + word("Formula") + '</th><th>' + word("Score") + '</th></tr>' + "\n"
                 for read_type, value in readability[question_type]:
-                    readability_report += '              <tr><td>' + read_type +'</td><td>' + str(value) + "</td></tr>\n"
+                    readability_report += '              <tr><td>' + read_type + '</td><td>' + str(value) + "</td></tr>\n"
                 readability_report += '            </table>' + "\n"
                 readability_report += '          </div>' + "\n"
     if interview_status.using_screen_reader:
@@ -11685,7 +12080,10 @@ def index(action_argument=None, refer=None):
                 the_phrase = pack_phrase(phrase)
             the_hash = MD5Hash(data=phrase).hexdigest()
             content = re.sub(r'XXXTHEXXX' + question_type + 'XXXHASHXXX', the_hash, content)
-            existing_entry = db.session.execute(select(SpeakList).filter_by(filename=yaml_filename, key=user_code, question=interview_status.question.number, digest=the_hash, type=question_type, language=the_language, dialect=the_dialect).with_for_update()).scalar()
+            params = {'filename': yaml_filename, 'key': user_code, 'question': interview_status.question.number, 'digest': the_hash, 'type': question_type, 'language': the_language, 'dialect': the_dialect}
+            if the_voice:
+                params['voice'] = the_voice
+            existing_entry = db.session.execute(select(SpeakList).filter_by(**params).with_for_update()).scalar()
             if existing_entry:
                 if existing_entry.encrypted:
                     existing_phrase = decrypt_phrase(existing_entry.phrase, secret)
@@ -11697,7 +12095,7 @@ def index(action_argument=None, refer=None):
                     existing_entry.upload = None
                     existing_entry.encrypted = encrypted
             else:
-                new_entry = SpeakList(filename=yaml_filename, key=user_code, phrase=the_phrase, question=interview_status.question.number, digest=the_hash, type=question_type, language=the_language, dialect=the_dialect, encrypted=encrypted)
+                new_entry = SpeakList(filename=yaml_filename, key=user_code, phrase=the_phrase, question=interview_status.question.number, digest=the_hash, type=question_type, language=the_language, dialect=the_dialect, encrypted=encrypted, voice=the_voice)
                 db.session.add(new_entry)
             db.session.commit()
     append_css_urls = []
@@ -11776,7 +12174,7 @@ def index(action_argument=None, refer=None):
         output += '          <hr>\n'
         output += '          <h3>' + word('Source code for question') + '<a class="float-end btn btn-info" target="_blank" href="' + url_for('get_variables', i=yaml_filename) + '">' + word('Show variables and values') + '</a></h3>' + "\n"
         if interview_status.question.from_source.path != interview.source.path and interview_status.question.from_source.path is not None:
-            output += '          <p style="font-weight: bold;"><small>(' + word('from') + ' ' + interview_status.question.from_source.path +")</small></p>\n"
+            output += '          <p style="font-weight: bold;"><small>(' + word('from') + ' ' + interview_status.question.from_source.path + ")</small></p>\n"
         if (not hasattr(interview_status.question, 'source_code')) or interview_status.question.source_code is None:
             output += '          <p>' + word('unavailable') + '</p>'
         else:
@@ -11817,7 +12215,7 @@ def index(action_argument=None, refer=None):
         if reload_after and reload_after > 0:
             data['reload_after'] = reload_after
         if 'action' in data and data['action'] == 'redirect' and 'url' in data:
-            sys.stderr.write("Redirecting because of a redirect action.\n")
+            logmessage("Redirecting because of a redirect action.")
             response = redirect(data['url'])
         else:
             response = jsonify(**data)
@@ -11875,6 +12273,7 @@ def index(action_argument=None, refer=None):
         response_wrapper(response)
     return response
 
+
 def process_set_variable(field_name, user_dict, vars_set, old_values):
     vars_set.add(field_name)
     try:
@@ -11882,12 +12281,13 @@ def process_set_variable(field_name, user_dict, vars_set, old_values):
     except:
         pass
 
+
 def add_permissions_for_field(the_field, interview_status, files_to_process):
     if hasattr(the_field, 'permissions'):
         if the_field.number in interview_status.extras['permissions']:
             permissions = interview_status.extras['permissions'][the_field.number]
             if 'private' in permissions or 'persistent' in permissions:
-                for (filename, file_number, mimetype, extension) in files_to_process:
+                for (filename, file_number, mimetype, extension) in files_to_process:  # pylint: disable=unused-variable
                     attribute_args = {}
                     if 'private' in permissions:
                         attribute_args['private'] = permissions['private']
@@ -11908,9 +12308,11 @@ def add_permissions_for_field(the_field, interview_status, files_to_process):
                 for (filename, file_number, mimetype, extension) in files_to_process:
                     file_privilege_access(file_number, allow=permissions['allow_privileges'])
 
+
 def fake_up(response, interview_language):
     response.set_data('<!DOCTYPE html><html lang="' + interview_language + '"><head><meta charset="utf-8"><title>Response</title></head><body><pre>ABCDABOUNDARYSTARTABC' + codecs.encode(response.get_data(), 'base64').decode() + 'ABCDABOUNDARYENDABC</pre></body></html>')
     response.headers['Content-type'] = 'text/html; charset=utf-8'
+
 
 def add_action_to_stack(interview_status, user_dict, action, arguments):
     unique_id = interview_status.current_info['user']['session_uid']
@@ -11921,6 +12323,7 @@ def add_action_to_stack(interview_status, user_dict, action, arguments):
     if len(user_dict['_internal']['event_stack'][unique_id]) > 0 and user_dict['_internal']['event_stack'][unique_id][0]['action'] == action and user_dict['_internal']['event_stack'][unique_id][0]['arguments'] == arguments:
         user_dict['_internal']['event_stack'][unique_id].pop(0)
     user_dict['_internal']['event_stack'][unique_id].insert(0, {'action': action, 'arguments': arguments})
+
 
 def sub_indices(the_var, the_user_dict):
     try:
@@ -11935,13 +12338,15 @@ def sub_indices(the_var, the_user_dict):
         raise DAError("Reference to variable " + missing_var + " that was not defined")
     return the_var
 
+
 def fixstr(data):
     return bytearray(data, encoding='utf-8').decode('utf-8', 'ignore').encode("utf-8")
+
 
 def get_history(interview, interview_status):
     output = ''
     has_question = bool(hasattr(interview_status, 'question'))
-    index = 0
+    the_index = 0
     seeking_len = len(interview_status.seeking)
     if seeking_len:
         starttime = interview_status.seeking[0]['time']
@@ -11950,11 +12355,11 @@ def get_history(interview, interview_status):
             if seen_done:
                 output = ''
                 seen_done = False
-            index += 1
-            if index < seeking_len and 'reason' in interview_status.seeking[index] and interview_status.seeking[index]['reason'] in ('asking', 'running') and interview_status.seeking[index]['question'] is stage['question'] and 'question' in stage and 'reason' in stage and stage['reason'] == 'considering':
+            the_index += 1
+            if the_index < seeking_len and 'reason' in interview_status.seeking[the_index] and interview_status.seeking[the_index]['reason'] in ('asking', 'running') and interview_status.seeking[the_index]['question'] is stage['question'] and 'question' in stage and 'reason' in stage and stage['reason'] == 'considering':
                 continue
             the_time = " at %.5fs" % (stage['time'] - starttime)
-            if 'question' in stage and 'reason' in stage and (has_question is False or index < (seeking_len - 1) or stage['question'] is not interview_status.question):
+            if 'question' in stage and 'reason' in stage and (has_question is False or the_index < (seeking_len - 1) or stage['question'] is not interview_status.question):
                 if stage['reason'] == 'initial':
                     output += "          <h5>Ran initial code" + the_time + "</h5>\n"
                 elif stage['reason'] == 'mandatory question':
@@ -11976,7 +12381,7 @@ def get_history(interview, interview_status):
                 elif stage['reason'] == 'result of multiple choice':
                     output += "          <h5>Followed the result of multiple choice selection" + the_time + "</h5>\n"
                 if stage['question'].from_source.path != interview.source.path and stage['question'].from_source.path is not None:
-                    output += '          <p style="font-weight: bold;"><small>(' + word('from') + ' ' + stage['question'].from_source.path +")</small></p>\n"
+                    output += '          <p style="font-weight: bold;"><small>(' + word('from') + ' ' + stage['question'].from_source.path + ")</small></p>\n"
                 if (not hasattr(stage['question'], 'source_code')) or stage['question'].source_code is None:
                     output += word('(embedded question, source code not available)')
                 else:
@@ -11988,6 +12393,7 @@ def get_history(interview, interview_status):
                 seen_done = True
     return output
 
+
 def is_mobile_or_tablet():
     ua_string = request.headers.get('User-Agent', None)
     if ua_string is not None:
@@ -11996,8 +12402,10 @@ def is_mobile_or_tablet():
             return True
     return False
 
+
 def get_referer():
     return request.referrer or None
+
 
 def add_referer(user_dict, referer=None):
     if referer:
@@ -12007,9 +12415,11 @@ def add_referer(user_dict, referer=None):
     else:
         user_dict['_internal']['referer'] = None
 
+
 @app.template_filter('word')
 def word_filter(text):
     return docassemble.base.functions.word(str(text))
+
 
 def get_part(part, default=None):
     if default is None:
@@ -12028,13 +12438,14 @@ def get_part(part, default=None):
         return page_parts[part]['*']
     return default
 
+
 @app.context_processor
 def utility_processor():
+
     def user_designator(the_user):
         if the_user.email:
             return the_user.email
-        else:
-            return re.sub(r'.*\$', '', the_user.social_id)
+        return re.sub(r'.*\$', '', the_user.social_id)
     if 'language' in session:
         docassemble.base.functions.set_language(session['language'])
         lang = session['language']
@@ -12049,9 +12460,11 @@ def utility_processor():
     else:
         docassemble.base.functions.set_language(DEFAULT_LANGUAGE)
         lang = DEFAULT_LANGUAGE
+
     def in_debug():
         return DEBUG
     return dict(word=docassemble.base.functions.word, in_debug=in_debug, user_designator=user_designator, get_part=get_part, current_language=lang)
+
 
 @app.route('/speakfile', methods=['GET'])
 def speak_file():
@@ -12063,12 +12476,15 @@ def speak_file():
     if session_info is None:
         abort(400)
     key = session_info['uid']
-    encrypted = session_info['encrypted']
+    # encrypted = session_info['encrypted']
     question = request.args.get('question', None)
     question_type = request.args.get('type', None)
     file_format = request.args.get('format', None)
     the_language = request.args.get('language', None)
     the_dialect = request.args.get('dialect', None)
+    the_voice = request.args.get('voice', '')
+    if the_voice == '':
+        the_voice = None
     the_hash = request.args.get('digest', None)
     secret = request.cookies.get('secret', None)
     if secret is not None:
@@ -12076,12 +12492,15 @@ def speak_file():
     if file_format not in ('mp3', 'ogg') or not (filename and key and question and question_type and file_format and the_language and the_dialect):
         logmessage("speak_file: could not serve speak file because invalid or missing data was provided: filename " + str(filename) + " and key " + str(key) + " and question number " + str(question) + " and question type " + str(question_type) + " and language " + str(the_language) + " and dialect " + str(the_dialect))
         return ('File not found', 404)
-    entry = db.session.execute(select(SpeakList).filter_by(filename=filename, key=key, question=question, digest=the_hash, type=question_type, language=the_language, dialect=the_dialect)).scalar()
+    params = {'filename': filename, 'key': key, 'question': question, 'digest': the_hash, 'type': question_type, 'language': the_language, 'dialect': the_dialect}
+    if the_voice:
+        params['voice'] = the_voice
+    entry = db.session.execute(select(SpeakList).filter_by(**params)).scalar()
     if not entry:
-        logmessage("speak_file: could not serve speak file because no entry could be found in speaklist for filename " + str(filename) + " and key " + str(key) + " and question number " + str(question) + " and question type " + str(question_type) + " and language " + str(the_language) + " and dialect " + str(the_dialect))
+        logmessage("speak_file: could not serve speak file because no entry could be found in speaklist for filename " + str(filename) + " and key " + str(key) + " and question number " + str(question) + " and question type " + str(question_type) + " and language " + str(the_language) + " and dialect " + str(the_dialect) + " and voice " + str(the_voice))
         return ('File not found', 404)
     if not entry.upload:
-        existing_entry = db.session.execute(select(SpeakList).where(and_(SpeakList.phrase == entry.phrase, SpeakList.language == entry.language, SpeakList.dialect == entry.dialect, SpeakList.upload != None, SpeakList.encrypted == entry.encrypted))).scalar()
+        existing_entry = db.session.execute(select(SpeakList).where(and_(SpeakList.phrase == entry.phrase, SpeakList.language == entry.language, SpeakList.dialect == entry.dialect, SpeakList.voice == entry.voice, SpeakList.upload != None, SpeakList.encrypted == entry.encrypted))).scalar()  # noqa: E711 # pylint: disable=singleton-comparison
         if existing_entry:
             logmessage("speak_file: found existing entry: " + str(existing_entry.id) + ".  Setting to " + str(existing_entry.upload))
             entry.upload = existing_entry.upload
@@ -12090,15 +12509,18 @@ def speak_file():
                 logmessage("speak_file: could not serve speak file because voicerss not enabled")
                 return ('File not found', 404)
             new_file_number = get_new_file_number(key, 'speak.mp3', yaml_file_name=filename)
-            #phrase = codecs.decode(entry.phrase, 'base64')
+            # phrase = codecs.decode(entry.phrase, 'base64')
             if entry.encrypted:
                 phrase = decrypt_phrase(entry.phrase, secret)
             else:
                 phrase = unpack_phrase(entry.phrase)
             url = voicerss_config.get('url', "https://api.voicerss.org/")
-            #logmessage("Retrieving " + url)
+            # logmessage("Retrieving " + url)
             audio_file = SavedFile(new_file_number, extension='mp3', fix=True, should_not_exist=True)
-            audio_file.fetch_url_post(url, dict(f=voicerss_config.get('format', '16khz_16bit_stereo'), key=voicerss_config['key'], src=phrase, hl=str(entry.language) + '-' + str(entry.dialect)))
+            voicerss_parameters = {'f': voicerss_config.get('format', '16khz_16bit_stereo'), 'key': voicerss_config['key'], 'src': phrase, 'hl': str(entry.language) + '-' + str(entry.dialect)}
+            if the_voice is not None:
+                voicerss_parameters['v'] = the_voice
+            audio_file.fetch_url_post(url, voicerss_parameters)
             if audio_file.size_in_bytes() > 100:
                 call_array = [daconfig.get('pacpl', 'pacpl'), '-t', 'ogg', audio_file.path + '.mp3']
                 logmessage("speak_file: calling " + " ".join(call_array))
@@ -12123,6 +12545,7 @@ def speak_file():
         return ('File not found', 404)
     response = send_file(the_path, mimetype=audio_mimetype_table[file_format])
     return response
+
 
 def interview_menu(absolute_urls=False, start_new=False, tag=None):
     interview_info = []
@@ -12174,6 +12597,7 @@ def interview_menu(absolute_urls=False, start_new=False, tag=None):
         interview_info.append(dict(link=url, title=interview_title, status_class=status_class, subtitle=subtitle, subtitle_class=subtitle_class, filename=yaml_filename, package=package, tags=sorted(tags), metadata=metadata))
     return interview_info
 
+
 @app.route('/list', methods=['GET'])
 def interview_start():
     if current_user.is_anonymous and not daconfig.get('allow anonymous access', True):
@@ -12187,13 +12611,10 @@ def interview_start():
         if is_json:
             if tag:
                 return redirect(url_for('index', i=daconfig.get('dispatch interview'), from_list='1', json='1', tag=tag))
-            else:
-                return redirect(url_for('index', i=daconfig.get('dispatch interview'), from_list='1', json='1'))
-        else:
-            if tag:
-                return redirect(url_for('index', i=daconfig.get('dispatch interview'), from_list='1', tag=tag))
-            else:
-                return redirect(url_for('index', i=daconfig.get('dispatch interview'), from_list='1'))
+            return redirect(url_for('index', i=daconfig.get('dispatch interview'), from_list='1', json='1'))
+        if tag:
+            return redirect(url_for('index', i=daconfig.get('dispatch interview'), from_list='1', tag=tag))
+        return redirect(url_for('index', i=daconfig.get('dispatch interview'), from_list='1'))
     if 'embedded' in request.args and int(request.args['embedded']):
         the_page = 'pages/start-embedded.html'
         embed = True
@@ -12202,7 +12623,7 @@ def interview_start():
     interview_info = interview_menu(absolute_urls=embed, tag=tag)
     if is_json:
         return jsonify(action='menu', interviews=interview_info)
-    argu = dict(version_warning=None, interview_info=interview_info) #extra_css=Markup(global_css), extra_js=Markup(global_js), tab_title=daconfig.get('start page title', word('Interviews')), title=daconfig.get('start page heading', word('Available interviews'))
+    argu = dict(version_warning=None, interview_info=interview_info)  # extra_css=Markup(global_css), extra_js=Markup(global_js), tab_title=daconfig.get('start page title', word('Interviews')), title=daconfig.get('start page heading', word('Available interviews'))
     if embed:
         the_page = 'pages/start-embedded.html'
     else:
@@ -12220,8 +12641,10 @@ def interview_start():
         resp.headers['Access-Control-Allow-Origin'] = '*'
     return resp
 
+
 @app.route('/start/<package>/<directory>/<filename>/', methods=['GET'])
 def redirect_to_interview_in_package_directory(package, directory, filename):
+    # setup_translation()
     if COOKIELESS_SESSIONS:
         return html_index()
     arguments = {}
@@ -12233,8 +12656,10 @@ def redirect_to_interview_in_package_directory(package, directory, filename):
     request.args = arguments
     return index(refer=['start_directory', package, directory, filename])
 
+
 @app.route('/start/<package>/<filename>/', methods=['GET'])
 def redirect_to_interview_in_package(package, filename):
+    # setup_translation()
     if COOKIELESS_SESSIONS:
         return html_index()
     arguments = {}
@@ -12249,9 +12674,11 @@ def redirect_to_interview_in_package(package, filename):
     request.args = arguments
     return index(refer=['start', package, filename])
 
+
 @app.route('/start/<dispatch>/', methods=['GET'])
 def redirect_to_interview(dispatch):
-    #logmessage("redirect_to_interview: the dispatch is " + str(dispatch))
+    # setup_translation()
+    # logmessage("redirect_to_interview: the dispatch is " + str(dispatch))
     if COOKIELESS_SESSIONS:
         return html_index()
     yaml_filename = daconfig['dispatch'].get(dispatch, None)
@@ -12266,8 +12693,10 @@ def redirect_to_interview(dispatch):
     request.args = arguments
     return index(refer=['start_dispatch', dispatch])
 
+
 @app.route('/run/<package>/<directory>/<filename>/', methods=['GET'])
 def run_interview_in_package_directory(package, directory, filename):
+    # setup_translation()
     if COOKIELESS_SESSIONS:
         return html_index()
     arguments = {}
@@ -12277,8 +12706,10 @@ def run_interview_in_package_directory(package, directory, filename):
     request.args = arguments
     return index(refer=['run_direcory', package, directory, filename])
 
+
 @app.route('/run/<package>/<filename>/', methods=['GET'])
 def run_interview_in_package(package, filename):
+    # setup_translation()
     if COOKIELESS_SESSIONS:
         return html_index()
     arguments = {}
@@ -12291,8 +12722,10 @@ def run_interview_in_package(package, filename):
     request.args = arguments
     return index(refer=['run', package, filename])
 
+
 @app.route('/run/<dispatch>/', methods=['GET'])
 def run_interview(dispatch):
+    # setup_translation()
     if COOKIELESS_SESSIONS:
         return html_index()
     yaml_filename = daconfig['dispatch'].get(dispatch, None)
@@ -12305,13 +12738,16 @@ def run_interview(dispatch):
     request.args = arguments
     return index(refer=['run_dispatch', dispatch])
 
+
 @app.route('/storedfile/<uid>/<number>/<filename>.<extension>', methods=['GET'])
 def serve_stored_file(uid, number, filename, extension):
     return do_serve_stored_file(uid, number, filename, extension)
 
+
 @app.route('/storedfiledownload/<uid>/<number>/<filename>.<extension>', methods=['GET'])
 def serve_stored_file_download(uid, number, filename, extension):
     return do_serve_stored_file(uid, number, filename, extension, download=True)
+
 
 def do_serve_stored_file(uid, number, filename, extension, download=False):
     number = re.sub(r'[^0-9]', '', str(number))
@@ -12323,22 +12759,24 @@ def do_serve_stored_file(uid, number, filename, extension, download=False):
         return ('File not found', 404)
     if 'path' not in file_info:
         return ('File not found', 404)
-    else:
-        if not os.path.isfile(file_info['path']):
-            return ('File not found', 404)
-        response = send_file(file_info['path'], mimetype=file_info['mimetype'], download_name=filename + '.' + extension)
-        if download:
-            response.headers['Content-Disposition'] = 'attachment; filename=' + json.dumps(filename + '.' + extension)
-        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
-        return response
+    if not os.path.isfile(file_info['path']):
+        return ('File not found', 404)
+    response = send_file(file_info['path'], mimetype=file_info['mimetype'], download_name=filename + '.' + extension)
+    if download:
+        response.headers['Content-Disposition'] = 'attachment; filename=' + json.dumps(filename + '.' + extension)
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
+    return response
+
 
 @app.route('/tempfile/<code>/<filename>.<extension>', methods=['GET'])
 def serve_temporary_file(code, filename, extension):
     return do_serve_temporary_file(code, filename, extension)
 
+
 @app.route('/tempfiledownload/<code>/<filename>.<extension>', methods=['GET'])
 def serve_temporary_file_download(code, filename, extension):
     return do_serve_temporary_file(code, filename, extension, download=True)
+
 
 def do_serve_temporary_file(code, filename, extension, download=False):
     file_info = r.get('da:tempfile:' + str(code))
@@ -12355,6 +12793,7 @@ def do_serve_temporary_file(code, filename, extension, download=False):
     if download:
         response.headers['Content-Disposition'] = 'attachment; filename=' + json.dumps(filename + '.' + extension)
     return response
+
 
 @app.route('/packagezip', methods=['GET'])
 @login_required
@@ -12381,13 +12820,16 @@ def download_zip_package():
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
 
+
 @app.route('/uploadedfile/<number>/<filename>.<extension>', methods=['GET'])
 def serve_uploaded_file_with_filename_and_extension(number, filename, extension):
     return do_serve_uploaded_file_with_filename_and_extension(number, filename, extension)
 
+
 @app.route('/uploadedfiledownload/<number>/<filename>.<extension>', methods=['GET'])
 def serve_uploaded_file_with_filename_and_extension_download(number, filename, extension):
     return do_serve_uploaded_file_with_filename_and_extension(number, filename, extension, download=True)
+
 
 def do_serve_uploaded_file_with_filename_and_extension(number, filename, extension, download=False):
     filename = secure_filename_spaces_ok(filename)
@@ -12400,42 +12842,42 @@ def do_serve_uploaded_file_with_filename_and_extension(number, filename, extensi
         the_file = SavedFile(number)
         if download:
             return redirect(the_file.temp_url_for(_attachment=True))
-        else:
-            return redirect(the_file.temp_url_for())
-    else:
-        try:
-            file_info = get_info_from_file_number(number, privileged=privileged, uids=get_session_uids())
-        except:
-            return ('File not found', 404)
-        if 'path' not in file_info:
-            return ('File not found', 404)
-        else:
-            #logmessage("Filename is " + file_info['path'] + '.' + extension)
-            if os.path.isfile(file_info['path'] + '.' + extension):
-                #logmessage("Using " + file_info['path'] + '.' + extension)
-                extension, mimetype = get_ext_and_mimetype(file_info['path'] + '.' + extension)
-                response = send_file(file_info['path'] + '.' + extension, mimetype=mimetype, download_name=filename + '.' + extension)
-                if download:
-                    response.headers['Content-Disposition'] = 'attachment; filename=' + json.dumps(filename + '.' + extension)
-                response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
-                return response
-            if os.path.isfile(os.path.join(os.path.dirname(file_info['path']), filename + '.' + extension)):
-                #logmessage("Using " + os.path.join(os.path.dirname(file_info['path']), filename + '.' + extension))
-                extension, mimetype = get_ext_and_mimetype(filename + '.' + extension)
-                response = send_file(os.path.join(os.path.dirname(file_info['path']), filename + '.' + extension), mimetype=mimetype, download_name=filename + '.' + extension)
-                if download:
-                    response.headers['Content-Disposition'] = 'attachment; filename=' + json.dumps(filename + '.' + extension)
-                response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
-                return response
-            return ('File not found', 404)
+        return redirect(the_file.temp_url_for())
+    try:
+        file_info = get_info_from_file_number(number, privileged=privileged, uids=get_session_uids())
+    except:
+        return ('File not found', 404)
+    if 'path' not in file_info:
+        return ('File not found', 404)
+    # logmessage("Filename is " + file_info['path'] + '.' + extension)
+    if os.path.isfile(file_info['path'] + '.' + extension):
+        # logmessage("Using " + file_info['path'] + '.' + extension)
+        extension, mimetype = get_ext_and_mimetype(file_info['path'] + '.' + extension)
+        response = send_file(file_info['path'] + '.' + extension, mimetype=mimetype, download_name=filename + '.' + extension)
+        if download:
+            response.headers['Content-Disposition'] = 'attachment; filename=' + json.dumps(filename + '.' + extension)
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
+        return response
+    if os.path.isfile(os.path.join(os.path.dirname(file_info['path']), filename + '.' + extension)):
+        # logmessage("Using " + os.path.join(os.path.dirname(file_info['path']), filename + '.' + extension))
+        extension, mimetype = get_ext_and_mimetype(filename + '.' + extension)
+        response = send_file(os.path.join(os.path.dirname(file_info['path']), filename + '.' + extension), mimetype=mimetype, download_name=filename + '.' + extension)
+        if download:
+            response.headers['Content-Disposition'] = 'attachment; filename=' + json.dumps(filename + '.' + extension)
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
+        return response
+    return ('File not found', 404)
+
 
 @app.route('/uploadedfile/<number>.<extension>', methods=['GET'])
 def serve_uploaded_file_with_extension(number, extension):
     return do_serve_uploaded_file_with_extension(number, extension)
 
+
 @app.route('/uploadedfiledownload/<number>.<extension>', methods=['GET'])
 def serve_uploaded_file_with_extension_download(number, extension):
     return do_serve_uploaded_file_with_extension(number, extension, download=True)
+
 
 def do_serve_uploaded_file_with_extension(number, extension, download=False):
     extension = werkzeug.utils.secure_filename(extension)
@@ -12447,30 +12889,27 @@ def do_serve_uploaded_file_with_extension(number, extension, download=False):
         the_file = SavedFile(number)
         if download:
             return redirect(the_file.temp_url_for(_attachment=True))
-        else:
-            return redirect(the_file.temp_url_for())
-    else:
-        try:
-            file_info = get_info_from_file_number(number, privileged=privileged, uids=get_session_uids())
-        except:
-            return ('File not found', 404)
-        if 'path' not in file_info:
-            return ('File not found', 404)
-        else:
-            if os.path.isfile(file_info['path'] + '.' + extension):
-                extension, mimetype = get_ext_and_mimetype(file_info['path'] + '.' + extension)
-                response = send_file(file_info['path'] + '.' + extension, mimetype=mimetype, download_name=str(number) + '.' + extension)
-                if download:
-                    response.headers['Content-Disposition'] = 'attachment; filename=' + json.dumps(str(number) + '.' + extension)
-                response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
-                return response
-            else:
-                return ('File not found', 404)
+        return redirect(the_file.temp_url_for())
+    try:
+        file_info = get_info_from_file_number(number, privileged=privileged, uids=get_session_uids())
+    except:
+        return ('File not found', 404)
+    if 'path' not in file_info:
+        return ('File not found', 404)
+    if os.path.isfile(file_info['path'] + '.' + extension):
+        extension, mimetype = get_ext_and_mimetype(file_info['path'] + '.' + extension)
+        response = send_file(file_info['path'] + '.' + extension, mimetype=mimetype, download_name=str(number) + '.' + extension)
+        if download:
+            response.headers['Content-Disposition'] = 'attachment; filename=' + json.dumps(str(number) + '.' + extension)
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
+        return response
     return ('File not found', 404)
+
 
 @app.route('/uploadedfile/<number>', methods=['GET'])
 def serve_uploaded_file(number):
     return do_serve_uploaded_file(number)
+
 
 def do_serve_uploaded_file(number, download=False):
     number = re.sub(r'[^0-9]', '', str(number))
@@ -12481,31 +12920,34 @@ def do_serve_uploaded_file(number, download=False):
         return ('File not found', 404)
     if 'path' not in file_info:
         return ('File not found', 404)
-    else:
-        if not os.path.isfile(file_info['path']):
-            return ('File not found', 404)
-        response = send_file(file_info['path'], mimetype=file_info['mimetype'], download_name=os.path.basename(file_info['path']))
-        if download:
-            response.headers['Content-Disposition'] = 'attachment; filename=' + json.dumps(os.path.basename(file_info['path']))
-        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
-        return response
-    return ('File not found', 404)
+    if not os.path.isfile(file_info['path']):
+        return ('File not found', 404)
+    response = send_file(file_info['path'], mimetype=file_info['mimetype'], download_name=os.path.basename(file_info['path']))
+    if download:
+        response.headers['Content-Disposition'] = 'attachment; filename=' + json.dumps(os.path.basename(file_info['path']))
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
+    return response
+
 
 @app.route('/uploadedpage/<number>/<page>', methods=['GET'])
 def serve_uploaded_page(number, page):
     return do_serve_uploaded_page(number, page, size='page')
 
+
 @app.route('/uploadedpagedownload/<number>/<page>', methods=['GET'])
 def serve_uploaded_page_download(number, page):
     return do_serve_uploaded_page(number, page, download=True, size='page')
+
 
 @app.route('/uploadedpagescreen/<number>/<page>', methods=['GET'])
 def serve_uploaded_pagescreen(number, page):
     return do_serve_uploaded_page(number, page, size='screen')
 
+
 @app.route('/uploadedpagescreendownload/<number>/<page>', methods=['GET'])
 def serve_uploaded_pagescreen_download(number, page):
     return do_serve_uploaded_page(number, page, download=True, size='screen')
+
 
 def do_serve_uploaded_page(number, page, download=False, size='page'):
     number = re.sub(r'[^0-9]', '', str(number))
@@ -12537,9 +12979,9 @@ def do_serve_uploaded_page(number, page, download=False, size='page'):
             response.headers['Content-Disposition'] = 'attachment; filename=' + json.dumps(os.path.basename(filename))
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
         return response
-    else:
-        logmessage('do_serve_uploaded_page: path ' + filename + ' is not a file')
-        return ('File not found', 404)
+    logmessage('do_serve_uploaded_page: path ' + filename + ' is not a file')
+    return ('File not found', 404)
+
 
 @app.route('/visit_interview', methods=['GET', 'POST'])
 @login_required
@@ -12556,7 +12998,7 @@ def visit_interview():
         return ('Interview not found', 404)
     if 'secret' not in obj or 'encrypted' not in obj:
         return ('Interview not found', 404)
-    session_info = update_session(i, uid=uid, encrypted=obj['encrypted'])
+    update_session(i, uid=uid, encrypted=obj['encrypted'])
     if 'user_id' not in session:
         session['user_id'] = current_user.id
     if 'tempuser' in session:
@@ -12564,6 +13006,7 @@ def visit_interview():
     response = redirect(url_for('index', i=i))
     response.set_cookie('visitor_secret', obj['secret'], httponly=True, secure=app.config['SESSION_COOKIE_SECURE'], samesite=app.config['SESSION_COOKIE_SAMESITE'])
     return response
+
 
 @app.route('/observer', methods=['GET', 'POST'])
 @login_required
@@ -12841,6 +13284,17 @@ def observer():
         return allFields;
       }
       var daGetFields = getFields;
+      function daAppendIfExists(fieldName, theArray){
+        var elem = $("[name='" + fieldName + "']");
+        if (elem.length > 0){
+          for (var i = 0; i < theArray.length; ++i){
+            if (theArray[i] == elem[0]){
+              return;
+            }
+          }
+          theArray.push(elem[0]);
+        }
+      }
       function getField(fieldName, notInDiv){
         if (daVarLookupSelect[fieldName]){
           var n = daVarLookupSelect[fieldName].length;
@@ -13189,10 +13643,14 @@ def observer():
         return url;
       }
       var da_url_action = url_action;
-      function action_call(action, args, callback){
+      function action_call(action, args, callback, forgetPrior=false){
         //redo?
         if (args == null){
             args = {};
+        }
+        if (forgetPrior){
+          args = {_action: action, _arguments: args};
+          action = '_da_priority_action';
         }
         if (callback == null){
             callback = function(){};
@@ -13218,10 +13676,14 @@ def observer():
       }
       var da_action_call = action_call;
       var url_action_call = action_call;
-      function action_perform(action, args){
+      function action_perform(action, args, forgetPrior=false){
         //redo
         if (args == null){
             args = {};
+        }
+        if (forgetPrior){
+          args = {_action: action, _arguments: args};
+          action = '_da_priority_action';
         }
         var data = {action: action, arguments: args};
         daSpinnerTimeout = setTimeout(daShowSpinner, 1000);
@@ -13244,11 +13706,15 @@ def observer():
       }
       var da_action_perform = action_perform;
       var url_action_perform = action_perform;
-      function action_perform_with_next(action, args, next_data){
+      function action_perform_with_next(action, args, next_data, forgetPrior=false){
         //redo
         //console.log("action_perform_with_next: " + action + " | " + next_data)
         if (args == null){
             args = {};
+        }
+        if (forgetPrior){
+          args = {_action: action, _arguments: args};
+          action = '_da_priority_action';
         }
         var data = {action: action, arguments: args};
         daSpinnerTimeout = setTimeout(daShowSpinner, 1000);
@@ -13508,6 +13974,7 @@ def observer():
               $("#" + showIfVarEscaped).change(showHideDivFast);
               $("input[type='radio'][name='" + showIfVarEscaped + "']").change(showHideDivFast);
               $("input[type='checkbox'][name='" + showIfVarEscaped + "']").change(showHideDivFast);
+              $("input.dafile[name='" + showIfVarEscaped + "']").on('filecleared', showHideDivFast);
               $("#" + showIfVarEscaped).on('daManualTrigger', showHideDivImmediate);
               $("input[type='radio'][name='" + showIfVarEscaped + "']").on('daManualTrigger', showHideDivImmediate);
               $("input[type='checkbox'][name='" + showIfVarEscaped + "']").on('daManualTrigger', showHideDivImmediate);
@@ -13667,6 +14134,7 @@ def observer():
             $("input[type='radio'][name='" + showIfVarEscaped + "']").on('daManualTrigger', showHideDivImmediate);
             $("input[type='checkbox'][name='" + showIfVarEscaped + "']").change(showHideDivFast);
             $("input[type='checkbox'][name='" + showIfVarEscaped + "']").on('daManualTrigger', showHideDivImmediate);
+            $("input.dafile[name='" + showIfVarEscaped + "']").on('filecleared', showHideDivFast);
           }
         });
         function daTriggerAllShowHides(){
@@ -13867,7 +14335,7 @@ def observer():
         daObserverChangesInterval = setInterval(daPushChanges, """ + str(CHECKIN_INTERVAL) + """);
     });
     </script>
-"""
+"""  # noqa: W605
     the_key = 'da:html:uid:' + str(uid) + ':i:' + str(i) + ':userid:' + str(userid)
     html = r.get(the_key)
     if html is not None:
@@ -13885,11 +14353,13 @@ def observer():
     response.headers['Content-type'] = 'text/html; charset=utf-8'
     return response
 
+
 def decode_dict(the_dict):
     out_dict = {}
     for k, v in the_dict.items():
         out_dict[k.decode()] = v.decode()
     return out_dict
+
 
 @app.route('/monitor', methods=['GET', 'POST'])
 @login_required
@@ -13925,7 +14395,7 @@ def monitor():
         forwarding_phone_number = twilio_config['name']['default'].get('number', None)
         if forwarding_phone_number is not None:
             call_forwarding_on = 'true'
-    script = "\n" + '    <script type="text/javascript" src="' + url_for('static', filename='app/socket.io.min.js', v=da_version) + '"></script>' + "\n" + """    <script type="text/javascript" charset="utf-8">
+    script = "\n" + '    <script type="text/javascript" src="' + url_for('static', filename='app/socket.io.min.js', v=da_version) + '"></script>' + "\n" + """    <script type="text/javascript">
       var daAudioContext = null;
       var daSocket;
       var daSoundBuffer = Object();
@@ -14357,7 +14827,7 @@ def monitor():
           var skey = key.replace(/(:|\.|\[|\]|,|=|\/)/g, '\\\\$1');
           var the_html;
           var wants_to_chat;
-          if (obj.chatstatus != 'off'){ //obj.chatstatus == 'waiting' || obj.chatstatus == 'standby' || obj.chatstatus == 'ringing' || obj.chatstatus == 'ready' || obj.chatstatus == 'on' || obj.chatstatus == 'observeonly'
+          if (obj.chatstatus != 'off'){
               wants_to_chat = true;
           }
           if (wants_to_chat){
@@ -15025,10 +15495,11 @@ def monitor():
               return false;
           });
       });
-    </script>"""
+    </script>"""  # noqa: W605
     response = make_response(render_template('pages/monitor.html', version_warning=None, bodyclass='daadminbody', extra_js=Markup(script), tab_title=word('Monitor'), page_title=word('Monitor')), 200)
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
+
 
 @app.route('/updatingpackages', methods=['GET', 'POST'])
 @login_required
@@ -15153,6 +15624,7 @@ def update_package_wait():
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
 
+
 @app.route('/update_package_ajax', methods=['POST'])
 @login_required
 @roles_required(['admin', 'developer'])
@@ -15162,27 +15634,26 @@ def update_package_ajax():
     setup_translation()
     result = docassemble.webapp.worker.workerapp.AsyncResult(id=session['taskwait'])
     if result.ready():
-        #if 'taskwait' in session:
-        #    del session['taskwait']
+        # if 'taskwait' in session:
+        #     del session['taskwait']
         the_result = result.get()
         if isinstance(the_result, ReturnValue):
             if the_result.ok:
-                #logmessage("update_package_ajax: success")
+                # logmessage("update_package_ajax: success")
                 if (hasattr(the_result, 'restart') and not the_result.restart) or START_TIME > session['serverstarttime']:
                     return jsonify(success=True, status='finished', ok=the_result.ok, summary=summarize_results(the_result.results, the_result.logmessages))
-                else:
-                    return jsonify(success=True, status='waiting')
+                return jsonify(success=True, status='waiting')
             if hasattr(the_result, 'error_message'):
                 logmessage("update_package_ajax: failed return value is " + str(the_result.error_message))
                 return jsonify(success=True, status='failed', error_message=str(the_result.error_message))
             if hasattr(the_result, 'results') and hasattr(the_result, 'logmessages'):
                 return jsonify(success=True, status='failed', summary=summarize_results(the_result.results, the_result.logmessages))
             return jsonify(success=True, status='failed', error_message=str("No error message.  Result is " + str(the_result)))
-        else:
-            logmessage("update_package_ajax: failed return value is a " + str(type(the_result)))
-            logmessage("update_package_ajax: failed return value is " + str(the_result))
-            return jsonify(success=True, status='failed', error_message=str(the_result))
+        logmessage("update_package_ajax: failed return value is a " + str(type(the_result)))
+        logmessage("update_package_ajax: failed return value is " + str(the_result))
+        return jsonify(success=True, status='failed', error_message=str(the_result))
     return jsonify(success=True, status='waiting')
+
 
 def get_package_name_from_zip(zippath):
     with zipfile.ZipFile(zippath, mode='r') as zf:
@@ -15228,6 +15699,7 @@ def get_package_name_from_zip(zippath):
         raise Exception("Could not find name of Python package")
     return extracted['name']
 
+
 @app.route('/updatepackage', methods=['GET', 'POST'])
 @login_required
 @roles_required(['admin', 'developer'])
@@ -15240,10 +15712,10 @@ def update_package():
         del session['taskwait']
     if 'serverstarttime' in session:
         del session['serverstarttime']
-    #pip.utils.logging._log_state = threading.local()
-    #pip.utils.logging._log_state.indentation = 0
+    # pip.utils.logging._log_state = threading.local()
+    # pip.utils.logging._log_state.indentation = 0
     if request.method == 'GET' and app.config['USE_GITHUB'] and r.get('da:using_github:userid:' + str(current_user.id)) is not None:
-        storage = RedisCredStorage(app='github')
+        storage = RedisCredStorage(oauth_app='github')
         credentials = storage.get()
         if not credentials or credentials.invalid:
             state_string = random_string(16)
@@ -15260,7 +15732,7 @@ def update_package():
     limitation = request.args.get('limitation', '')
     branch = None
     if action is not None and target is not None:
-        package_list, package_auth = get_package_info()
+        package_list, package_auth = get_package_info()  # pylint: disable=unused-variable
         the_package = None
         for package in package_list:
             if package.package.name == target:
@@ -15290,11 +15762,11 @@ def update_package():
         session['serverstarttime'] = START_TIME
         return redirect(url_for('update_package_wait'))
     if request.method == 'POST' and form.validate_on_submit():
-        #use_pip_cache = form.use_cache.data
-        #pipe = r.pipeline()
-        #pipe.set('da:updatepackage:use_pip_cache', 1 if use_pip_cache else 0)
-        #pipe.expire('da:updatepackage:use_pip_cache', 120)
-        #pipe.execute()
+        # use_pip_cache = form.use_cache.data
+        # pipe = r.pipeline()
+        # pipe.set('da:updatepackage:use_pip_cache', 1 if use_pip_cache else 0)
+        # pipe.expire('da:updatepackage:use_pip_cache', 120)
+        # pipe.execute()
         if 'zipfile' in request.files and request.files['zipfile'].filename:
             print("update zip file")
             try:
@@ -15316,8 +15788,7 @@ def update_package():
                     session['taskwait'] = result.id
                     session['serverstarttime'] = START_TIME
                     return redirect(url_for('update_package_wait'))
-                else:
-                    flash(word("You do not have permission to install this package."), 'error')
+                flash(word("You do not have permission to install this package."), 'error')
             except Exception as errMess:
                 flash("Error of type " + str(type(errMess)) + " processing upload: " + str(errMess), "error")
         else:
@@ -15338,8 +15809,7 @@ def update_package():
                     session['taskwait'] = result.id
                     session['serverstarttime'] = START_TIME
                     return redirect(url_for('update_package_wait'))
-                else:
-                    flash(word("You do not have permission to install this package."), 'error')
+                flash(word("You do not have permission to install this package."), 'error')
             elif form.pippackage.data:
                 m = re.match(r'([^>=<]+)([>=<]+.+)', form.pippackage.data)
                 if m:
@@ -15355,11 +15825,10 @@ def update_package():
                     session['taskwait'] = result.id
                     session['serverstarttime'] = START_TIME
                     return redirect(url_for('update_package_wait'))
-                else:
-                    flash(word("You do not have permission to install this package."), 'error')
+                flash(word("You do not have permission to install this package."), 'error')
             else:
                 flash(word('You need to supply a Git URL, upload a file, or supply the name of a package on PyPI.'), 'error')
-    package_list, package_auth = get_package_info(exclude_core=True)
+    package_list, package_auth = get_package_info()
     form.pippackage.data = None
     form.giturl.data = None
     extra_js = """
@@ -15394,7 +15863,7 @@ def update_package():
               }
               elem.empty();
               for (var i = 0; i < n; i++){
-                opt = $("<option><\/option>");
+                opt = $("<option></option>");
                 opt.attr("value", data.result[i].name).text(data.result[i].name);
                 if (data.result[i].name == default_to_use){
                   opt.prop('selected', true);
@@ -15415,19 +15884,19 @@ def update_package():
         fileName = fileName.replace(/.*\\//, '');
         $(this).next('.custom-file-label').html(fileName);
       });
-    </script>"""
+    </script>"""  # noqa: W605
     python_version = daconfig.get('python version', word('Unknown'))
     version = word("Current") + ': <span class="badge bg-primary">' + str(python_version) + '</span>'
     dw_status = pypi_status('docassemble.webapp')
     if daconfig.get('stable version', False):
         if not dw_status['error'] and 'info' in dw_status and 'releases' in dw_status['info'] and isinstance(dw_status['info']['releases'], dict):
-            stable_version = LooseVersion('1.1')
+            stable_version = packaging.version.parse('1.1')
             latest_version = None
-            for version_number, version_info in dw_status['info']['releases'].items():
-                version_number_loose = LooseVersion(version_number)
+            for version_number, version_info in dw_status['info']['releases'].items():  # pylint: disable=unused-variable
+                version_number_loose = packaging.version.parse(version_number)
                 if version_number_loose >= stable_version:
                     continue
-                if latest_version is None or version_number_loose > LooseVersion(latest_version):
+                if latest_version is None or version_number_loose > packaging.version.parse(latest_version):
                     latest_version = version_number
             if latest_version != str(python_version):
                 version += ' ' + word("Available") + ': <span class="badge bg-success">' + latest_version + '</span>'
@@ -15448,6 +15917,7 @@ def update_package():
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
 
+
 def get_master_branch(giturl):
     try:
         return get_repo_info(giturl).get('default_branch', GITHUB_BRANCH)
@@ -15456,7 +15926,7 @@ def get_master_branch(giturl):
 
 # @app.route('/testws', methods=['GET', 'POST'])
 # def test_websocket():
-#     script = '<script type="text/javascript" src="' + url_for('static', filename='app/socket.io.min.js') + '"></script>' + """<script type="text/javascript" charset="utf-8">
+#     script = '<script type="text/javascript" src="' + url_for('static', filename='app/socket.io.min.js') + '"></script>' + """<script type="text/javascript">
 #     var daSocket;
 #     $(document).ready(function(){
 #         if (location.protocol === 'http:' || document.location.protocol === 'http:'){
@@ -15486,6 +15956,7 @@ def get_master_branch(giturl):
 # </script>"""
 #     return render_template('pages/socketserver.html', extra_js=Markup(script)), 200
 
+
 @app.route('/createplaygroundpackage', methods=['GET', 'POST'])
 @login_required
 @roles_required(['admin', 'developer'])
@@ -15494,6 +15965,7 @@ def create_playground_package():
     if not app.config['ENABLE_PLAYGROUND']:
         return ('File not found', 404)
     fix_package_folder()
+    playground_user = get_playground_user()
     current_project = get_current_project()
     form = CreatePlaygroundPackageForm(request.form)
     current_package = request.args.get('package', None)
@@ -15510,23 +15982,19 @@ def create_playground_package():
     new_branch = request.args.get('new_branch', None)
     if new_branch is not None and new_branch not in ('', 'None'):
         branch = new_branch
-        branch_is_new = True
-    else:
-        branch_is_new = False
-    force_branch_creation = False
     sanitize_arguments(do_pypi, do_github, do_install, branch, new_branch)
     if app.config['USE_GITHUB']:
-        github_auth = r.get('da:using_github:userid:' + str(current_user.id))
+        github_auth = r.get('da:using_github:userid:' + str(playground_user.id))
     else:
         github_auth = None
     area = {}
-    area['playgroundpackages'] = SavedFile(current_user.id, fix=True, section='playgroundpackages')
+    area['playgroundpackages'] = SavedFile(playground_user.id, fix=True, section='playgroundpackages')
     if os.path.isfile(os.path.join(directory_for(area['playgroundpackages'], current_project), 'docassemble.' + current_package)):
         filename = os.path.join(directory_for(area['playgroundpackages'], current_project), 'docassemble.' + current_package)
         info = {}
         with open(filename, 'r', encoding='utf-8') as fp:
             content = fp.read()
-            info = yaml.load(content, Loader=yaml.FullLoader)
+            info = standardyaml.load(content, Loader=standardyaml.FullLoader)
     else:
         info = {}
     if do_github:
@@ -15544,11 +16012,11 @@ def create_playground_package():
         else:
             github_auth_info = json.loads(github_auth)
         github_package_name = 'docassemble-' + re.sub(r'^docassemble-', r'', current_package)
-        #github_package_name = re.sub(r'[^A-Za-z\_\-]', '', github_package_name)
+        # github_package_name = re.sub(r'[^A-Za-z\_\-]', '', github_package_name)
         if github_package_name in ('docassemble-base', 'docassemble-webapp', 'docassemble-demo'):
             return ('File not found', 404)
         commit_message = request.args.get('commit_message', 'a commit')
-        storage = RedisCredStorage(app='github')
+        storage = RedisCredStorage(oauth_app='github')
         credentials = storage.get()
         if not credentials or credentials.invalid:
             state_string = random_string(16)
@@ -15616,7 +16084,7 @@ def create_playground_package():
     if request.method == 'POST':
         if form.validate():
             current_package = form.name.data
-            #flash("form validated", 'success')
+            # flash("form validated", 'success')
         else:
             the_error = ''
             for error in form.name.errors:
@@ -15624,28 +16092,31 @@ def create_playground_package():
             flash("form did not validate with " + str(form.name.data) + " " + str(the_error) + " among " + str(form.name.choices), 'error')
     if current_package is not None:
         pkgname = re.sub(r'^docassemble-', r'', current_package)
-        #if not user_can_edit_package(pkgname='docassemble.' + pkgname):
+        # if not user_can_edit_package(pkgname='docassemble.' + pkgname):
         #    flash(word('That package name is already in use by someone else.  Please change the name.'), 'error')
         #    current_package = None
     if current_package is not None and current_package not in file_list['playgroundpackages']:
         flash(word('Sorry, that package name does not exist in the playground'), 'error')
         current_package = None
     if current_package is not None:
-        section_sec = {'playgroundtemplate': 'template', 'playgroundstatic': 'static', 'playgroundsources': 'sources', 'playgroundmodules': 'modules'}
+        # section_sec = {'playgroundtemplate': 'template', 'playgroundstatic': 'static', 'playgroundsources': 'sources', 'playgroundmodules': 'modules'}
         for sec in ('playground', 'playgroundtemplate', 'playgroundstatic', 'playgroundsources', 'playgroundmodules'):
-            area[sec] = SavedFile(current_user.id, fix=True, section=sec)
+            area[sec] = SavedFile(playground_user.id, fix=True, section=sec)
             the_directory = directory_for(area[sec], current_project)
-            file_list[sec] = sorted([f for f in os.listdir(the_directory) if os.path.isfile(os.path.join(the_directory, f)) and re.search(r'^[A-Za-z0-9]', f)])
+            if os.path.isdir(the_directory):
+                file_list[sec] = sorted([f for f in os.listdir(the_directory) if os.path.isfile(os.path.join(the_directory, f)) and re.search(r'^[A-Za-z0-9]', f)])
+            else:
+                file_list[sec] = []
         if os.path.isfile(os.path.join(directory_for(area['playgroundpackages'], current_project), 'docassemble.' + current_package)):
             filename = os.path.join(directory_for(area['playgroundpackages'], current_project), 'docassemble.' + current_package)
             info = {}
             with open(filename, 'r', encoding='utf-8') as fp:
                 content = fp.read()
-                info = yaml.load(content, Loader=yaml.FullLoader)
+                info = standardyaml.load(content, Loader=standardyaml.FullLoader)
             for field in ('dependencies', 'interview_files', 'template_files', 'module_files', 'static_files', 'sources_files'):
                 if field not in info:
                     info[field] = []
-            info['dependencies'] = [x for x in [z for z in map(lambda y: re.sub(r'[\>\<\=].*', '', y), info['dependencies'])] if x not in ('docassemble', 'docassemble.base', 'docassemble.webapp')]
+            info['dependencies'] = list(x for x in map(lambda y: re.sub(r'[\>\<\=].*', '', y), info['dependencies']) if x not in ('docassemble', 'docassemble.base', 'docassemble.webapp'))
             info['modtime'] = os.path.getmtime(filename)
             author_info = {}
             author_info['author name and email'] = name_of_user(current_user, include_email=True)
@@ -15670,7 +16141,7 @@ def create_playground_package():
                     return redirect(url_for('playground_packages', project=current_project, file=current_package))
             if do_github:
                 if commit_repository is not None:
-                    resp, content = http.request("https://api.github.com/repos/" + commit_repository['full_name'] + "/commits?per_page=1" , "GET")
+                    resp, content = http.request("https://api.github.com/repos/" + commit_repository['full_name'] + "/commits?per_page=1", "GET")
                     if int(resp['status']) == 200:
                         commit_list = json.loads(content.decode('utf-8', 'ignore'))
                         if len(commit_list) == 0:
@@ -15705,7 +16176,7 @@ def create_playground_package():
                         with open(current_commit_file, 'r', encoding='utf-8') as fp:
                             commit_code = fp.read()
                         commit_code = commit_code.strip()
-                        resp, content = http.request("https://api.github.com/repos/" + commit_repository['full_name'] + "/commits/" + commit_code , "GET")
+                        resp, content = http.request("https://api.github.com/repos/" + commit_repository['full_name'] + "/commits/" + commit_code, "GET")
                         if int(resp['status']) == 200:
                             logmessage("Stored commit code is valid")
                             pulled_already = True
@@ -15715,26 +16186,26 @@ def create_playground_package():
                     else:
                         logmessage("Commit file not found")
                         pulled_already = False
-                directory = tempfile.mkdtemp()
+                directory = tempfile.mkdtemp(prefix='SavedFile')
                 (private_key_file, public_key_file) = get_ssh_keys(github_email)
                 os.chmod(private_key_file, stat.S_IRUSR | stat.S_IWUSR)
                 os.chmod(public_key_file, stat.S_IRUSR | stat.S_IWUSR)
                 ssh_script = tempfile.NamedTemporaryFile(mode='w', prefix="datemp", suffix='.sh', delete=False, encoding='utf-8')
                 ssh_script.write('# /bin/bash\n\nssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o GlobalKnownHostsFile=/dev/null -i "' + str(private_key_file) + '" $1 $2 $3 $4 $5 $6')
                 ssh_script.close()
-                os.chmod(ssh_script.name, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR )
-                #git_prefix = "GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o GlobalKnownHostsFile=/dev/null -i \"" + str(private_key_file) + "\"' "
+                os.chmod(ssh_script.name, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+                # git_prefix = "GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o GlobalKnownHostsFile=/dev/null -i \"" + str(private_key_file) + "\"' "
                 git_prefix = "GIT_SSH=" + ssh_script.name + " "
                 ssh_url = commit_repository.get('ssh_url', None)
-                github_url = commit_repository.get('html_url', None)
+                # github_url = commit_repository.get('html_url', None)
                 commit_branch = commit_repository.get('default_branch', GITHUB_BRANCH)
                 if ssh_url is None:
                     raise DAError("create_playground_package: could not obtain ssh_url for package")
                 output = ''
-                if branch:
-                    branch_option = '-b ' + str(branch) + ' '
-                else:
-                    branch_option = '-b ' + commit_branch + ' '
+                # if branch:
+                #     branch_option = '-b ' + str(branch) + ' '
+                # else:
+                #     branch_option = '-b ' + commit_branch + ' '
                 tempbranch = 'playground' + random_string(5)
                 packagedir = os.path.join(directory, 'docassemble-' + str(pkgname))
                 the_user_name = str(current_user.first_name) + " " + str(current_user.last_name)
@@ -15807,7 +16278,7 @@ def create_playground_package():
                         output += subprocess.check_output(git_prefix + "git checkout " + '"' + commit_code + '"', cwd=packagedir, stderr=subprocess.STDOUT, shell=True).decode()
                     except subprocess.CalledProcessError as err:
                         output += err.output.decode()
-                        #raise DAError("create_playground_package: error running git checkout.  " + output)
+                        # raise DAError("create_playground_package: error running git checkout.  " + output)
                 if current_user.timezone:
                     the_timezone = current_user.timezone
                 else:
@@ -15835,9 +16306,9 @@ def create_playground_package():
                     output += "Trying git checkout " + the_branch + "\n"
                     try:
                         output += subprocess.check_output(["git", "checkout", the_branch], cwd=packagedir, stderr=subprocess.STDOUT).decode()
-                    except subprocess.CalledProcessError as err:
+                    except subprocess.CalledProcessError:
                         output += the_branch + " is a new branch\n"
-                        force_branch_creation = True
+                        # force_branch_creation = True
                         branch = the_branch
                 output += "Doing git checkout -b " + tempbranch + "\n"
                 try:
@@ -15867,7 +16338,7 @@ def create_playground_package():
                 try:
                     output += subprocess.check_output(git_prefix + "git checkout " + '"' + the_branch + '"', cwd=packagedir, stderr=subprocess.STDOUT, shell=True).decode()
                     branch_exists = True
-                except subprocess.CalledProcessError as err:
+                except subprocess.CalledProcessError:
                     branch_exists = False
                 if not branch_exists:
                     output += "Doing git checkout -b " + the_branch + "\n"
@@ -15937,14 +16408,14 @@ def create_playground_package():
                 session['taskwait'] = result.id
                 session['serverstarttime'] = START_TIME
                 return redirect(url_for('update_package_wait', next=url_for('playground_packages', project=current_project, file=current_package)))
-                #return redirect(url_for('playground_packages', file=current_package))
-            else:
-                response = send_file(saved_file.path, mimetype='application/zip', as_attachment=True, attachment_filename=nice_name)
-                response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
-                return response
+                # return redirect(url_for('playground_packages', file=current_package))
+            response = send_file(saved_file.path, mimetype='application/zip', as_attachment=True, attachment_filename=nice_name)
+            response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
+            return response
     response = make_response(render_template('pages/create_playground_package.html', current_project=current_project, version_warning=version_warning, bodyclass='daadminbody', form=form, current_package=current_package, package_names=file_list['playgroundpackages'], tab_title=word('Playground Packages'), page_title=word('Playground Packages')), 200)
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
+
 
 @app.route('/createpackage', methods=['GET', 'POST'])
 @login_required
@@ -16131,11 +16602,13 @@ machine learning training files, and other source files.
 # ---
 from docassemble.base.util import DAObject
 
+
 class Fruit(DAObject):
+
     def eat(self):
         return "Yum, that " + self.name + " was good!"
 """
-        directory = tempfile.mkdtemp()
+        directory = tempfile.mkdtemp(prefix='SavedFile')
         packagedir = os.path.join(directory, 'docassemble-' + str(pkgname))
         questionsdir = os.path.join(packagedir, 'docassemble', str(pkgname), 'data', 'questions')
         templatesdir = os.path.join(packagedir, 'docassemble', str(pkgname), 'data', 'templates')
@@ -16179,7 +16652,7 @@ class Fruit(DAObject):
             the_timezone = zoneinfo.ZoneInfo(current_user.timezone)
         else:
             the_timezone = zoneinfo.ZoneInfo(get_default_timezone())
-        for root, dirs, files in os.walk(packagedir):
+        for root, dirs, files in os.walk(packagedir):  # pylint: disable=unused-variable
             for the_file in files:
                 thefilename = os.path.join(root, the_file)
                 info = zipfile.ZipInfo(thefilename[trimlength:])
@@ -16188,7 +16661,7 @@ class Fruit(DAObject):
                 info.external_attr = 0o644 << 16
                 with open(thefilename, 'rb') as fp:
                     zf.writestr(info, fp.read())
-                #zf.write(thefilename, thefilename[trimlength:])
+                # zf.write(thefilename, thefilename[trimlength:])
         zf.close()
         saved_file.save()
         saved_file.finalize()
@@ -16201,11 +16674,14 @@ class Fruit(DAObject):
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
 
+
 @app.route('/restart', methods=['GET', 'POST'])
 @login_required
 @roles_required(['admin', 'developer'])
 def restart_page():
     setup_translation()
+    if not app.config['ALLOW_RESTARTING']:
+        return ('File not found', 404)
     script = """
     <script>
       function daRestartCallback(data){
@@ -16231,6 +16707,7 @@ def restart_page():
     response = make_response(render_template('pages/restart.html', version_warning=None, bodyclass='daadminbody', extra_meta=Markup(extra_meta), extra_js=Markup(script), tab_title=word('Restarting'), page_title=word('Restarting')), 200)
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
+
 
 @app.route('/playground_poll', methods=['GET'])
 @login_required
@@ -16264,6 +16741,7 @@ def playground_poll():
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
 
+
 def get_gd_flow():
     app_credentials = current_app.config['OAUTH_CREDENTIALS'].get('googledrive', {})
     client_id = app_credentials.get('id', None)
@@ -16279,12 +16757,29 @@ def get_gd_flow():
         prompt='consent')
     return flow
 
+
+def get_playground_user():
+    if 'playground_user' in session:
+        user = db.session.execute(select(UserModel).filter_by(id=session['playground_user'])).scalar()
+        return user
+    return current_user
+
+
+def set_playground_user(user_id):
+    if user_id == current_user.id:
+        if 'playground_user' in session:
+            del session['playground_user']
+    else:
+        session['playground_user'] = user_id
+
+
 def get_gd_folder():
     key = 'da:googledrive:mapping:userid:' + str(current_user.id)
     folder = r.get(key)
     if folder is not None:
         return folder.decode()
     return folder
+
 
 def set_gd_folder(folder):
     key = 'da:googledrive:mapping:userid:' + str(current_user.id)
@@ -16293,6 +16788,7 @@ def set_gd_folder(folder):
     else:
         set_od_folder(None)
         r.set(key, folder)
+
 
 def get_od_flow():
     app_credentials = current_app.config['OAUTH_CREDENTIALS'].get('onedrive', {})
@@ -16310,12 +16806,14 @@ def get_od_flow():
         token_uri='https://login.microsoftonline.com/common/oauth2/v2.0/token')
     return flow
 
+
 def get_od_folder():
     key = 'da:onedrive:mapping:userid:' + str(current_user.id)
     folder = r.get(key)
     if folder is not None:
         return folder.decode()
     return folder
+
 
 def set_od_folder(folder):
     key = 'da:onedrive:mapping:userid:' + str(current_user.id)
@@ -16325,17 +16823,23 @@ def set_od_folder(folder):
         set_gd_folder(None)
         r.set(key, folder)
 
+
 class RedisCredStorage(oauth2client.client.Storage):
-    def __init__(self, app='googledrive'):
-        self.key = 'da:' + app + ':userid:' + str(current_user.id)
-        self.lockkey = 'da:' + app + ':lock:userid:' + str(current_user.id)
+
+    def __init__(self, oauth_app='googledrive'):
+        self.key = 'da:' + oauth_app + ':userid:' + str(current_user.id)
+        self.lockkey = 'da:' + oauth_app + ':lock:userid:' + str(current_user.id)
+        super().__init__()
+
     def acquire_lock(self):
         pipe = r.pipeline()
         pipe.set(self.lockkey, 1)
         pipe.expire(self.lockkey, 5)
         pipe.execute()
+
     def release_lock(self):
         r.delete(self.lockkey)
+
     def locked_get(self):
         json_creds = r.get(self.key)
         creds = None
@@ -16346,10 +16850,13 @@ class RedisCredStorage(oauth2client.client.Storage):
             except:
                 logmessage("RedisCredStorage: could not read credentials from " + str(json_creds))
         return creds
+
     def locked_put(self, credentials):
         r.set(self.key, credentials.to_json())
+
     def locked_delete(self):
         r.delete(self.key)
+
 
 @app.route('/google_drive_callback', methods=['GET', 'POST'])
 @login_required
@@ -16363,7 +16870,7 @@ def google_drive_callback():
     if 'code' in request.args:
         flow = get_gd_flow()
         credentials = flow.step2_exchange(request.args['code'])
-        storage = RedisCredStorage(app='googledrive')
+        storage = RedisCredStorage(oauth_app='googledrive')
         storage.put(credentials)
         error = None
     elif 'error' in request.args:
@@ -16373,16 +16880,16 @@ def google_drive_callback():
     if error:
         flash(word('There was a Google Drive error: ' + error), 'error')
         return redirect(url_for('user.profile'))
-    else:
-        flash(word('Connected to Google Drive'), 'success')
+    flash(word('Connected to Google Drive'), 'success')
     return redirect(url_for('google_drive_page'))
+
 
 def rename_gd_project(old_project, new_project):
     the_folder = get_gd_folder()
     if the_folder is None:
         logmessage('rename_gd_project: folder not configured')
         return False
-    storage = RedisCredStorage(app='googledrive')
+    storage = RedisCredStorage(oauth_app='googledrive')
     credentials = storage.get()
     if not credentials or credentials.invalid:
         logmessage('rename_gd_project: credentials missing or expired')
@@ -16427,15 +16934,16 @@ def rename_gd_project(old_project, new_project):
             continue
         metadata = {'name': new_project}
         service.files().update(fileId=subsubdir, body=metadata, fields='name').execute()
-        logmessage('rename_gd_project: folder ' + str(old_project) + ' renamed in section '  + str(section))
+        logmessage('rename_gd_project: folder ' + str(old_project) + ' renamed in section ' + str(section))
     return True
+
 
 def trash_gd_project(old_project):
     the_folder = get_gd_folder()
     if the_folder is None:
         logmessage('trash_gd_project: folder not configured')
         return False
-    storage = RedisCredStorage(app='googledrive')
+    storage = RedisCredStorage(oauth_app='googledrive')
     credentials = storage.get()
     if not credentials or credentials.invalid:
         logmessage('trash_gd_project: credentials missing or expired')
@@ -16478,8 +16986,9 @@ def trash_gd_project(old_project):
             logmessage('trash_gd_project: project ' + str(old_project) + ' could not be found in ' + str(section))
             continue
         service.files().delete(fileId=subsubdir).execute()
-        logmessage('trash_gd_project: project ' + str(old_project) + ' deleted in section '  + str(section))
+        logmessage('trash_gd_project: project ' + str(old_project) + ' deleted in section ' + str(section))
     return True
+
 
 def trash_gd_file(section, filename, current_project):
     if section == 'template':
@@ -16488,7 +16997,7 @@ def trash_gd_file(section, filename, current_project):
     if the_folder is None:
         logmessage('trash_gd_file: folder not configured')
         return False
-    storage = RedisCredStorage(app='googledrive')
+    storage = RedisCredStorage(oauth_app='googledrive')
     credentials = storage.get()
     if not credentials or credentials.invalid:
         logmessage('trash_gd_file: credentials missing or expired')
@@ -16530,8 +17039,9 @@ def trash_gd_file(section, filename, current_project):
         logmessage('trash_gd_file: file ' + str(filename) + ' could not be found in ' + str(section))
         return False
     service.files().delete(fileId=id_of_filename).execute()
-    logmessage('trash_gd_file: file ' + str(filename) + ' permanently deleted from '  + str(section))
+    logmessage('trash_gd_file: file ' + str(filename) + ' permanently deleted from ' + str(section))
     return True
+
 
 @app.route('/sync_with_google_drive', methods=['GET'])
 @login_required
@@ -16541,12 +17051,12 @@ def sync_with_google_drive():
     if not app.config['ENABLE_PLAYGROUND']:
         return ('File not found', 404)
     current_project = get_current_project()
-    next = app.user_manager.make_safe_url_function(request.args.get('next', url_for('playground_page', project=current_project)))
+    the_next = app.user_manager.make_safe_url_function(request.args.get('next', url_for('playground_page', project=current_project)))
     auto_next = request.args.get('auto_next', None)
     if app.config['USE_GOOGLE_DRIVE'] is False:
         flash(word("Google Drive is not configured"), "error")
-        return redirect(next)
-    storage = RedisCredStorage(app='googledrive')
+        return redirect(the_next)
+    storage = RedisCredStorage(oauth_app='googledrive')
     credentials = storage.get()
     if not credentials or credentials.invalid:
         flow = get_gd_flow()
@@ -16556,8 +17066,8 @@ def sync_with_google_drive():
     session['taskwait'] = task.id
     if auto_next:
         return redirect(url_for('gd_sync_wait', auto_next=auto_next))
-    else:
-        return redirect(url_for('gd_sync_wait', next=next))
+    return redirect(url_for('gd_sync_wait', next=the_next))
+
 
 @app.route('/gdsyncing', methods=['GET', 'POST'])
 @login_required
@@ -16666,6 +17176,7 @@ def gd_sync_wait():
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
 
+
 @app.route('/onedrive_callback', methods=['GET', 'POST'])
 @login_required
 @roles_required(['admin', 'developer'])
@@ -16678,7 +17189,7 @@ def onedrive_callback():
     if 'code' in request.args:
         flow = get_od_flow()
         credentials = flow.step2_exchange(request.args['code'])
-        storage = RedisCredStorage(app='onedrive')
+        storage = RedisCredStorage(oauth_app='onedrive')
         storage.put(credentials)
         error = None
     elif 'error' in request.args:
@@ -16690,37 +17201,37 @@ def onedrive_callback():
     if error:
         flash(word('There was a OneDrive error: ' + error), 'error')
         return redirect(url_for('user.profile'))
-    else:
-        flash(word('Connected to OneDrive'), 'success')
+    flash(word('Connected to OneDrive'), 'success')
     return redirect(url_for('onedrive_page'))
+
 
 def rename_od_project(old_project, new_project):
     the_folder = get_od_folder()
     if the_folder is None:
         logmessage('rename_od_project: folder not configured')
         return False
-    storage = RedisCredStorage(app='onedrive')
+    storage = RedisCredStorage(oauth_app='onedrive')
     credentials = storage.get()
     if not credentials or credentials.invalid:
         logmessage('rename_od_project: credentials missing or expired')
         return False
     http = credentials.authorize(httplib2.Http())
-    r, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + urllibquote(the_folder), "GET")
-    if int(r['status']) != 200:
+    resp, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + urllibquote(the_folder), "GET")
+    if int(resp['status']) != 200:
         trashed = True
     else:
         info = json.loads(content.decode())
-        #logmessage("Found " + repr(info))
+        # logmessage("Found " + repr(info))
         trashed = bool(info.get('deleted', None))
     if trashed is True or 'folder' not in info:
         logmessage('rename_od_project: folder did not exist')
         return False
-    r, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + urllibquote(the_folder) + "/children?$select=id,name,deleted,folder", "GET")
+    resp, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + urllibquote(the_folder) + "/children?$select=id,name,deleted,folder", "GET")
     subdir = {}
     for section in ['static', 'templates', 'questions', 'modules', 'sources']:
         subdir[section] = None
     while True:
-        if int(r['status']) != 200:
+        if int(resp['status']) != 200:
             logmessage('rename_od_project: could not obtain subfolders')
             return False
         info = json.loads(content.decode())
@@ -16731,15 +17242,15 @@ def rename_od_project(old_project, new_project):
                 subdir[item['name']] = item['id']
         if "@odata.nextLink" not in info:
             break
-        r, content = http.request(info["@odata.nextLink"], "GET")
-    for section in subdir.keys():
-        if subdir[section] is None:
+        resp, content = http.request(info["@odata.nextLink"], "GET")
+    for section, the_subdir in subdir.items():
+        if the_subdir is None:
             logmessage('rename_od_project: could not obtain subfolder for ' + str(section))
             continue
         subsubdir = None
-        r, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + str(subdir[section]) + "/children?$select=id,name,deleted,folder", "GET")
+        resp, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + str(the_subdir) + "/children?$select=id,name,deleted,folder", "GET")
         while True:
-            if int(r['status']) != 200:
+            if int(resp['status']) != 200:
                 logmessage('rename_od_project: could not obtain contents of subfolder for ' + str(section))
                 break
             info = json.loads(content.decode())
@@ -16751,35 +17262,36 @@ def rename_od_project(old_project, new_project):
                     break
             if subsubdir is not None or "@odata.nextLink" not in info:
                 break
-            r, content = http.request(info["@odata.nextLink"], "GET")
+            resp, content = http.request(info["@odata.nextLink"], "GET")
         if subsubdir is None:
             logmessage("rename_od_project: subdirectory " + str(old_project) + " not found")
         else:
-            headers = { 'Content-Type': 'application/json' }
-            r, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + str(subsubdir), "PATCH", headers=headers, body=json.dumps(dict(name=new_project)))
-            if int(r['status']) != 200:
+            headers = {'Content-Type': 'application/json'}
+            resp, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + str(subsubdir), "PATCH", headers=headers, body=json.dumps(dict(name=new_project)))
+            if int(resp['status']) != 200:
                 logmessage('rename_od_project: could not rename folder ' + str(old_project) + " in " + str(section) + " because " + repr(content))
                 continue
-        logmessage('rename_od_project: project ' + str(old_project) + ' rename in section '  + str(section))
+        logmessage('rename_od_project: project ' + str(old_project) + ' rename in section ' + str(section))
     return True
+
 
 def trash_od_project(old_project):
     the_folder = get_od_folder()
     if the_folder is None:
         logmessage('trash_od_project: folder not configured')
         return False
-    storage = RedisCredStorage(app='onedrive')
+    storage = RedisCredStorage(oauth_app='onedrive')
     credentials = storage.get()
     if not credentials or credentials.invalid:
         logmessage('trash_od_project: credentials missing or expired')
         return False
     http = credentials.authorize(httplib2.Http())
-    r, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + urllibquote(the_folder), "GET")
-    if int(r['status']) != 200:
+    resp, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + urllibquote(the_folder), "GET")
+    if int(resp['status']) != 200:
         trashed = True
     else:
         info = json.loads(content.decode())
-        #logmessage("Found " + repr(info))
+        # logmessage("Found " + repr(info))
         trashed = bool(info.get('deleted', None))
     if trashed is True or 'folder' not in info:
         logmessage('trash_od_project: folder did not exist')
@@ -16787,9 +17299,9 @@ def trash_od_project(old_project):
     subdir = {}
     for section in ['static', 'templates', 'questions', 'modules', 'sources']:
         subdir[section] = None
-    r, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + urllibquote(the_folder) + "/children?$select=id,name,deleted,folder", "GET")
+    resp, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + urllibquote(the_folder) + "/children?$select=id,name,deleted,folder", "GET")
     while True:
-        if int(r['status']) != 200:
+        if int(resp['status']) != 200:
             logmessage('trash_od_project: could not obtain subfolders')
             return False
         info = json.loads(content.decode())
@@ -16800,15 +17312,15 @@ def trash_od_project(old_project):
                 subdir[item['name']] = item['id']
         if "@odata.nextLink" not in info:
             break
-        r, content = http.request(info["@odata.nextLink"], "GET")
-    for section in subdir.keys():
-        if subdir[section] is None:
+        resp, content = http.request(info["@odata.nextLink"], "GET")
+    for section, the_subdir in subdir.items():
+        if the_subdir is None:
             logmessage('trash_od_project: could not obtain subfolder for ' + str(section))
             continue
         subsubdir = None
-        r, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + str(subdir[section]) + "/children?$select=id,name,deleted,folder", "GET")
+        resp, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + str(the_subdir) + "/children?$select=id,name,deleted,folder", "GET")
         while True:
-            if int(r['status']) != 200:
+            if int(resp['status']) != 200:
                 logmessage('trash_od_project: could not obtain contents of subfolder for ' + str(section))
                 break
             info = json.loads(content.decode())
@@ -16820,14 +17332,14 @@ def trash_od_project(old_project):
                     break
             if subsubdir is not None or "@odata.nextLink" not in info:
                 break
-            r, content = http.request(info["@odata.nextLink"], "GET")
+            resp, content = http.request(info["@odata.nextLink"], "GET")
         if subsubdir is None:
             logmessage("Could not find subdirectory " + old_project + " in section " + str(section))
         else:
-            r, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + urllibquote(subsubdir) + "/children?$select=id", "GET")
+            resp, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + urllibquote(subsubdir) + "/children?$select=id", "GET")
             to_delete = []
             while True:
-                if int(r['status']) != 200:
+                if int(resp['status']) != 200:
                     logmessage('trash_od_project: could not obtain contents of project folder')
                     return False
                 info = json.loads(content.decode())
@@ -16836,18 +17348,19 @@ def trash_od_project(old_project):
                         to_delete.append(item['id'])
                 if "@odata.nextLink" not in info:
                     break
-                r, content = http.request(info["@odata.nextLink"], "GET")
+                resp, content = http.request(info["@odata.nextLink"], "GET")
             for item_id in to_delete:
-                r, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + str(item_id), "DELETE")
-                if int(r['status']) != 204:
+                resp, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + str(item_id), "DELETE")
+                if int(resp['status']) != 204:
                     logmessage('trash_od_project: could not delete file ' + str(item_id) + ".  Result: " + repr(content))
                     return False
-            r, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + str(subsubdir), "DELETE")
-            if int(r['status']) != 204:
+            resp, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + str(subsubdir), "DELETE")
+            if int(resp['status']) != 204:
                 logmessage('trash_od_project: could not delete project ' + str(old_project) + ".  Result: " + repr(content))
                 return False
-            logmessage('trash_od_project: project ' + str(old_project) + ' trashed in section '  + str(section))
+            logmessage('trash_od_project: project ' + str(old_project) + ' trashed in section ' + str(section))
     return True
+
 
 def trash_od_file(section, filename, current_project):
     if section == 'template':
@@ -16856,30 +17369,30 @@ def trash_od_file(section, filename, current_project):
     if the_folder is None:
         logmessage('trash_od_file: folder not configured')
         return False
-    storage = RedisCredStorage(app='onedrive')
+    storage = RedisCredStorage(oauth_app='onedrive')
     credentials = storage.get()
     if not credentials or credentials.invalid:
         logmessage('trash_od_file: credentials missing or expired')
         return False
     http = credentials.authorize(httplib2.Http())
-    r, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + urllibquote(the_folder), "GET")
-    if int(r['status']) != 200:
+    resp, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + urllibquote(the_folder), "GET")
+    if int(resp['status']) != 200:
         trashed = True
     else:
         info = json.loads(content.decode())
-        #logmessage("Found " + repr(info))
+        # logmessage("Found " + repr(info))
         trashed = bool(info.get('deleted', None))
     if trashed is True or 'folder' not in info:
         logmessage('trash_od_file: folder did not exist')
         return False
-    r, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + urllibquote(the_folder) + "/children?$select=id,name,deleted,folder", "GET")
+    resp, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + urllibquote(the_folder) + "/children?$select=id,name,deleted,folder", "GET")
     subdir = None
     while True:
-        if int(r['status']) != 200:
+        if int(resp['status']) != 200:
             logmessage('trash_od_file: could not obtain subfolders')
             return False
         info = json.loads(content.decode())
-        #logmessage("Found " + repr(info))
+        # logmessage("Found " + repr(info))
         for item in info['value']:
             if item.get('deleted', None) or 'folder' not in item:
                 continue
@@ -16888,15 +17401,15 @@ def trash_od_file(section, filename, current_project):
                 break
         if subdir is not None or "@odata.nextLink" not in info:
             break
-        r, content = http.request(info["@odata.nextLink"], "GET")
+        resp, content = http.request(info["@odata.nextLink"], "GET")
     if subdir is None:
         logmessage('trash_od_file: could not obtain subfolder')
         return False
     if current_project != 'default':
-        r, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + str(subdir) + "/children?$select=id,name,deleted,folder", "GET")
+        resp, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + str(subdir) + "/children?$select=id,name,deleted,folder", "GET")
         subdir = None
         while True:
-            if int(r['status']) != 200:
+            if int(resp['status']) != 200:
                 logmessage('trash_od_file: could not obtain subfolders to find project')
                 return False
             info = json.loads(content.decode())
@@ -16908,18 +17421,18 @@ def trash_od_file(section, filename, current_project):
                     break
             if subdir is not None or "@odata.nextLink" not in info:
                 break
-            r, content = http.request(info["@odata.nextLink"], "GET")
+            resp, content = http.request(info["@odata.nextLink"], "GET")
         if subdir is None:
             logmessage('trash_od_file: could not obtain subfolder')
             return False
     id_of_filename = None
-    r, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + str(subdir) + "/children?$select=id,name,deleted,folder", "GET")
+    resp, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + str(subdir) + "/children?$select=id,name,deleted,folder", "GET")
     while True:
-        if int(r['status']) != 200:
+        if int(resp['status']) != 200:
             logmessage('trash_od_file: could not obtain contents of subfolder')
             return False
         info = json.loads(content.decode())
-        #logmessage("Found " + repr(info))
+        # logmessage("Found " + repr(info))
         for item in info['value']:
             if item.get('deleted', None) or 'folder' in item:
                 continue
@@ -16930,13 +17443,14 @@ def trash_od_file(section, filename, current_project):
                 break
         if id_of_filename is not None or "@odata.nextLink" not in info:
             break
-        r, content = http.request(info["@odata.nextLink"], "GET")
-    r, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + str(id_of_filename), "DELETE")
-    if int(r['status']) != 204:
+        resp, content = http.request(info["@odata.nextLink"], "GET")
+    resp, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + str(id_of_filename), "DELETE")
+    if int(resp['status']) != 204:
         logmessage('trash_od_file: could not delete ')
         return False
-    logmessage('trash_od_file: file ' + str(filename) + ' trashed from '  + str(section))
+    logmessage('trash_od_file: file ' + str(filename) + ' trashed from ' + str(section))
     return True
+
 
 @app.route('/sync_with_onedrive', methods=['GET'])
 @login_required
@@ -16945,13 +17459,13 @@ def sync_with_onedrive():
     setup_translation()
     if not app.config['ENABLE_PLAYGROUND']:
         return ('File not found', 404)
-    current_project = get_current_project()
-    next = app.user_manager.make_safe_url_function(request.args.get('next', url_for('playground_page', project=get_current_project())))
+    # current_project = get_current_project()
+    the_next = app.user_manager.make_safe_url_function(request.args.get('next', url_for('playground_page', project=get_current_project())))
     auto_next = request.args.get('auto_next', None)
     if app.config['USE_ONEDRIVE'] is False:
         flash(word("OneDrive is not configured"), "error")
-        return redirect(next)
-    storage = RedisCredStorage(app='onedrive')
+        return redirect(the_next)
+    storage = RedisCredStorage(oauth_app='onedrive')
     credentials = storage.get()
     if not credentials or credentials.invalid:
         flow = get_gd_flow()
@@ -16961,8 +17475,8 @@ def sync_with_onedrive():
     session['taskwait'] = task.id
     if auto_next:
         return redirect(url_for('od_sync_wait', auto_next=auto_next))
-    else:
-        return redirect(url_for('od_sync_wait', next=next))
+    return redirect(url_for('od_sync_wait', next=the_next))
+
 
 @app.route('/odsyncing', methods=['GET', 'POST'])
 @login_required
@@ -17088,8 +17602,10 @@ def od_sync_wait():
 #     extra_meta = """\n    <meta http-equiv="refresh" content="1; url='""" + url_for('do_sync_with_google_drive', next=next) + """'">"""
 #     return render_template('pages/google_sync.html', version_warning=None, bodyclass='daadminbody', extra_meta=Markup(extra_meta), tab_title=word('Synchronizing'), page_title=word('Synchronizing'))
 
+
 def add_br(text):
     return re.sub(r'[\n\r]+', "<br>", text)
+
 
 @app.route('/checkin_sync_with_google_drive', methods=['GET', 'POST'])
 @login_required
@@ -17115,12 +17631,11 @@ def checkin_sync_with_google_drive():
             if hasattr(the_result, 'summary'):
                 return jsonify(success=True, status='failed', summary=add_br(the_result.summary), restart=False)
             return jsonify(success=True, status='failed', error_message=str("No error message.  Result is " + str(the_result)), restart=False)
-        else:
-            logmessage("checkin_sync_with_google_drive: failed return value is a " + str(type(the_result)))
-            logmessage("checkin_sync_with_google_drive: failed return value is " + str(the_result))
-            return jsonify(success=True, status='failed', error_message=noquote(str(the_result)), restart=False)
-    else:
-        return jsonify(success=True, status='waiting', restart=False)
+        logmessage("checkin_sync_with_google_drive: failed return value is a " + str(type(the_result)))
+        logmessage("checkin_sync_with_google_drive: failed return value is " + str(the_result))
+        return jsonify(success=True, status='failed', error_message=noquote(str(the_result)), restart=False)
+    return jsonify(success=True, status='waiting', restart=False)
+
 
 @app.route('/checkin_sync_with_onedrive', methods=['GET', 'POST'])
 @login_required
@@ -17151,6 +17666,7 @@ def checkin_sync_with_onedrive():
         return jsonify(success=True, status='failed', error_message=str(the_result), restart=False)
     return jsonify(success=True, status='waiting', restart=False)
 
+
 @app.route('/google_drive', methods=['GET', 'POST'])
 @login_required
 @roles_required(['admin', 'developer'])
@@ -17164,7 +17680,7 @@ def google_drive_page():
     form = GoogleDriveForm(request.form)
     if request.method == 'POST' and form.cancel.data:
         return redirect(url_for('user.profile'))
-    storage = RedisCredStorage(app='googledrive')
+    storage = RedisCredStorage(oauth_app='googledrive')
     credentials = storage.get()
     if not credentials or credentials.invalid:
         flow = get_gd_flow()
@@ -17182,7 +17698,7 @@ def google_drive_page():
         uri = flow.step1_get_authorize_url()
         return redirect(uri)
     items = [dict(id='', name=word('-- Do not link --'))]
-    #items = []
+    # items = []
     page_token = None
     while True:
         try:
@@ -17207,10 +17723,10 @@ def google_drive_page():
             set_gd_folder(None)
             storage.locked_delete()
             flash(word("Google Drive is not linked."), 'success')
-        elif form.folder.data == -1 or form.folder.data == '-1':
+        elif form.folder.data in (-1, '-1'):
             file_metadata = {
-                'name' : 'docassemble',
-                'mimeType' : 'application/vnd.google-apps.folder'
+                'name': 'docassemble',
+                'mimeType': 'application/vnd.google-apps.folder'
             }
             new_file = service.files().create(body=file_metadata,
                                               fields='id').execute()
@@ -17269,6 +17785,7 @@ def google_drive_page():
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
 
+
 def gd_fix_subdirs(service, the_folder):
     subdirs = []
     page_token = None
@@ -17283,12 +17800,13 @@ def gd_fix_subdirs(service, the_folder):
     done = set(x['name'] for x in subdirs if x['name'] in todo)
     for key in todo - done:
         file_metadata = {
-            'name' : key,
-            'mimeType' : 'application/vnd.google-apps.folder',
+            'name': key,
+            'mimeType': 'application/vnd.google-apps.folder',
             'parents': [the_folder]
         }
-        new_file = service.files().create(body=file_metadata,
-                                          fields='id').execute()
+        service.files().create(body=file_metadata,
+                               fields='id').execute()
+
 
 @app.route('/onedrive', methods=['GET', 'POST'])
 @login_required
@@ -17303,7 +17821,7 @@ def onedrive_page():
     form = OneDriveForm(request.form)
     if request.method == 'POST' and form.cancel.data:
         return redirect(url_for('user.profile'))
-    storage = RedisCredStorage(app='onedrive')
+    storage = RedisCredStorage(oauth_app='onedrive')
     credentials = storage.get()
     if not credentials or credentials.invalid:
         flow = get_od_flow()
@@ -17313,8 +17831,8 @@ def onedrive_page():
     items = [dict(id='', name=word('-- Do not link --'))]
     http = credentials.authorize(httplib2.Http())
     try:
-        r, content = http.request("https://graph.microsoft.com/v1.0/me/drive/root/children?$select=id,name,deleted,folder", "GET")
-    except Exception as err:
+        resp, content = http.request("https://graph.microsoft.com/v1.0/me/drive/root/children?$select=id,name,deleted,folder", "GET")
+    except:
         set_od_folder(None)
         storage.release_lock()
         storage.locked_delete()
@@ -17323,8 +17841,8 @@ def onedrive_page():
         logmessage("one_drive_page: uri is " + str(uri))
         return redirect(uri)
     while True:
-        if int(r['status']) != 200:
-            flash("Error: could not connect to OneDrive; response code was " + str(r['status']) + ".   " + content.decode(), 'danger')
+        if int(resp['status']) != 200:
+            flash("Error: could not connect to OneDrive; response code was " + str(resp['status']) + ".   " + content.decode(), 'danger')
             return redirect(url_for('user.profile'))
         info = json.loads(content.decode())
         for item in info['value']:
@@ -17333,21 +17851,21 @@ def onedrive_page():
             items.append(dict(id=item['id'], name=item['name']))
         if "@odata.nextLink" not in info:
             break
-        r, content = http.request(info["@odata.nextLink"], "GET")
+        resp, content = http.request(info["@odata.nextLink"], "GET")
     item_ids = [x['id'] for x in items if x['id'] != '']
     if request.method == 'POST' and form.submit.data:
         if form.folder.data == '':
             set_od_folder(None)
             storage.locked_delete()
             flash(word("OneDrive is not linked."), 'success')
-        elif form.folder.data == -1 or form.folder.data == '-1':
+        elif form.folder.data in (-1, '-1'):
             headers = {'Content-Type': 'application/json'}
             info = {}
             info['name'] = 'docassemble'
             info['folder'] = {}
             info["@microsoft.graph.conflictBehavior"] = "fail"
-            r, content = http.request("https://graph.microsoft.com/v1.0/me/drive/root/children", "POST", headers=headers, body=json.dumps(info))
-            if int(r['status']) == 201:
+            resp, content = http.request("https://graph.microsoft.com/v1.0/me/drive/root/children", "POST", headers=headers, body=json.dumps(info))
+            if int(resp['status']) == 201:
                 new_item = json.loads(content.decode())
                 set_od_folder(new_item['id'])
                 od_fix_subdirs(http, new_item['id'])
@@ -17365,10 +17883,10 @@ def onedrive_page():
     the_folder = get_od_folder()
     active_folder = None
     if the_folder is not None:
-        r, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + str(the_folder), "GET")
-        if int(r['status']) != 200:
+        resp, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + str(the_folder), "GET")
+        if int(resp['status']) != 200:
             set_od_folder(None)
-            flash(word("The previously selected OneDrive folder does not exist.") + "  " + str(the_folder) + " " + str(content) + " status: " + repr(r['status']), "info")
+            flash(word("The previously selected OneDrive folder does not exist.") + "  " + str(the_folder) + " " + str(content) + " status: " + repr(resp['status']), "info")
             return redirect(url_for('onedrive_page'))
         info = json.loads(content.decode())
         logmessage("Found " + repr(info))
@@ -17400,11 +17918,12 @@ def onedrive_page():
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
 
+
 def od_fix_subdirs(http, the_folder):
     subdirs = set()
-    r, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + str(the_folder) + "/children?$select=id,name,deleted,folder", "GET")
+    resp, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + str(the_folder) + "/children?$select=id,name,deleted,folder", "GET")
     while True:
-        if int(r['status']) != 200:
+        if int(resp['status']) != 200:
             raise DAError("od_fix_subdirs: could not get contents of folder")
         info = json.loads(content.decode())
         logmessage("Found " + repr(info))
@@ -17413,7 +17932,7 @@ def od_fix_subdirs(http, the_folder):
                 subdirs.add(item['name'])
         if "@odata.nextLink" not in info:
             break
-        r, content = http.request(info["@odata.nextLink"], "GET")
+        resp, content = http.request(info["@odata.nextLink"], "GET")
     todo = set(['questions', 'static', 'sources', 'templates', 'modules'])
     for folder_name in (todo - subdirs):
         headers = {'Content-Type': 'application/json'}
@@ -17421,22 +17940,25 @@ def od_fix_subdirs(http, the_folder):
         data['name'] = folder_name
         data['folder'] = {}
         data["@microsoft.graph.conflictBehavior"] = "rename"
-        r, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + str(the_folder) + "/children", "POST", headers=headers, body=json.dumps(data))
-        if int(r['status']) != 201:
-            raise DAError("od_fix_subdirs: could not create subfolder " + folder_name + ' in ' + str(the_folder) + '.  ' + content.decode() + ' status: ' + str(r['status']))
+        resp, content = http.request("https://graph.microsoft.com/v1.0/me/drive/items/" + str(the_folder) + "/children", "POST", headers=headers, body=json.dumps(data))
+        if int(resp['status']) != 201:
+            raise DAError("od_fix_subdirs: could not create subfolder " + folder_name + ' in ' + str(the_folder) + '.  ' + content.decode() + ' status: ' + str(resp['status']))
+
 
 @app.route('/config', methods=['GET', 'POST'])
 @login_required
 @roles_required(['admin'])
 def config_page():
     setup_translation()
+    if not app.config['ALLOW_CONFIGURATION_EDITING']:
+        return ('File not found', 404)
     form = ConfigForm(request.form)
     content = None
     ok = True
     if request.method == 'POST':
         if form.submit.data and form.config_content.data:
             try:
-                yaml.load(form.config_content.data, Loader=yaml.FullLoader)
+                standardyaml.load(form.config_content.data, Loader=standardyaml.FullLoader)
             except Exception as errMess:
                 ok = False
                 content = form.config_content.data
@@ -17450,7 +17972,7 @@ def config_page():
                 with open(daconfig['config file'], 'w', encoding='utf-8') as fp:
                     fp.write(form.config_content.data)
                     flash(word('The configuration file was saved.'), 'success')
-                #session['restart'] = 1
+                # session['restart'] = 1
                 return redirect(url_for('restart_page'))
         elif form.cancel.data:
             flash(word('Configuration not updated.'), 'info')
@@ -17463,7 +17985,7 @@ def config_page():
             content = fp.read()
     if content is None:
         return ('File not found', 404)
-    (disk_total, disk_used, disk_free) = shutil.disk_usage(daconfig['config file'])
+    (disk_total, disk_used, disk_free) = shutil.disk_usage(daconfig['config file'])  # pylint: disable=unused-variable
     if keymap:
         kbOpt = 'keyMap: "' + keymap + '", cursorBlinkRate: 0, '
         kbLoad = '<script src="' + url_for('static', filename="codemirror/keymap/" + keymap + ".js", v=da_version) + '"></script>\n    '
@@ -17480,12 +18002,14 @@ def config_page():
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
 
+
 @app.route('/view_source', methods=['GET'])
 @login_required
 @roles_required(['developer', 'admin'])
 def view_source():
     setup_translation()
     source_path = request.args.get('i', None)
+    playground_user = get_playground_user()
     current_project = get_current_project()
     if source_path is None:
         logmessage("view_source: no source path")
@@ -17495,7 +18019,7 @@ def view_source():
             source = docassemble.base.parse.interview_source_from_string(source_path)
         else:
             try:
-                source = docassemble.base.parse.interview_source_from_string('docassemble.playground' + str(current_user.id) + project_name(current_project) + ':' + source_path)
+                source = docassemble.base.parse.interview_source_from_string('docassemble.playground' + str(playground_user.id) + project_name(current_project) + ':' + source_path)
             except:
                 source = docassemble.base.parse.interview_source_from_string(source_path)
     except Exception as errmess:
@@ -17506,11 +18030,12 @@ def view_source():
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
 
+
 @app.route('/playgroundstatic/<current_project>/<userid>/<path:filename>', methods=['GET'])
 def playground_static(current_project, userid, filename):
     if not app.config['ENABLE_PLAYGROUND']:
         return ('File not found', 404)
-    #filename = re.sub(r'[^A-Za-z0-9\-\_\. ]', '', filename)
+    # filename = re.sub(r'[^A-Za-z0-9\-\_\. ]', '', filename)
     try:
         attach = int(request.args.get('attach', 0))
     except:
@@ -17523,12 +18048,13 @@ def playground_static(current_project, userid, filename):
         return ('File not found', 404)
     if os.path.isfile(path):
         filename = os.path.basename(filename)
-        extension, mimetype = get_ext_and_mimetype(filename)
+        extension, mimetype = get_ext_and_mimetype(filename)  # pylint: disable=unused-variable
         response = send_file(path, mimetype=str(mimetype), download_name=filename)
         if attach:
             response.headers['Content-Disposition'] = 'attachment; filename=' + json.dumps(filename)
         return response
     return ('File not found', 404)
+
 
 @app.route('/playgroundmodules/<current_project>/<userid>/<path:filename>', methods=['GET'])
 @login_required
@@ -17537,7 +18063,7 @@ def playground_modules(current_project, userid, filename):
     if not app.config['ENABLE_PLAYGROUND']:
         return ('File not found', 404)
     setup_translation()
-    #filename = re.sub(r'[^A-Za-z0-9\-\_\. ]', '', filename)
+    # filename = re.sub(r'[^A-Za-z0-9\-\_\. ]', '', filename)
     try:
         attach = int(request.args.get('attach', 0))
     except:
@@ -17550,13 +18076,14 @@ def playground_modules(current_project, userid, filename):
         return ('File not found', 404)
     if os.path.isfile(path):
         filename = os.path.basename(filename)
-        extension, mimetype = get_ext_and_mimetype(filename)
+        extension, mimetype = get_ext_and_mimetype(filename)  # pylint: disable=unused-variable
         response = send_file(path, mimetype=str(mimetype), download_name=filename)
         if attach:
             response.headers['Content-Disposition'] = 'attachment; filename=' + json.dumps(filename)
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
         return response
     return ('File not found', 404)
+
 
 @app.route('/playgroundsources/<current_project>/<userid>/<path:filename>', methods=['GET'])
 @login_required
@@ -17569,17 +18096,17 @@ def playground_sources(current_project, userid, filename):
         attach = int(request.args.get('attach', 0))
     except:
         attach = 0
-    #filename = re.sub(r'[^A-Za-z0-9\-\_\(\)\. ]', '', filename)
+    # filename = re.sub(r'[^A-Za-z0-9\-\_\(\)\. ]', '', filename)
     filename = filename.replace('/', os.path.sep)
     area = SavedFile(userid, fix=True, section='playgroundsources')
-    reslt = write_ml_source(area, userid, current_project, filename)
+    write_ml_source(area, userid, current_project, filename)
     the_directory = directory_for(area, current_project)
     path = os.path.join(the_directory, filename)
     if os.path.join('..', '') in path:
         return ('File not found', 404)
     if os.path.isfile(path):
         filename = os.path.basename(filename)
-        extension, mimetype = get_ext_and_mimetype(filename)
+        extension, mimetype = get_ext_and_mimetype(filename)  # pylint: disable=unused-variable
         response = send_file(path, mimetype=str(mimetype), download_name=filename)
         if attach:
             response.headers['Content-Disposition'] = 'attachment; filename=' + json.dumps(filename)
@@ -17587,13 +18114,14 @@ def playground_sources(current_project, userid, filename):
         return response
     return ('File not found', 404)
 
+
 @app.route('/playgroundtemplate/<current_project>/<userid>/<path:filename>', methods=['GET'])
 @login_required
 @roles_required(['developer', 'admin'])
 def playground_template(current_project, userid, filename):
     if not app.config['ENABLE_PLAYGROUND']:
         return ('File not found', 404)
-    #filename = re.sub(r'[^A-Za-z0-9\-\_\. ]', '', filename)
+    # filename = re.sub(r'[^A-Za-z0-9\-\_\. ]', '', filename)
     setup_translation()
     try:
         attach = int(request.args.get('attach', 0))
@@ -17607,13 +18135,14 @@ def playground_template(current_project, userid, filename):
         return ('File not found', 404)
     if os.path.isfile(path):
         filename = os.path.basename(filename)
-        extension, mimetype = get_ext_and_mimetype(filename)
+        extension, mimetype = get_ext_and_mimetype(filename)  # pylint: disable=unused-variable
         response = send_file(path, mimetype=str(mimetype), download_name=filename)
         if attach:
             response.headers['Content-Disposition'] = 'attachment; filename=' + json.dumps(filename)
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
         return response
     return ('File not found', 404)
+
 
 @app.route('/playgrounddownload/<current_project>/<userid>/<path:filename>', methods=['GET'])
 @login_required
@@ -17622,7 +18151,7 @@ def playground_download(current_project, userid, filename):
     if not app.config['ENABLE_PLAYGROUND']:
         return ('File not found', 404)
     setup_translation()
-    #filename = re.sub(r'[^A-Za-z0-9\-\_\. ]', '', filename)
+    # filename = re.sub(r'[^A-Za-z0-9\-\_\. ]', '', filename)
     area = SavedFile(userid, fix=True, section='playground')
     the_directory = directory_for(area, current_project)
     filename = filename.replace('/', os.path.sep)
@@ -17631,13 +18160,14 @@ def playground_download(current_project, userid, filename):
         return ('File not found', 404)
     if os.path.isfile(path):
         filename = os.path.basename(filename)
-        extension, mimetype = get_ext_and_mimetype(path)
+        extension, mimetype = get_ext_and_mimetype(path)  # pylint: disable=unused-variable
         response = send_file(path, mimetype=str(mimetype))
         response.headers['Content-type'] = 'text/plain; charset=utf-8'
         response.headers['Content-Disposition'] = 'attachment; filename=' + json.dumps(filename)
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
         return response
     return ('File not found', 404)
+
 
 @app.route('/officefunctionfile', methods=['GET', 'POST'])
 @cross_origin(origins='*', methods=['GET', 'POST', 'HEAD'], automatic_options=True)
@@ -17651,6 +18181,7 @@ def playground_office_functionfile():
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
 
+
 @app.route('/officetaskpane', methods=['GET', 'POST'])
 @cross_origin(origins='*', methods=['GET', 'POST', 'HEAD'], automatic_options=True)
 def playground_office_taskpane():
@@ -17663,6 +18194,7 @@ def playground_office_taskpane():
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
 
+
 @app.route('/officeaddin', methods=['GET', 'POST'])
 @cross_origin(origins='*', methods=['GET', 'POST', 'HEAD'], automatic_options=True)
 @login_required
@@ -17672,18 +18204,19 @@ def playground_office_addin():
     setup_translation()
     if not app.config['ENABLE_PLAYGROUND']:
         return ('File not found', 404)
+    playground_user = get_playground_user()
     current_project = get_current_project()
     if request.args.get('fetchfiles', None):
-        playground = SavedFile(current_user.id, fix=True, section='playground')
+        playground = SavedFile(playground_user.id, fix=True, section='playground')
         the_directory = directory_for(playground, current_project)
         files = sorted([f for f in os.listdir(the_directory) if os.path.isfile(os.path.join(the_directory, f)) and re.search(r'^[A-Za-z0-9]', f)])
         return jsonify(success=True, files=files)
     pg_var_file = request.args.get('pgvars', None)
-    #logmessage("playground_office_addin: YAML file is " + str(pg_var_file))
+    # logmessage("playground_office_addin: YAML file is " + str(pg_var_file))
     use_html = request.args.get('html', False)
     uploadform = AddinUploadForm(request.form)
     if request.method == 'POST':
-        area = SavedFile(current_user.id, fix=True, section='playgroundtemplate')
+        area = SavedFile(playground_user.id, fix=True, section='playgroundtemplate')
         filename = secure_filename(uploadform.filename.data)
         filename = re.sub(r'[^A-Za-z0-9\-\_\. ]+', '_', filename)
         if filename == '':
@@ -17705,34 +18238,34 @@ def playground_office_addin():
             if pg_var_file is None or pg_var_file == '':
                 return jsonify({'success': True, 'variables_json': [], 'vocab_list': []})
     if pg_var_file is not None:
-        playground = SavedFile(current_user.id, fix=True, section='playground')
+        playground = SavedFile(playground_user.id, fix=True, section='playground')
         the_directory = directory_for(playground, current_project)
         files = sorted([f for f in os.listdir(the_directory) if os.path.isfile(os.path.join(the_directory, f)) and re.search(r'^[A-Za-z0-9]', f)])
         if pg_var_file in files:
-            #logmessage("playground_office_addin: file " + str(pg_var_file) + " was found")
-            interview_source = docassemble.base.parse.interview_source_from_string('docassemble.playground' + str(current_user.id) + project_name(current_project) + ':' + pg_var_file)
+            # logmessage("playground_office_addin: file " + str(pg_var_file) + " was found")
+            interview_source = docassemble.base.parse.interview_source_from_string('docassemble.playground' + str(playground_user.id) + project_name(current_project) + ':' + pg_var_file)
             interview_source.set_testing(True)
         else:
-            #logmessage("playground_office_addin: file " + str(pg_var_file) + " was not found")
+            # logmessage("playground_office_addin: file " + str(pg_var_file) + " was not found")
             if pg_var_file == '' and current_project == 'default':
                 pg_var_file = 'test.yml'
             content = "modules:\n  - docassemble.base.util\n---\nmandatory: True\nquestion: hi"
-            interview_source = docassemble.base.parse.InterviewSourceString(content=content, directory=the_directory, package="docassemble.playground" + str(current_user.id) + project_name(current_project), path="docassemble.playground" + str(current_user.id) + project_name(current_project) + ":" + pg_var_file, testing=True)
+            interview_source = docassemble.base.parse.InterviewSourceString(content=content, directory=the_directory, package="docassemble.playground" + str(playground_user.id) + project_name(current_project), path="docassemble.playground" + str(playground_user.id) + project_name(current_project) + ":" + pg_var_file, testing=True)
         interview = interview_source.get_interview()
         ensure_ml_file_exists(interview, pg_var_file, current_project)
-        the_current_info = current_info(yaml='docassemble.playground' + str(current_user.id) + project_name(current_project) + ':' + pg_var_file, req=request, action=None, device_id=request.cookies.get('ds', None))
+        the_current_info = current_info(yaml='docassemble.playground' + str(playground_user.id) + project_name(current_project) + ':' + pg_var_file, req=request, action=None, device_id=request.cookies.get('ds', None))
         docassemble.base.functions.this_thread.current_info = the_current_info
         interview_status = docassemble.base.parse.InterviewStatus(current_info=the_current_info)
         if use_html:
             variables_html, vocab_list, vocab_dict = get_vars_in_use(interview, interview_status, debug_mode=False, show_messages=False, show_jinja_help=True, current_project=current_project)
             return jsonify({'success': True, 'current_project': current_project, 'variables_html': variables_html, 'vocab_list': list(vocab_list), 'vocab_dict': vocab_dict})
-        else:
-            variables_json, vocab_list = get_vars_in_use(interview, interview_status, debug_mode=False, return_json=True, current_project=current_project)
-            return jsonify({'success': True, 'variables_json': variables_json, 'vocab_list': list(vocab_list)})
+        variables_json, vocab_list, vocab_dict = get_vars_in_use(interview, interview_status, debug_mode=False, return_json=True, current_project=current_project)
+        return jsonify({'success': True, 'variables_json': variables_json, 'vocab_list': list(vocab_list)})
     parent_origin = re.sub(r'^(https?://[^/]+)/.*', r'\1', daconfig.get('office addin url', get_base_url()))
     response = make_response(render_template('pages/officeaddin.html', current_project=current_project, page_title=word("Docassemble Office Add-in"), tab_title=word("Office Add-in"), parent_origin=parent_origin, form=uploadform), 200)
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
+
 
 def cloud_trash(use_gd, use_od, section, the_file, current_project):
     if use_gd:
@@ -17749,6 +18282,7 @@ def cloud_trash(use_gd, use_od, section, the_file, current_project):
             except:
                 logmessage("cloud_trash: unable to delete file on OneDrive.")
 
+
 @app.route('/playgroundfiles', methods=['GET', 'POST'])
 @login_required
 @roles_required(['developer', 'admin'])
@@ -17756,6 +18290,7 @@ def playground_files():
     if not app.config['ENABLE_PLAYGROUND']:
         return ('File not found', 404)
     setup_translation()
+    playground_user = get_playground_user()
     current_project = get_current_project()
     use_gd = bool(app.config['USE_GOOGLE_DRIVE'] is True and get_gd_folder() is not None)
     use_od = bool(use_gd is False and app.config['USE_ONEDRIVE'] is True and get_od_folder() is not None)
@@ -17786,7 +18321,7 @@ def playground_files():
         form_validated = None
     if section not in ("template", "static", "sources", "modules", "packages"):
         section = "template"
-    pgarea = SavedFile(current_user.id, fix=True, section='playground')
+    pgarea = SavedFile(playground_user.id, fix=True, section='playground')
     the_directory = directory_for(pgarea, current_project)
     if current_project != 'default' and not os.path.isdir(the_directory):
         current_project = set_current_project('default')
@@ -17810,10 +18345,10 @@ def playground_files():
             active_file = pulldown_files[0]
         else:
             delete_current_file(current_project, 'questions')
-    area = SavedFile(current_user.id, fix=True, section='playground' + section)
+    area = SavedFile(playground_user.id, fix=True, section='playground' + section)
     the_directory = directory_for(area, current_project)
     if request.args.get('delete', False):
-        #argument = re.sub(r'[^A-Za-z0-9\-\_\. ]', '', request.args.get('delete'))
+        # argument = re.sub(r'[^A-Za-z0-9\-\_\. ]', '', request.args.get('delete'))
         argument = request.args.get('delete')
         if argument:
             the_directory = directory_for(area, current_project)
@@ -17822,17 +18357,16 @@ def playground_files():
             if os.path.exists(filename):
                 os.remove(filename)
                 area.finalize()
-                for key in r.keys('da:interviewsource:docassemble.playground' + str(current_user.id) + project_name(current_project) + ':*'):
+                for key in r.keys('da:interviewsource:docassemble.playground' + str(playground_user.id) + project_name(current_project) + ':*'):
                     r.incr(key.decode())
                 cloud_trash(use_gd, use_od, section, argument, current_project)
                 flash(word("Deleted file: ") + the_file, "success")
-                for key in r.keys('da:interviewsource:docassemble.playground' + str(current_user.id) + project_name(current_project) + ':*'):
+                for key in r.keys('da:interviewsource:docassemble.playground' + str(playground_user.id) + project_name(current_project) + ':*'):
                     r.incr(key.decode())
                 return redirect(url_for('playground_files', section=section, project=current_project))
-            else:
-                flash(word("File not found: ") + argument, "error")
+            flash(word("File not found: ") + argument, "error")
     if request.args.get('convert', False):
-        #argument = re.sub(r'[^A-Za-z0-9\-\_\. ]', '', request.args.get('convert'))
+        # argument = re.sub(r'[^A-Za-z0-9\-\_\. ]', '', request.args.get('convert'))
         argument = request.args.get('convert')
         if argument:
             filename = os.path.join(the_directory, argument)
@@ -17866,7 +18400,7 @@ def playground_files():
                 for up_file in the_files:
                     try:
                         filename = werkzeug.utils.secure_filename(up_file.filename)
-                        extension, mimetype = get_ext_and_mimetype(filename)
+                        extension, mimetype = get_ext_and_mimetype(filename)  # pylint: disable=unused-variable
                         if section == 'modules' and extension != 'py':
                             flash(word("Sorry, only .py files can be uploaded here.  To upload other types of files, use other Folders."), 'error')
                             return redirect(url_for('playground_files', section=section, project=current_project))
@@ -17874,7 +18408,7 @@ def playground_files():
                         the_file = filename
                         filename = os.path.join(the_directory, filename)
                         up_file.save(filename)
-                        for key in r.keys('da:interviewsource:docassemble.playground' + str(current_user.id) + project_name(current_project) + ':*'):
+                        for key in r.keys('da:interviewsource:docassemble.playground' + str(playground_user.id) + project_name(current_project) + ':*'):
                             r.incr(key.decode())
                         area.finalize()
                         if section == 'modules':
@@ -17890,13 +18424,12 @@ def playground_files():
                 filename = os.path.join(the_directory, the_file)
                 if os.path.exists(filename):
                     os.remove(filename)
-                    for key in r.keys('da:interviewsource:docassemble.playground' + str(current_user.id) + project_name(current_project) + ':*'):
+                    for key in r.keys('da:interviewsource:docassemble.playground' + str(playground_user.id) + project_name(current_project) + ':*'):
                         r.incr(key.decode())
                     area.finalize()
                     flash(word("Deleted file: ") + the_file, "success")
                     return redirect(url_for('playground_files', section=section, project=current_project))
-                else:
-                    flash(word("File not found: ") + the_file, "error")
+                flash(word("File not found: ") + the_file, "error")
         if formtwo.submit.data and formtwo.file_content.data:
             if the_file != '':
                 if section == 'modules' and not re.search(r'\.py$', the_file):
@@ -17910,27 +18443,25 @@ def playground_files():
                 with open(filename, 'w', encoding='utf-8') as fp:
                     fp.write(re.sub(r'\r\n', r'\n', formtwo.file_content.data))
                 the_time = formatted_current_time()
-                for key in r.keys('da:interviewsource:docassemble.playground' + str(current_user.id) + project_name(current_project) + ':*'):
+                for key in r.keys('da:interviewsource:docassemble.playground' + str(playground_user.id) + project_name(current_project) + ':*'):
                     r.incr(key.decode())
                 area.finalize()
                 if formtwo.active_file.data and formtwo.active_file.data != the_file:
-                    #interview_file = os.path.join(pgarea.directory, formtwo.active_file.data)
-                    r.incr('da:interviewsource:docassemble.playground' + str(current_user.id) + project_name(current_project) + ':' + formtwo.active_file.data)
-                    #if os.path.isfile(interview_file):
-                    #    with open(interview_file, 'a'):
-                    #        os.utime(interview_file, None)
-                    #    pgarea.finalize()
+                    # interview_file = os.path.join(pgarea.directory, formtwo.active_file.data)
+                    r.incr('da:interviewsource:docassemble.playground' + str(playground_user.id) + project_name(current_project) + ':' + formtwo.active_file.data)
+                    # if os.path.isfile(interview_file):
+                    #     with open(interview_file, 'a'):
+                    #         os.utime(interview_file, None)
+                    #     pgarea.finalize()
                 flash_message = flash_as_html(str(the_file) + ' ' + word('was saved at') + ' ' + the_time + '.', message_type='success', is_ajax=is_ajax)
                 if section == 'modules':
-                    #restart_all()
+                    # restart_all()
                     flash(word('Since you changed a Python module, the server needs to restart in order to load your module.'), 'info')
                     return redirect(url_for('restart_page', next=url_for('playground_files', section=section, file=the_file, project=current_project)))
                 if is_ajax:
                     return jsonify(success=True, flash_message=flash_message)
-                else:
-                    return redirect(url_for('playground_files', section=section, file=the_file, project=current_project))
-            else:
-                flash(word('You need to type in a name for the file'), 'error')
+                return redirect(url_for('playground_files', section=section, file=the_file, project=current_project))
+            flash(word('You need to type in a name for the file'), 'error')
     if is_ajax and not form_validated:
         errors = []
         for fieldName, errorMessages in formtwo.errors.items():
@@ -18314,11 +18845,14 @@ def playground_files():
         modes = [mode]
     for the_mode in modes:
         cm_mode += '\n    <script src="' + url_for('static', filename="codemirror/mode/" + the_mode + "/" + ('damarkdown' if the_mode == 'markdown' else the_mode) + ".js", v=da_version) + '"></script>'
+    if current_user.id != playground_user.id:
+        header += " / " + playground_user.email
     if current_project != 'default':
         header += " / " + current_project
-    response = make_response(render_template('pages/playgroundfiles.html', current_project=current_project, version_warning=None, bodyclass='daadminbody', use_gd=use_gd, use_od=use_od, back_button=back_button, tab_title=header, page_title=header, extra_css=Markup('\n    <link href="' + url_for('static', filename='app/playgroundbundle.css', v=da_version) + '" rel="stylesheet">'), extra_js=Markup('\n    <script src="' + url_for('static', filename="app/playgroundbundle.js", v=da_version) + '"></script>\n    ' + kbLoad + cm_mode + extra_js), header=header, upload_header=upload_header, list_header=list_header, edit_header=edit_header, description=Markup(description), lowerdescription=lowerdescription, form=form, files=sorted(files, key=lambda y: y.lower()), section=section, userid=current_user.id, editable_files=sorted(editable_files, key=lambda y: y['name'].lower()), editable_file_listing=editable_file_listing, trainable_files=trainable_files, convertible_files=convertible_files, formtwo=formtwo, current_file=the_file, content=content, after_text=after_text, is_new=str(is_new), any_files=any_files, pulldown_files=sorted(pulldown_files, key=lambda y: y.lower()), active_file=active_file, playground_package='docassemble.playground' + str(current_user.id) + project_name(current_project)), 200)
+    response = make_response(render_template('pages/playgroundfiles.html', current_project=current_project, version_warning=None, bodyclass='daadminbody', use_gd=use_gd, use_od=use_od, back_button=back_button, tab_title=header, page_title=header, extra_css=Markup('\n    <link href="' + url_for('static', filename='app/playgroundbundle.css', v=da_version) + '" rel="stylesheet">'), extra_js=Markup('\n    <script src="' + url_for('static', filename="app/playgroundbundle.js", v=da_version) + '"></script>\n    ' + kbLoad + cm_mode + extra_js), header=header, upload_header=upload_header, list_header=list_header, edit_header=edit_header, description=Markup(description), lowerdescription=lowerdescription, form=form, files=sorted(files, key=lambda y: y.lower()), section=section, userid=playground_user.id, editable_files=sorted(editable_files, key=lambda y: y['name'].lower()), editable_file_listing=editable_file_listing, trainable_files=trainable_files, convertible_files=convertible_files, formtwo=formtwo, current_file=the_file, content=content, after_text=after_text, is_new=str(is_new), any_files=any_files, pulldown_files=sorted(pulldown_files, key=lambda y: y.lower()), active_file=active_file, playground_package='docassemble.playground' + str(playground_user.id) + project_name(current_project), own_playground=bool(playground_user.id == current_user.id)), 200)
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
+
 
 @app.route('/pullplaygroundpackage', methods=['GET', 'POST'])
 @login_required
@@ -18394,7 +18928,7 @@ def pull_playground_package():
         $("#github_url").on('change', get_branches);
       });
     </script>
-"""
+"""  # noqa: W605
     response = make_response(render_template('pages/pull_playground_package.html',
                                              current_project=current_project,
                                              form=form,
@@ -18407,6 +18941,7 @@ def pull_playground_package():
                                              extra_js=Markup(extra_js)), 200)
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
+
 
 def get_branches_of_repo(giturl):
     repo_name = re.sub(r'/*$', '', giturl)
@@ -18423,7 +18958,7 @@ def get_branches_of_repo(giturl):
     else:
         github_auth = None
     if github_auth and access_token is None:
-        storage = RedisCredStorage(app='github')
+        storage = RedisCredStorage(oauth_app='github')
         credentials = storage.get()
         if not credentials or credentials.invalid:
             http = httplib2.Http()
@@ -18448,12 +18983,12 @@ def get_branches_of_repo(giturl):
                     resp, content = http.request(next_link, "GET")
                 if int(resp['status']) != 200:
                     raise Exception(repo_name + " fetch failed")
-                else:
-                    branches.extend(json.loads(content.decode()))
+                branches.extend(json.loads(content.decode()))
             else:
                 break
         return branches
     raise Exception(the_url + " fetch failed on first try; got " + str(resp['status']))
+
 
 def get_repo_info(giturl):
     repo_name = re.sub(r'/*$', '', giturl)
@@ -18470,7 +19005,7 @@ def get_repo_info(giturl):
     else:
         github_auth = None
     if github_auth and access_token is None:
-        storage = RedisCredStorage(app='github')
+        storage = RedisCredStorage(oauth_app='github')
         credentials = storage.get()
         if not credentials or credentials.invalid:
             http = httplib2.Http()
@@ -18487,6 +19022,7 @@ def get_repo_info(giturl):
         return json.loads(content.decode())
     raise Exception(the_url + " fetch failed on first try; got " + str(resp['status']))
 
+
 @app.route('/get_git_branches', methods=['GET'])
 @login_required
 @roles_required(['developer', 'admin'])
@@ -18501,6 +19037,7 @@ def get_git_branches():
     except Exception as err:
         return jsonify(dict(success=False, reason=str(err)))
 
+
 def get_user_repositories(http):
     repositories = []
     resp, content = http.request("https://api.github.com/user/repos", "GET")
@@ -18512,13 +19049,13 @@ def get_user_repositories(http):
                 resp, content = http.request(next_link, "GET")
                 if int(resp['status']) != 200:
                     raise DAError("get_user_repositories: could not get information from next URL")
-                else:
-                    repositories.extend(json.loads(content.decode()))
+                repositories.extend(json.loads(content.decode()))
             else:
                 break
     else:
         raise DAError("playground_packages: could not get information about repositories")
     return repositories
+
 
 def get_orgs_info(http):
     orgs_info = []
@@ -18531,13 +19068,13 @@ def get_orgs_info(http):
                 resp, content = http.request(next_link, "GET")
                 if int(resp['status']) != 200:
                     raise DAError("get_orgs_info: could not get additional information about organizations")
-                else:
-                    orgs_info.extend(json.loads(content.decode()))
+                orgs_info.extend(json.loads(content.decode()))
             else:
                 break
     else:
         raise DAError("get_orgs_info: failed to get orgs using https://api.github.com/user/orgs")
     return orgs_info
+
 
 def get_branch_info(http, full_name):
     branch_info = []
@@ -18550,19 +19087,20 @@ def get_branch_info(http, full_name):
                 resp, content = http.request(next_link, "GET")
                 if int(resp['status']) != 200:
                     raise DAError("get_branch_info: could not get additional information from next URL")
-                else:
-                    branch_info.extend(json.loads(content))
+                branch_info.extend(json.loads(content))
             else:
                 break
     else:
         logmessage("get_branch_info: could not get info from https://api.github.com/repos/" + str(full_name) + '/branches')
     return branch_info
 
+
 def fix_package_folder():
+    playground_user = get_playground_user()
     use_gd = bool(app.config['USE_GOOGLE_DRIVE'] is True and get_gd_folder() is not None)
     use_od = bool(use_gd is False and app.config['USE_ONEDRIVE'] is True and get_od_folder() is not None)
     problem_exists = False
-    area = SavedFile(current_user.id, fix=True, section='playgroundpackages')
+    area = SavedFile(playground_user.id, fix=True, section='playgroundpackages')
     for f in os.listdir(area.directory):
         path = os.path.join(area.directory, f)
         if os.path.isfile(path) and not f.startswith('docassemble.') and not f.startswith('.'):
@@ -18578,7 +19116,9 @@ def fix_package_folder():
     if problem_exists:
         area.finalize()
 
-def do_playground_pull(area, current_project, github_url=None, branch=None, pypi_package=None, can_publish_to_github=False, github_user_name=None, github_email=None, pull_only=False):
+
+def do_playground_pull(area, current_project, github_url=None, branch=None, pypi_package=None, can_publish_to_github=False, github_email=None, pull_only=False):
+    playground_user = get_playground_user()
     area_sec = dict(templates='playgroundtemplate', static='playgroundstatic', sources='playgroundsources', questions='playground')
     readme_text = ''
     setup_py = ''
@@ -18592,7 +19132,7 @@ def do_playground_pull(area, current_project, github_url=None, branch=None, pypi
     need_to_restart = False
     extracted = {}
     data_files = dict(templates=[], static=[], sources=[], interviews=[], modules=[], questions=[])
-    directory = tempfile.mkdtemp()
+    directory = tempfile.mkdtemp(prefix='SavedFile')
     output = ''
     pypi_url = daconfig.get('pypi url', 'https://pypi.python.org/pypi')
     expected_name = 'unknown'
@@ -18602,7 +19142,7 @@ def do_playground_pull(area, current_project, github_url=None, branch=None, pypi
         repo_name = re.sub(r'^http.*github.com/', '', repo_name)
         repo_name = re.sub(r'.*@github.com:', '', repo_name)
         repo_name = re.sub(r'.git$', '', repo_name)
-        if not 'x-oauth-basic@github.com' in github_url and can_publish_to_github and github_email:
+        if 'x-oauth-basic@github.com' not in github_url and can_publish_to_github and github_email:
             github_url = f'git@github.com:{repo_name}.git'
             expected_name = re.sub(r'.*/', '', github_url)
             expected_name = re.sub(r'\.git', '', expected_name)
@@ -18613,8 +19153,8 @@ def do_playground_pull(area, current_project, github_url=None, branch=None, pypi
             ssh_script = tempfile.NamedTemporaryFile(mode='w', prefix="datemp", suffix='.sh', delete=False, encoding='utf-8')
             ssh_script.write('# /bin/bash\n\nssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o GlobalKnownHostsFile=/dev/null -i "' + str(private_key_file) + '" $1 $2 $3 $4 $5 $6')
             ssh_script.close()
-            os.chmod(ssh_script.name, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR )
-            #git_prefix = "GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o GlobalKnownHostsFile=/dev/null -i \"" + str(private_key_file) + "\"' "
+            os.chmod(ssh_script.name, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+            # git_prefix = "GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o GlobalKnownHostsFile=/dev/null -i \"" + str(private_key_file) + "\"' "
             git_prefix = "GIT_SSH=" + ssh_script.name + " "
             output += "Doing " + git_prefix + "git clone " + branch_option + github_url + "\n"
             try:
@@ -18691,8 +19231,8 @@ def do_playground_pull(area, current_project, github_url=None, branch=None, pypi
         at_top_level = bool('setup.py' in files and 'docassemble' in dirs)
         for a_file in files:
             orig_file = os.path.join(root, a_file)
-            #output += "Original file is " + orig_file + "\n"
-            thefilename = os.path.join(*splitall(orig_file)[initial_directories:])
+            # output += "Original file is " + orig_file + "\n"
+            thefilename = os.path.join(*splitall(orig_file)[initial_directories:])  # pylint: disable=no-value-for-parameter
             (the_directory, filename) = os.path.split(thefilename)
             if filename.startswith('#') or filename.endswith('~'):
                 continue
@@ -18704,7 +19244,7 @@ def do_playground_pull(area, current_project, github_url=None, branch=None, pypi
                 if the_directory.endswith('data/' + sec) and filename != 'README.md':
                     data_files[sec].append(filename)
                     target_filename = os.path.join(directory_for(area[area_sec[sec]], current_project), filename)
-                    #output += "Copying " + orig_file + "\n"
+                    # output += "Copying " + orig_file + "\n"
                     copy_if_different(orig_file, target_filename)
             if filename == 'README.md' and at_top_level:
                 with open(orig_file, 'r', encoding='utf-8') as fp:
@@ -18715,11 +19255,11 @@ def do_playground_pull(area, current_project, github_url=None, branch=None, pypi
             elif len(levels) >= 1 and filename.endswith('.py') and filename != '__init__.py' and 'tests' not in dirparts and 'data' not in dirparts:
                 data_files['modules'].append(filename)
                 target_filename = os.path.join(directory_for(area['playgroundmodules'], current_project), filename)
-                #output += "Copying " + orig_file + "\n"
+                # output += "Copying " + orig_file + "\n"
                 if (not os.path.isfile(target_filename)) or filecmp.cmp(orig_file, target_filename) is False:
                     need_to_restart = True
                 copy_if_different(orig_file, target_filename)
-    #output += "setup.py is " + str(len(setup_py)) + " characters long\n"
+    # output += "setup.py is " + str(len(setup_py)) + " characters long\n"
     setup_py = re.sub(r'.*setup\(', '', setup_py, flags=re.DOTALL)
     for line in setup_py.splitlines():
         m = re.search(r"^ *([a-z_]+) *= *\(?'(.*)'", line)
@@ -18739,8 +19279,8 @@ def do_playground_pull(area, current_project, github_url=None, branch=None, pypi
                 the_list.append(inner_item)
             extracted[m.group(1)] = the_list
     info_dict = dict(readme=readme_text, interview_files=data_files['questions'], sources_files=data_files['sources'], static_files=data_files['static'], module_files=data_files['modules'], template_files=data_files['templates'], dependencies=extracted.get('install_requires', []), description=extracted.get('description', ''), author_name=extracted.get('author', ''), author_email=extracted.get('author_email', ''), license=extracted.get('license', ''), url=extracted.get('url', ''), version=extracted.get('version', ''), github_url=github_url, github_branch=branch, pypi_package_name=pypi_package)
-    info_dict['dependencies'] = [x for x in [z for z in map(lambda y: re.sub(r'[\>\<\=].*', '', y), info_dict['dependencies'])] if x not in ('docassemble', 'docassemble.base', 'docassemble.webapp')]
-    #output += "info_dict is set\n"
+    info_dict['dependencies'] = [x for x in map(lambda y: re.sub(r'[\>\<\=].*', '', y), info_dict['dependencies']) if x not in ('docassemble', 'docassemble.base', 'docassemble.webapp')]
+    # output += "info_dict is set\n"
     package_name = re.sub(r'^docassemble\.', '', extracted.get('name', expected_name))
     # if not user_can_edit_package(pkgname='docassemble.' + package_name):
     #     index = 1
@@ -18749,16 +19289,17 @@ def do_playground_pull(area, current_project, github_url=None, branch=None, pypi
     #         index += 1
     #         package_name = orig_package_name + str(index)
     with open(os.path.join(directory_for(area['playgroundpackages'], current_project), 'docassemble.' + package_name), 'w', encoding='utf-8') as fp:
-        the_yaml = yaml.safe_dump(info_dict, default_flow_style=False, default_style='|')
+        the_yaml = standardyaml.safe_dump(info_dict, default_flow_style=False, default_style='|')
         fp.write(str(the_yaml))
     for sec in area:
         area[sec].finalize()
-    for key in r.keys('da:interviewsource:docassemble.playground' + str(current_user.id) + ':*'):
+    for key in r.keys('da:interviewsource:docassemble.playground' + str(playground_user.id) + ':*'):
         r.incr(key.decode())
     return dict(action='finished', need_to_restart=need_to_restart, package_name=package_name)
 
+
 def get_github_username_and_email():
-    storage = RedisCredStorage(app='github')
+    storage = RedisCredStorage(oauth_app='github')
     credentials = storage.get()
     if not credentials or credentials.invalid:
         raise Exception('GitHub integration expired.')
@@ -18782,6 +19323,7 @@ def get_github_username_and_email():
         raise DAError("playground_packages: login not present in user info from GitHub")
     return github_user_name, github_email, github_author_name
 
+
 @app.route('/playgroundpackages', methods=['GET', 'POST'])
 @login_required
 @roles_required(['developer', 'admin'])
@@ -18790,11 +19332,12 @@ def playground_packages():
         return ('File not found', 404)
     setup_translation()
     fix_package_folder()
+    playground_user = get_playground_user()
     current_project = get_current_project()
     form = PlaygroundPackagesForm(request.form)
     fileform = PlaygroundUploadForm(request.form)
     the_file = secure_filename_spaces_ok(request.args.get('file', ''))
-    no_file_specified = bool(the_file == '')
+    # no_file_specified = bool(the_file == '')
     scroll = False
     allow_pypi = daconfig.get('pypi', False)
     pypi_username = current_user.pypi_username
@@ -18815,7 +19358,7 @@ def playground_packages():
     else:
         can_publish_to_github = None
     if can_publish_to_github and request.method == 'GET':
-        storage = RedisCredStorage(app='github')
+        storage = RedisCredStorage(oauth_app='github')
         credentials = storage.get()
         if not credentials or credentials.invalid:
             state_string = random_string(16)
@@ -18827,7 +19370,7 @@ def playground_packages():
     github_message = None
     pypi_message = None
     pypi_version = None
-    package_list, package_auth = get_package_info()
+    package_list, package_auth = get_package_info()  # pylint: disable=unused-variable
     package_names = sorted([package.package.name for package in package_list])
     for default_package in ('docassemble', 'docassemble.base', 'docassemble.webapp'):
         if default_package in package_names:
@@ -18847,12 +19390,15 @@ def playground_packages():
     section_sec = {'playgroundtemplate': 'template', 'playgroundstatic': 'static', 'playgroundsources': 'sources', 'playgroundmodules': 'modules'}
     section_field = {'playground': form.interview_files, 'playgroundtemplate': form.template_files, 'playgroundstatic': form.static_files, 'playgroundsources': form.sources_files, 'playgroundmodules': form.module_files}
     for sec in ('playground', 'playgroundpackages', 'playgroundtemplate', 'playgroundstatic', 'playgroundsources', 'playgroundmodules'):
-        area[sec] = SavedFile(current_user.id, fix=True, section=sec)
+        area[sec] = SavedFile(playground_user.id, fix=True, section=sec)
         the_directory = directory_for(area[sec], current_project)
         if sec == 'playground' and current_project != 'default' and not os.path.isdir(the_directory):
             current_project = set_current_project('default')
             the_directory = directory_for(area[sec], current_project)
-        file_list[sec] = sorted([f for f in os.listdir(the_directory) if os.path.isfile(os.path.join(the_directory, f)) and re.search(r'^[A-Za-z0-9]', f)])
+        if os.path.isdir(the_directory):
+            file_list[sec] = sorted([f for f in os.listdir(the_directory) if os.path.isfile(os.path.join(the_directory, f)) and re.search(r'^[A-Za-z0-9]', f)])
+        else:
+            file_list[sec] = []
     for sec, field in section_field.items():
         the_list = []
         for item in file_list[sec]:
@@ -18872,18 +19418,17 @@ def playground_packages():
         the_file = form.file_name.data
         validated = True
         # else:
-            # the_error = ''
-            # for attrib in ('original_file_name', 'file_name', 'license', 'description', 'author_name', 'author_email', 'version', 'url', 'dependencies', 'interview_files', 'template_files', 'module_files', 'static_files', 'sources_files', 'readme', 'github_branch', 'commit_message', 'submit', 'download', 'install', 'pypi', 'github', 'cancel', 'delete'):
-            #     the_field = getattr(form, attrib)
-            #     for error in the_field.errors:
-            #         the_error += str(error)
-            # raise DAError("Form did not validate with " + str(the_error))
+        #     the_error = ''
+        #     for attrib in ('original_file_name', 'file_name', 'license', 'description', 'author_name', 'author_email', 'version', 'url', 'dependencies', 'interview_files', 'template_files', 'module_files', 'static_files', 'sources_files', 'readme', 'github_branch', 'commit_message', 'submit', 'download', 'install', 'pypi', 'github', 'cancel', 'delete'):
+        #         the_field = getattr(form, attrib)
+        #         for error in the_field.errors:
+        #             the_error += str(error)
+        #     raise DAError("Form did not validate with " + str(the_error))
     the_file = re.sub(r'[^A-Za-z0-9\-\_\.]+', '-', the_file)
     the_file = re.sub(r'^docassemble-', r'', the_file)
     the_directory = directory_for(area['playgroundpackages'], current_project)
     files = sorted([f for f in os.listdir(the_directory) if os.path.isfile(os.path.join(the_directory, f)) and re.search(r'^[A-Za-z0-9]', f)])
     editable_files = []
-    mode = "yaml"
     for a_file in files:
         editable_files.append(dict(name=re.sub(r'^docassemble.', r'', a_file), modtime=os.path.getmtime(os.path.join(the_directory, a_file))))
     assign_opacity(editable_files)
@@ -18901,16 +19446,15 @@ def playground_packages():
                 the_file = sorted(editable_files, key=lambda x: x['modtime'])[-1]['name']
             else:
                 the_file = ''
-    #if the_file != '' and not user_can_edit_package(pkgname='docassemble.' + the_file):
-    #    flash(word('Sorry, that package name,') + ' ' + the_file + word(', is already in use by someone else'), 'error')
-    #    validated = False
+    # if the_file != '' and not user_can_edit_package(pkgname='docassemble.' + the_file):
+    #     flash(word('Sorry, that package name,') + ' ' + the_file + word(', is already in use by someone else'), 'error')
+    #     validated = False
     if request.method == 'GET' and the_file in editable_file_listing:
         set_current_file(current_project, 'packages', 'docassemble.' + the_file)
     if the_file == '' and len(file_list['playgroundpackages']) and not is_new:
         the_file = file_list['playgroundpackages'][0]
         the_file = re.sub(r'^docassemble.', r'', the_file)
     old_info = {}
-    on_github = False
     branch_info = []
     github_http = None
     github_ssh = None
@@ -18926,7 +19470,7 @@ def playground_packages():
             filename = os.path.join(directory_for(area['playgroundpackages'], current_project), 'docassemble.' + the_file)
             with open(filename, 'r', encoding='utf-8') as fp:
                 content = fp.read()
-                old_info = yaml.load(content, Loader=yaml.FullLoader)
+                old_info = standardyaml.load(content, Loader=standardyaml.FullLoader)
                 if isinstance(old_info, dict):
                     github_url_from_file = old_info.get('github_url', None)
                     pypi_package_from_file = old_info.get('pypi_package_name', None)
@@ -18936,7 +19480,7 @@ def playground_packages():
                         else:
                             form[field].data = ''
                     if 'dependencies' in old_info and isinstance(old_info['dependencies'], list) and len(old_info['dependencies']):
-                        old_info['dependencies'] = [z for z in map(lambda y: re.sub(r'[\>\<\=].*', '', y), old_info['dependencies'])]
+                        old_info['dependencies'] = list(map(lambda y: re.sub(r'[\>\<\=].*', '', y), old_info['dependencies']))
                         for item in ('docassemble', 'docassemble.base', 'docassemble.webapp'):
                             if item in old_info['dependencies']:
                                 del old_info['dependencies'][item]
@@ -18950,7 +19494,7 @@ def playground_packages():
     if the_file != '' and can_publish_to_github and not is_new:
         github_package_name = 'docassemble-' + the_file
         try:
-            storage = RedisCredStorage(app='github')
+            storage = RedisCredStorage(oauth_app='github')
             credentials = storage.get()
             if not credentials or credentials.invalid:
                 if form.github.data:
@@ -18959,8 +19503,7 @@ def playground_packages():
                     flow = get_github_flow()
                     uri = flow.step1_get_authorize_url(state=state_string)
                     return redirect(uri)
-                else:
-                    raise Exception('GitHub integration expired.')
+                raise Exception('GitHub integration expired.')
             http = credentials.authorize(httplib2.Http())
             resp, content = http.request("https://api.github.com/user", "GET")
             if int(resp['status']) == 200:
@@ -18991,7 +19534,6 @@ def playground_packages():
                 github_message = word('This package is') + ' <a target="_blank" href="' + repo_info.get('html_url', 'about:blank') + '">' + word("published on GitHub") + '</a>.'
                 if github_author_name:
                     github_message += "  " + word("The author is") + " " + github_author_name + "."
-                on_github = True
                 branch_info = get_branch_info(http, repo_info['full_name'])
                 found = True
                 if github_url_from_file is None or github_url_from_file in [github_ssh, github_http]:
@@ -19008,7 +19550,6 @@ def playground_packages():
                     if repo_info['private']:
                         github_use_ssh = True
                     github_message = word('This package is') + ' <a target="_blank" href="' + repo_info.get('html_url', 'about:blank') + '">' + word("published on GitHub") + '</a>.'
-                    on_github = True
                     branch_info = get_branch_info(http, repo_info['full_name'])
                     found = True
                     if github_url_from_file is None or github_url_from_file in [github_ssh, github_http]:
@@ -19027,7 +19568,6 @@ def playground_packages():
                         if repo_info['private']:
                             github_use_ssh = True
                         github_message = word('This package is') + ' <a target="_blank" href="' + repo_info.get('html_url', 'about:blank') + '">' + word("published on GitHub") + '</a>.'
-                        on_github = True
                         branch_info = get_branch_info(http, repo_info['full_name'])
                         found = True
                         if github_url_from_file is None or github_url_from_file in [github_ssh, github_http]:
@@ -19037,7 +19577,6 @@ def playground_packages():
                 github_message = word('This package is not yet published on your GitHub account.')
         except Exception as e:
             logmessage('playground_packages: GitHub error.  ' + str(e))
-            on_github = None
             github_message = word('Unable to determine if the package is published on your GitHub account.')
     if request.method == 'POST' and 'uploadfile' in request.files:
         the_files = request.files.getlist('uploadfile')
@@ -19046,10 +19585,9 @@ def playground_packages():
             the_timezone = zoneinfo.ZoneInfo(current_user.timezone)
         else:
             the_timezone = zoneinfo.ZoneInfo(get_default_timezone())
-        epoch_date = datetime.datetime(1970, 1, 1).replace(tzinfo=datetime.timezone.utc)
         if the_files:
             for up_file in the_files:
-                zip_filename = werkzeug.utils.secure_filename(up_file.filename)
+                # zip_filename = werkzeug.utils.secure_filename(up_file.filename)
                 zippath = tempfile.NamedTemporaryFile(mode="wb", suffix=".zip", prefix="datemp", delete=False)
                 up_file.save(zippath.name)
                 area_sec = dict(templates='playgroundtemplate', static='playgroundstatic', sources='playgroundsources', questions='playground')
@@ -19080,7 +19618,7 @@ def playground_packages():
                         flash(word("The zip file did not contain a docassemble add-on package."), 'error')
                         return redirect(url_for('playground_packages', project=current_project, file=the_file))
                     for zinfo in zf.infolist():
-                        #logmessage("Found a " + zinfo.filename)
+                        # logmessage("Found a " + zinfo.filename)
                         if zinfo.filename.endswith('/'):
                             continue
                         (directory, filename) = os.path.split(zinfo.filename)
@@ -19132,17 +19670,17 @@ def playground_packages():
                                 inner_item = re.sub(r'^"+', '', inner_item)
                                 the_list.append(inner_item)
                             extracted[m.group(1)] = the_list
-                    info_dict = dict(readme=readme_text, interview_files=data_files['questions'], sources_files=data_files['sources'], static_files=data_files['static'], module_files=data_files['modules'], template_files=data_files['templates'], dependencies=[z for z in map(lambda y: re.sub(r'[\>\<\=].*', '', y), extracted.get('install_requires', []))], description=extracted.get('description', ''), author_name=extracted.get('author', ''), author_email=extracted.get('author_email', ''), license=extracted.get('license', ''), url=extracted.get('url', ''), version=extracted.get('version', ''))
+                    info_dict = dict(readme=readme_text, interview_files=data_files['questions'], sources_files=data_files['sources'], static_files=data_files['static'], module_files=data_files['modules'], template_files=data_files['templates'], dependencies=list(map(lambda y: re.sub(r'[\>\<\=].*', '', y), extracted.get('install_requires', []))), description=extracted.get('description', ''), author_name=extracted.get('author', ''), author_email=extracted.get('author_email', ''), license=extracted.get('license', ''), url=extracted.get('url', ''), version=extracted.get('version', ''))
 
-                    info_dict['dependencies'] = [x for x in [z for z in map(lambda y: re.sub(r'[\>\<\=].*', '', y), info_dict['dependencies'])] if x not in ('docassemble', 'docassemble.base', 'docassemble.webapp')]
+                    info_dict['dependencies'] = [x for x in map(lambda y: re.sub(r'[\>\<\=].*', '', y), info_dict['dependencies']) if x not in ('docassemble', 'docassemble.base', 'docassemble.webapp')]
                     package_name = re.sub(r'^docassemble\.', '', extracted.get('name', expected_name))
                     with open(os.path.join(directory_for(area['playgroundpackages'], current_project), 'docassemble.' + package_name), 'w', encoding='utf-8') as fp:
-                        the_yaml = yaml.safe_dump(info_dict, default_flow_style=False, default_style='|')
+                        the_yaml = standardyaml.safe_dump(info_dict, default_flow_style=False, default_style='|')
                         fp.write(str(the_yaml))
-                    for key in r.keys('da:interviewsource:docassemble.playground' + str(current_user.id) + project_name(current_project) + ':*'):
+                    for key in r.keys('da:interviewsource:docassemble.playground' + str(playground_user.id) + project_name(current_project) + ':*'):
                         r.incr(key.decode())
-                    for sec in area:
-                        area[sec].finalize()
+                    for the_area in area.values():
+                        the_area.finalize()
                     the_file = package_name
                 zippath.close()
         if show_message:
@@ -19176,7 +19714,7 @@ def playground_packages():
             the_file = result['package_name']
             if show_message:
                 flash(word("The package was unpacked into the Playground."), 'success')
-            #shutil.rmtree(directory)
+            # shutil.rmtree(directory)
             if result['need_to_restart']:
                 return redirect(url_for('restart_page', next=url_for('playground_packages', file=the_file, project=current_project)))
             return redirect(url_for('playground_packages', project=current_project, file=the_file))
@@ -19209,7 +19747,7 @@ def playground_packages():
         new_info = {}
         for field in ('license', 'description', 'author_name', 'author_email', 'version', 'url', 'readme', 'dependencies', 'interview_files', 'template_files', 'module_files', 'static_files', 'sources_files'):
             new_info[field] = form[field].data
-        #logmessage("found " + str(new_info))
+        # logmessage("found " + str(new_info))
         if form.submit.data or form.download.data or form.install.data or form.pypi.data or form.github.data:
             if the_file != '':
                 area['playgroundpackages'].finalize()
@@ -19228,12 +19766,12 @@ def playground_packages():
                 if os.path.isfile(filename):
                     with open(filename, 'r', encoding='utf-8') as fp:
                         content = fp.read()
-                        old_info = yaml.load(content, Loader=yaml.FullLoader)
+                        old_info = standardyaml.load(content, Loader=standardyaml.FullLoader)
                     for name in ('github_url', 'github_branch', 'pypi_package_name'):
                         if old_info.get(name, None):
                             new_info[name] = old_info[name]
                 with open(filename, 'w', encoding='utf-8') as fp:
-                    the_yaml = yaml.safe_dump(new_info, default_flow_style=False, default_style = '|')
+                    the_yaml = standardyaml.safe_dump(new_info, default_flow_style=False, default_style='|')
                     fp.write(str(the_yaml))
                 area['playgroundpackages'].finalize()
                 if form.download.data:
@@ -19243,15 +19781,13 @@ def playground_packages():
                 if form.pypi.data:
                     if form.install_also.data:
                         return redirect(url_for('create_playground_package', package=the_file, project=current_project, pypi='1', install='1'))
-                    else:
-                        return redirect(url_for('create_playground_package', package=the_file, project=current_project, pypi='1'))
+                    return redirect(url_for('create_playground_package', package=the_file, project=current_project, pypi='1'))
                 if form.github.data:
                     the_branch = form.github_branch.data
                     if the_branch == "<new>":
                         the_branch = re.sub(r'[^A-Za-z0-9\_\-]', r'', str(form.github_branch_new.data))
                         return redirect(url_for('create_playground_package', project=current_project, package=the_file, github='1', commit_message=form.commit_message.data, new_branch=str(the_branch), pypi_also=('1' if form.pypi_also.data else '0'), install_also=('1' if form.install_also.data else '0')))
-                    else:
-                        return redirect(url_for('create_playground_package', project=current_project, package=the_file, github='1', commit_message=form.commit_message.data, branch=str(the_branch), pypi_also=('1' if form.pypi_also.data else '0'), install_also=('1' if form.install_also.data else '0')))
+                    return redirect(url_for('create_playground_package', project=current_project, package=the_file, github='1', commit_message=form.commit_message.data, branch=str(the_branch), pypi_also=('1' if form.pypi_also.data else '0'), install_also=('1' if form.install_also.data else '0')))
                 the_time = formatted_current_time()
                 if show_message:
                     flash(word('The package information was saved.'), 'success')
@@ -19505,20 +20041,25 @@ def playground_packages():
         form.author_name.data = current_user.first_name + " " + current_user.last_name
     if form.author_email.data in ('', None) and current_user.email:
         form.author_email.data = current_user.email
+    if current_user.id != playground_user.id:
+        header += " / " + playground_user.email
     if current_project != 'default':
         header += " / " + current_project
-    response = make_response(render_template('pages/playgroundpackages.html', current_project=current_project, branch=default_branch, version_warning=None, bodyclass='daadminbody', can_publish_to_pypi=can_publish_to_pypi, pypi_message=pypi_message, can_publish_to_github=can_publish_to_github, github_message=github_message, github_url=the_github_url, pypi_package_name=the_pypi_package_name, back_button=back_button, tab_title=header, page_title=header, extra_css=Markup('\n    <link href="' + url_for('static', filename='app/playgroundbundle.css', v=da_version) + '" rel="stylesheet">'), extra_js=Markup(extra_js), header=header, upload_header=upload_header, edit_header=edit_header, description=description, form=form, fileform=fileform, files=files, file_list=file_list, userid=current_user.id, editable_files=sorted(editable_files, key=lambda y: y['name'].lower()), current_file=the_file, after_text=after_text, section_name=section_name, section_sec=section_sec, section_field=section_field, package_names=sorted(package_names, key=lambda y: y.lower()), any_files=any_files), 200)
+    response = make_response(render_template('pages/playgroundpackages.html', current_project=current_project, branch=default_branch, version_warning=None, bodyclass='daadminbody', can_publish_to_pypi=can_publish_to_pypi, pypi_message=pypi_message, can_publish_to_github=can_publish_to_github, github_message=github_message, github_url=the_github_url, pypi_package_name=the_pypi_package_name, back_button=back_button, tab_title=header, page_title=header, extra_css=Markup('\n    <link href="' + url_for('static', filename='app/playgroundbundle.css', v=da_version) + '" rel="stylesheet">'), extra_js=Markup(extra_js), header=header, upload_header=upload_header, edit_header=edit_header, description=description, form=form, fileform=fileform, files=files, file_list=file_list, userid=playground_user.id, editable_files=sorted(editable_files, key=lambda y: y['name'].lower()), current_file=the_file, after_text=after_text, section_name=section_name, section_sec=section_sec, section_field=section_field, package_names=sorted(package_names, key=lambda y: y.lower()), any_files=any_files), 200)
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
+
 
 def github_as_http(url):
     if url.startswith('http'):
         return url
-    return re.sub('^[^@]+@([^:]+):(.*)\.git$', r'https://\1/\2', url)
+    return re.sub(r'^[^@]+@([^:]+):(.*)\.git$', r'https://\1/\2', url)
+
 
 def copy_if_different(source, destination):
     if (not os.path.isfile(destination)) or filecmp.cmp(source, destination) is False:
         shutil.copyfile(source, destination)
+
 
 def splitall(path):
     allparts = []
@@ -19527,13 +20068,13 @@ def splitall(path):
         if parts[0] == path:
             allparts.insert(0, parts[0])
             break
-        elif parts[1] == path:
+        if parts[1] == path:
             allparts.insert(0, parts[1])
             break
-        else:
-            path = parts[0]
-            allparts.insert(0, parts[1])
+        path = parts[0]
+        allparts.insert(0, parts[1])
     return allparts
+
 
 @app.route('/playground_redirect_poll', methods=['GET'])
 @login_required
@@ -19541,14 +20082,16 @@ def splitall(path):
 def playground_redirect_poll():
     if not app.config['ENABLE_PLAYGROUND']:
         return ('File not found', 404)
-    key = 'da:runplayground:' + str(current_user.id)
+    playground_user = get_playground_user()
+    key = 'da:runplayground:' + str(playground_user.id)
     the_url = r.get(key)
-    #logmessage("playground_redirect: key " + str(key) + " is " + str(the_url))
+    # logmessage("playground_redirect: key " + str(key) + " is " + str(the_url))
     if the_url is not None:
         the_url = the_url.decode()
         r.delete(key)
         return jsonify(dict(success=True, url=the_url))
     return jsonify(dict(success=False, url=the_url))
+
 
 @app.route('/playground_redirect', methods=['GET', 'POST'])
 @login_required
@@ -19556,11 +20099,12 @@ def playground_redirect_poll():
 def playground_redirect():
     if not app.config['ENABLE_PLAYGROUND']:
         return ('File not found', 404)
-    key = 'da:runplayground:' + str(current_user.id)
+    playground_user = get_playground_user()
+    key = 'da:runplayground:' + str(playground_user.id)
     counter = 0
     while counter < 15:
         the_url = r.get(key)
-        #logmessage("playground_redirect: key " + str(key) + " is " + str(the_url))
+        # logmessage("playground_redirect: key " + str(key) + " is " + str(the_url))
         if the_url is not None:
             the_url = the_url.decode()
             r.delete(key)
@@ -19568,6 +20112,7 @@ def playground_redirect():
         time.sleep(1)
         counter += 1
     return ('File not found', 404)
+
 
 def upload_js():
     return """
@@ -19588,6 +20133,7 @@ def upload_js():
         $("#uploadfile").on('change', function(event){
           $("#fileform").submit();
         });"""
+
 
 def search_js(form=None):
     if form is None:
@@ -19749,7 +20295,9 @@ function update_search(event){
 
 """
 
+
 def variables_js(form=None, office_mode=False):
+    playground_user = get_playground_user()
     output = """
 function activatePopovers(){
   var daPopoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
@@ -19844,8 +20392,8 @@ function activateVariables(){
   });
 }
 
-var interviewBaseUrl = '""" + url_for('index', reset='1', cache='0', i='docassemble.playground' + str(current_user.id) + ':.yml') + """';
-var shareBaseUrl = '""" + url_for('index', i='docassemble.playground' + str(current_user.id) + ':.yml') + """';
+var interviewBaseUrl = '""" + url_for('index', reset='1', cache='0', i='docassemble.playground' + str(playground_user.id) + ':.yml') + """';
+var shareBaseUrl = '""" + url_for('index', i='docassemble.playground' + str(playground_user.id) + ':.yml') + """';
 
 function updateRunLink(){
   if (currentProject == 'default'){
@@ -19911,6 +20459,7 @@ $( document ).ready(function() {
 """
     return output
 
+
 @app.route("/varsreport", methods=['GET'])
 @login_required
 @roles_required(['admin', 'developer'])
@@ -19918,7 +20467,8 @@ def variables_report():
     if not app.config['ENABLE_PLAYGROUND']:
         return ('File not found', 404)
     setup_translation()
-    playground = SavedFile(current_user.id, fix=True, section='playground')
+    playground_user = get_playground_user()
+    playground = SavedFile(playground_user.id, fix=True, section='playground')
     the_file = request.args.get('file', None)
     if the_file is not None:
         the_file = secure_filename_spaces_ok(the_file)
@@ -19929,15 +20479,15 @@ def variables_report():
         return jsonify(success=False, reason=1)
     if the_file is None or the_file not in files:
         return jsonify(success=False, reason=2)
-    interview_source = docassemble.base.parse.interview_source_from_string('docassemble.playground' + str(current_user.id) + project_name(current_project) + ':' + the_file)
+    interview_source = docassemble.base.parse.interview_source_from_string('docassemble.playground' + str(playground_user.id) + project_name(current_project) + ':' + the_file)
     interview_source.set_testing(True)
     interview = interview_source.get_interview()
     ensure_ml_file_exists(interview, the_file, current_project)
-    yaml_file = 'docassemble.playground' + str(current_user.id) + project_name(current_project) + ':' + the_file
+    yaml_file = 'docassemble.playground' + str(playground_user.id) + project_name(current_project) + ':' + the_file
     the_current_info = current_info(yaml=yaml_file, req=request, action=None, device_id=request.cookies.get('ds', None))
     docassemble.base.functions.this_thread.current_info = the_current_info
     interview_status = docassemble.base.parse.InterviewStatus(current_info=the_current_info)
-    variables_html, vocab_list, vocab_dict = get_vars_in_use(interview, interview_status, debug_mode=False, current_project=current_project)
+    variables_html, vocab_list, vocab_dict = get_vars_in_use(interview, interview_status, debug_mode=False, current_project=current_project)  # pylint: disable=unused-variable
     results = []
     result_dict = {}
     for name in vocab_list:
@@ -19974,15 +20524,17 @@ def variables_report():
                         names_seen[subname]['usage'].append(the_type)
     return jsonify(success=True, yaml_file=yaml_file, items=results)
 
+
 @app.route('/playgroundvariables', methods=['POST'])
 @login_required
 @roles_required(['developer', 'admin'])
 def playground_variables():
-    current_project = get_current_project()
+    setup_translation()
     if not app.config['ENABLE_PLAYGROUND']:
         return ('File not found', 404)
-    setup_translation()
-    playground = SavedFile(current_user.id, fix=True, section='playground')
+    playground_user = get_playground_user()
+    current_project = get_current_project()
+    playground = SavedFile(playground_user.id, fix=True, section='playground')
     the_directory = directory_for(playground, current_project)
     files = sorted([f for f in os.listdir(the_directory) if os.path.isfile(os.path.join(the_directory, f)) and re.search(r'^[A-Za-z0-9]', f)])
     if len(files) == 0:
@@ -19993,7 +20545,7 @@ def playground_variables():
         if post_data['variablefile'] in files:
             if 'changed' in post_data and int(post_data['changed']):
                 set_variable_file(current_project, active_file)
-            interview_source = docassemble.base.parse.interview_source_from_string('docassemble.playground' + str(current_user.id) + project_name(current_project) + ':' + active_file)
+            interview_source = docassemble.base.parse.interview_source_from_string('docassemble.playground' + str(playground_user.id) + project_name(current_project) + ':' + active_file)
             interview_source.set_testing(True)
         else:
             if active_file == '' and current_project == 'default':
@@ -20001,37 +20553,40 @@ def playground_variables():
             content = ''
             if 'playground_content' in post_data:
                 content = re.sub(r'\r\n', r'\n', post_data['playground_content'])
-            interview_source = docassemble.base.parse.InterviewSourceString(content=content, directory=the_directory, package="docassemble.playground" + str(current_user.id) + project_name(current_project), path="docassemble.playground" + str(current_user.id) + project_name(current_project) + ":" + active_file, testing=True)
+            interview_source = docassemble.base.parse.InterviewSourceString(content=content, directory=the_directory, package="docassemble.playground" + str(playground_user.id) + project_name(current_project), path="docassemble.playground" + str(playground_user.id) + project_name(current_project) + ":" + active_file, testing=True)
         interview = interview_source.get_interview()
         ensure_ml_file_exists(interview, active_file, current_project)
-        the_current_info = current_info(yaml='docassemble.playground' + str(current_user.id) + project_name(current_project) + ':' + active_file, req=request, action=None, device_id=request.cookies.get('ds', None))
+        the_current_info = current_info(yaml='docassemble.playground' + str(playground_user.id) + project_name(current_project) + ':' + active_file, req=request, action=None, device_id=request.cookies.get('ds', None))
         docassemble.base.functions.this_thread.current_info = the_current_info
         interview_status = docassemble.base.parse.InterviewStatus(current_info=the_current_info)
-        variables_html, vocab_list, vocab_dict = get_vars_in_use(interview, interview_status, debug_mode=False, current_project=current_project)
+        variables_html, vocab_list, vocab_dict = get_vars_in_use(interview, interview_status, debug_mode=False, current_project=current_project)  # pylint: disable=unused-variable
         return jsonify(success=True, variables_html=variables_html, vocab_list=vocab_list, current_project=current_project)
     return jsonify(success=False, reason=2)
 
+
 def ensure_ml_file_exists(interview, yaml_file, current_project):
+    playground_user = get_playground_user()
     if len(interview.mlfields) > 0:
         if hasattr(interview, 'ml_store'):
             parts = interview.ml_store.split(':')
-            if parts[0] != 'docassemble.playground' + str(current_user.id) + current_project:
+            if parts[0] != 'docassemble.playground' + str(playground_user.id) + current_project:
                 return
             source_filename = re.sub(r'.*/', '', parts[1])
         else:
             source_filename = 'ml-' + re.sub(r'\.ya?ml$', '', yaml_file) + '.json'
-        #logmessage("Source filename is " + source_filename)
-        source_dir = SavedFile(current_user.id, fix=False, section='playgroundsources')
+        # logmessage("Source filename is " + source_filename)
+        source_dir = SavedFile(playground_user.id, fix=False, section='playgroundsources')
         source_directory = directory_for(source_dir, current_project)
         if current_project != 'default':
             source_filename = os.path.join(current_project, source_filename)
         if source_filename not in source_dir.list_of_files():
-            #logmessage("Source filename does not exist yet")
+            # logmessage("Source filename does not exist yet")
             source_dir.fix()
             source_path = os.path.join(source_directory, source_filename)
             with open(source_path, 'a', encoding='utf-8'):
                 os.utime(source_path, None)
             source_dir.finalize()
+
 
 def assign_opacity(files):
     if len(files) == 1:
@@ -20043,20 +20598,22 @@ def assign_opacity(files):
             file_dict['opacity'] = round(0.2 + 0.8*(indexno/max_indexno), 2)
             indexno += 1.0
 
+
 @app.route('/playground_run', methods=['GET', 'POST'])
 @login_required
 @roles_required(['developer', 'admin'])
 def playground_page_run():
+    setup_translation()
     if not app.config['ENABLE_PLAYGROUND']:
         return ('File not found', 404)
-    setup_translation()
+    playground_user = get_playground_user()
     current_project = get_current_project()
     the_file = secure_filename_spaces_ok(request.args.get('file'))
     if the_file:
-        active_interview_string = 'docassemble.playground' + str(current_user.id) + project_name(current_project) + ':' + the_file
+        active_interview_string = 'docassemble.playground' + str(playground_user.id) + project_name(current_project) + ':' + the_file
         the_url = url_for('index', reset=1, i=active_interview_string)
-        key = 'da:runplayground:' + str(current_user.id)
-        #logmessage("Setting key " + str(key) + " to " + str(the_url))
+        key = 'da:runplayground:' + str(playground_user.id)
+        # logmessage("Setting key " + str(key) + " to " + str(the_url))
         pipe = r.pipeline()
         pipe.set(key, the_url)
         pipe.expire(key, 25)
@@ -20064,9 +20621,11 @@ def playground_page_run():
         return redirect(url_for('playground_page', file=the_file, project=current_project))
     return redirect(url_for('playground_page', project=current_project))
 
+
 def get_list_of_projects(user_id):
     playground = SavedFile(user_id, fix=False, section='playground')
     return playground.list_of_dirs()
+
 
 def rename_project(user_id, old_name, new_name):
     fix_package_folder()
@@ -20075,6 +20634,7 @@ def rename_project(user_id, old_name, new_name):
         if os.path.isdir(os.path.join(area.directory, old_name)):
             os.rename(os.path.join(area.directory, old_name), os.path.join(area.directory, new_name))
             area.finalize()
+
 
 def create_project(user_id, new_name):
     fix_package_folder()
@@ -20088,20 +20648,25 @@ def create_project(user_id, new_name):
             os.utime(path, None)
         area.finalize()
 
-def delete_project(user_id, project_name):
+
+def delete_project(user_id, the_project_name):
     fix_package_folder()
     for sec in ('', 'sources', 'static', 'template', 'modules', 'packages'):
         area = SavedFile(user_id, fix=True, section='playground' + sec)
-        area.delete_directory(project_name)
+        area.delete_directory(the_project_name)
         area.finalize()
+
 
 @app.route('/playgroundproject', methods=['GET', 'POST'])
 @login_required
 @roles_required(['developer', 'admin'])
 def playground_project():
     setup_translation()
+    if not app.config['ENABLE_PLAYGROUND']:
+        return ('File not found', 404)
     use_gd = bool(app.config['USE_GOOGLE_DRIVE'] is True and get_gd_folder() is not None)
     use_od = bool(use_gd is False and app.config['USE_ONEDRIVE'] is True and get_od_folder() is not None)
+    playground_user = get_playground_user()
     current_project = get_current_project()
     if request.args.get('rename'):
         form = RenameProject(request.form)
@@ -20112,7 +20677,7 @@ def playground_project():
             if current_project == 'default':
                 flash(word("You cannot rename the default Playground project"), 'error')
             else:
-                rename_project(current_user.id, current_project, form.name.data)
+                rename_project(playground_user.id, current_project, form.name.data)
                 if use_gd:
                     try:
                         rename_gd_project(current_project, form.name.data)
@@ -20135,10 +20700,10 @@ def playground_project():
         description = word("Enter the name of the new project you want to create.")
         page_title = word("New project")
         if request.method == 'POST' and form.validate():
-            if form.name.data == 'default' or form.name.data in get_list_of_projects(current_user.id):
+            if form.name.data == 'default' or form.name.data in get_list_of_projects(playground_user.id):
                 flash(word("The project name %s is not available.") % (form.name.data, ), "error")
             else:
-                create_project(current_user.id, form.name.data)
+                create_project(playground_user.id, form.name.data)
                 current_project = set_current_project(form.name.data)
                 mode = 'standard'
                 return redirect(url_for('playground_page', project=current_project))
@@ -20164,7 +20729,7 @@ def playground_project():
                             logmessage("playground_project: unable to delete project on OneDrive.  " + str(the_err))
                         except:
                             logmessage("playground_project: unable to delete project on OneDrive.")
-                delete_project(current_user.id, current_project)
+                delete_project(playground_user.id, current_project)
                 flash(word("The project %s was deleted.") % (current_project,), "success")
                 current_project = set_current_project('default')
                 return redirect(url_for('playground_project', project=current_project))
@@ -20174,9 +20739,10 @@ def playground_project():
         page_title = word("Projects")
         description = word("You can divide up your Playground into multiple separate areas, apart from your default Playground area.  Each Project has its own question files and Folders.")
     back_button = Markup('<span class="navbar-brand navbar-nav dabackicon me-3"><a href="' + url_for('playground_page', project=current_project) + '" class="dabackbuttoncolor nav-link" title=' + json.dumps(word("Go back to the main Playground page")) + '><i class="fas fa-chevron-left"></i><span class="daback">' + word('Back') + '</span></a></span>')
-    response = make_response(render_template('pages/manage_projects.html', version_warning=None, bodyclass='daadminbody', back_button=back_button, tab_title=word("Projects"), description=description, page_title=page_title, projects=get_list_of_projects(current_user.id), current_project=current_project, mode=mode, form=form), 200)
+    response = make_response(render_template('pages/manage_projects.html', version_warning=None, bodyclass='daadminbody', back_button=back_button, tab_title=word("Projects"), description=description, page_title=page_title, projects=get_list_of_projects(playground_user.id), current_project=current_project, mode=mode, form=form), 200)
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
+
 
 def set_current_project(new_name):
     key = 'da:playground:project:' + str(current_user.id)
@@ -20185,6 +20751,7 @@ def set_current_project(new_name):
     pipe.expire(key, 2592000)
     pipe.execute()
     return new_name
+
 
 def get_current_project():
     current_project = request.args.get('project', None)
@@ -20204,6 +20771,7 @@ def get_current_project():
         return 'default'
     return current_project
 
+
 def set_current_file(current_project, section, new_name):
     key = 'da:playground:project:' + str(current_user.id) + ':playground' + section + ':' + current_project
     pipe = r.pipeline()
@@ -20212,6 +20780,7 @@ def set_current_file(current_project, section, new_name):
     pipe.execute()
     return new_name
 
+
 def get_current_file(current_project, section):
     key = 'da:playground:project:' + str(current_user.id) + ':playground' + section + ':' + current_project
     current_file = r.get(key)
@@ -20219,9 +20788,20 @@ def get_current_file(current_project, section):
         return ''
     return current_file.decode()
 
+
 def delete_current_file(current_project, section):
     key = 'da:playground:project:' + str(current_user.id) + ':playground' + section + ':' + current_project
     r.delete(key)
+
+
+def clear_current_playground_info():
+    r.delete('da:playground:project:' + str(current_user.id))
+    to_delete = []
+    for key in r.keys('da:playground:project:' + str(current_user.id) + ':playground*'):
+        to_delete.append(key)
+    for key in to_delete:
+        r.delete(key)
+
 
 def set_variable_file(current_project, variable_file):
     key = 'da:playground:project:' + str(current_user.id) + ':' + current_project + ':variablefile'
@@ -20231,6 +20811,7 @@ def set_variable_file(current_project, variable_file):
     pipe.execute()
     return variable_file
 
+
 def get_variable_file(current_project):
     key = 'da:playground:project:' + str(current_user.id) + ':' + current_project + ':variablefile'
     variable_file = r.get(key)
@@ -20238,17 +20819,71 @@ def get_variable_file(current_project):
         variable_file = variable_file.decode()
     return variable_file
 
+
 def delete_variable_file(current_project):
     key = 'da:playground:project:' + str(current_user.id) + ':' + current_project + ':variablefile'
     r.delete(key)
+
+
+def get_list_of_playgrounds():
+    user_list = []
+    for user in db.session.execute(select(UserModel.id, UserModel.social_id, UserModel.email, UserModel.first_name, UserModel.last_name).join(UserRoles, UserModel.id == UserRoles.user_id).join(Role, UserRoles.role_id == Role.id).where(and_(UserModel.active == True, or_(Role.name == 'admin', Role.name == 'developer'))).order_by(UserModel.id)):  # noqa: E712 # pylint: disable=singleton-comparison
+        if user.social_id.startswith('disabled$'):
+            continue
+        user_info = {}
+        for attrib in ('id', 'email'):
+            user_info[attrib] = getattr(user, attrib)
+        name_string = ''
+        if user.first_name:
+            name_string += str(user.first_name) + " "
+        if user.last_name:
+            name_string += str(user.last_name)
+        user_info['name'] = name_string
+        user_list.append(user_info)
+    return user_list
+
+
+@app.route('/playgroundselect', methods=['GET', 'POST'])
+@login_required
+@roles_required(['developer', 'admin'])
+def playground_select():
+    setup_translation()
+    if not (app.config['ENABLE_PLAYGROUND'] and app.config['ENABLE_SHARING_PLAYGROUNDS']):
+        return ('File not found', 404)
+    current_project = get_current_project()
+    if request.args.get('select'):
+        clear_current_playground_info()
+        set_playground_user(int(request.args['select']))
+        return redirect(url_for('playground_page', project='default'))
+    form = None
+    mode = 'standard'
+    page_title = word("All Playgrounds")
+    description = word("You can use the Playground of another user who has admin or developer privileges.")
+    back_button = Markup('<span class="navbar-brand navbar-nav dabackicon me-3"><a href="' + url_for('playground_page', project=current_project) + '" class="dabackbuttoncolor nav-link" title=' + json.dumps(word("Go back to the main Playground page")) + '><i class="fas fa-chevron-left"></i><span class="daback">' + word('Back') + '</span></a></span>')
+    response = make_response(render_template('pages/manage_playgrounds.html', version_warning=None, bodyclass='daadminbody', back_button=back_button, tab_title=word("All Playgrounds"), description=description, page_title=page_title, playgrounds=get_list_of_playgrounds(), current_project=current_project, mode=mode, form=form), 200)
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
+    return response
+
+
+@app.route("/pgcodecache", methods=['GET'])
+@login_required
+@roles_required(['developer', 'admin'])
+def get_pg_var_cache():
+    response = make_response(ruamel.yaml.safe_dump(pg_code_cache, default_flow_style=False, default_style='"', allow_unicode=True, width=10000).encode('utf-8'), 200)
+    response.headers['Content-Disposition'] = 'attachment; filename=pgcodecache.yml'
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
+    response.headers['Content-Type'] = 'text/plain; charset=utf-8'
+    return response
+
 
 @app.route('/playground', methods=['GET', 'POST'])
 @login_required
 @roles_required(['developer', 'admin'])
 def playground_page():
+    setup_translation()
     if not app.config['ENABLE_PLAYGROUND']:
         return ('File not found', 404)
-    setup_translation()
+    playground_user = get_playground_user()
     current_project = get_current_project()
     if 'ajax' in request.form and int(request.form['ajax']):
         is_ajax = True
@@ -20275,7 +20910,7 @@ def playground_page():
         is_new = bool(not valid_form and form.status.data == 'new')
     if is_new:
         the_file = ''
-    playground = SavedFile(current_user.id, fix=True, section='playground')
+    playground = SavedFile(playground_user.id, fix=True, section='playground')
     the_directory = directory_for(playground, current_project)
     if current_project != 'default' and not os.path.isdir(the_directory):
         current_project = set_current_project('default')
@@ -20286,7 +20921,7 @@ def playground_page():
             for up_file in the_files:
                 try:
                     filename = secure_filename(up_file.filename)
-                    extension, mimetype = get_ext_and_mimetype(filename)
+                    extension, mimetype = get_ext_and_mimetype(filename)  # pylint: disable=unused-variable
                     if extension not in ('yml', 'yaml'):
                         flash(word("Sorry, only YAML files can be uploaded here.  To upload other types of files, use the Folders."), 'error')
                         return redirect(url_for('playground_page', project=current_project))
@@ -20302,7 +20937,7 @@ def playground_page():
                         flash(word("There was a problem reading the YAML file you uploaded.  Are you sure it is a YAML file?  File was not saved."), 'error')
                         return redirect(url_for('playground_page', project=current_project))
                     playground.finalize()
-                    r.incr('da:interviewsource:docassemble.playground' + str(current_user.id) + project_name(current_project) + ':' + new_file)
+                    r.incr('da:interviewsource:docassemble.playground' + str(playground_user.id) + project_name(current_project) + ':' + new_file)
                     return redirect(url_for('playground_page', project=current_project, file=os.path.basename(filename)))
                 except Exception as errMess:
                     flash("Error of type " + str(type(errMess)) + " processing upload: " + str(errMess), "error")
@@ -20310,7 +20945,7 @@ def playground_page():
     if request.method == 'POST' and (form.submit.data or form.run.data or form.delete.data):
         if valid_form and form.playground_name.data:
             the_file = secure_filename_spaces_ok(form.playground_name.data)
-            #the_file = re.sub(r'[^A-Za-z0-9\_\-\. ]', '', the_file)
+            # the_file = re.sub(r'[^A-Za-z0-9\_\-\. ]', '', the_file)
             if the_file != '':
                 if not re.search(r'\.ya?ml$', the_file):
                     the_file = re.sub(r'\..*', '', the_file) + '.yml'
@@ -20319,12 +20954,12 @@ def playground_page():
                     with open(filename, 'a', encoding='utf-8'):
                         os.utime(filename, None)
             else:
-                #flash(word('You need to type in a name for the interview'), 'error')
+                # flash(word('You need to type in a name for the interview'), 'error')
                 is_new = True
         else:
-            #flash(word('You need to type in a name for the interview'), 'error')
+            # flash(word('You need to type in a name for the interview'), 'error')
             is_new = True
-    #the_file = re.sub(r'[^A-Za-z0-9\_\-\. ]', '', the_file)
+    # the_file = re.sub(r'[^A-Za-z0-9\_\-\. ]', '', the_file)
     files = sorted([dict(name=f, modtime=os.path.getmtime(os.path.join(the_directory, f))) for f in os.listdir(the_directory) if os.path.isfile(os.path.join(the_directory, f)) and re.search(r'^[A-Za-z0-9].*[A-Za-z]$', f)], key=lambda x: x['name'])
     file_listing = [x['name'] for x in files]
     assign_opacity(files)
@@ -20375,18 +21010,17 @@ def playground_page():
             if os.path.isfile(filename_to_del):
                 os.remove(filename_to_del)
                 flash(word('File deleted.'), 'info')
-                r.delete('da:interviewsource:docassemble.playground' + str(current_user.id) + project_name(current_project) + ':' + the_file)
+                r.delete('da:interviewsource:docassemble.playground' + str(playground_user.id) + project_name(current_project) + ':' + the_file)
                 if active_file != the_file:
-                    r.incr('da:interviewsource:docassemble.playground' + str(current_user.id) + project_name(current_project) + ':' + active_file)
+                    r.incr('da:interviewsource:docassemble.playground' + str(playground_user.id) + project_name(current_project) + ':' + active_file)
                 cloud_trash(use_gd, use_od, 'questions', form.playground_name.data, current_project)
                 playground.finalize()
                 current_variable_file = get_variable_file(current_project)
-                if current_variable_file == the_file or current_variable_file == form.playground_name.data:
+                if current_variable_file in (the_file, form.playground_name.data):
                     delete_variable_file(current_project)
                 delete_current_file(current_project, 'questions')
                 return redirect(url_for('playground_page', project=current_project))
-            else:
-                flash(word('File not deleted.  There was an error.'), 'error')
+            flash(word('File not deleted.  There was an error.'), 'error')
         if (form.submit.data or form.run.data):
             if form.original_playground_name.data and form.original_playground_name.data != the_file:
                 old_filename = os.path.join(the_directory, form.original_playground_name.data)
@@ -20405,7 +21039,7 @@ def playground_page():
                 with open(filename, 'r', encoding='utf-8') as fp:
                     orig_content = fp.read()
                     if orig_content == the_content:
-                        #logmessage("No need to save")
+                        # logmessage("No need to save")
                         should_save = False
             if should_save:
                 with open(filename, 'w', encoding='utf-8') as fp:
@@ -20413,8 +21047,8 @@ def playground_page():
             if not form.submit.data and active_file != the_file:
                 active_file = the_file
                 set_variable_file(current_project, active_file)
-            this_interview_string = 'docassemble.playground' + str(current_user.id) + project_name(current_project) + ':' + the_file
-            active_interview_string = 'docassemble.playground' + str(current_user.id) + project_name(current_project) + ':' + active_file
+            this_interview_string = 'docassemble.playground' + str(playground_user.id) + project_name(current_project) + ':' + the_file
+            active_interview_string = 'docassemble.playground' + str(playground_user.id) + project_name(current_project) + ':' + active_file
             r.incr('da:interviewsource:' + this_interview_string)
             if the_file != active_file:
                 r.incr('da:interviewsource:' + active_interview_string)
@@ -20424,8 +21058,8 @@ def playground_page():
                 docassemble.base.interview_cache.clear_cache(active_interview_string)
             if not form.submit.data:
                 the_url = url_for('index', reset=1, i=this_interview_string)
-                key = 'da:runplayground:' + str(current_user.id)
-                #logmessage("Setting key " + str(key) + " to " + str(the_url))
+                key = 'da:runplayground:' + str(playground_user.id)
+                # logmessage("Setting key " + str(key) + " to " + str(the_url))
                 pipe = r.pipeline()
                 pipe.set(key, the_url)
                 pipe.expire(key, 12)
@@ -20435,10 +21069,10 @@ def playground_page():
                 interview_source.set_testing(True)
                 interview = interview_source.get_interview()
                 ensure_ml_file_exists(interview, active_file, current_project)
-                the_current_info = current_info(yaml='docassemble.playground' + str(current_user.id) + project_name(current_project) + ':' + active_file, req=request, action=None, device_id=request.cookies.get('ds', None))
+                the_current_info = current_info(yaml='docassemble.playground' + str(playground_user.id) + project_name(current_project) + ':' + active_file, req=request, action=None, device_id=request.cookies.get('ds', None))
                 docassemble.base.functions.this_thread.current_info = the_current_info
                 interview_status = docassemble.base.parse.InterviewStatus(current_info=the_current_info)
-                variables_html, vocab_list, vocab_dict = get_vars_in_use(interview, interview_status, debug_mode=debug_mode, current_project=current_project)
+                variables_html, vocab_list, vocab_dict = get_vars_in_use(interview, interview_status, debug_mode=debug_mode, current_project=current_project)  # pylint: disable=unused-variable
                 if form.submit.data:
                     flash_message = flash_as_html(word('Saved at') + ' ' + the_time + '.', 'success', is_ajax=is_ajax)
                 else:
@@ -20447,7 +21081,7 @@ def playground_page():
                     console_messages.append(word("Note: it is a best practice to tag every mandatory block with an id."))
                 if interview.issue.get('id_collision', False):
                     console_messages.append(word("Note: more than one block uses id") + " " + interview.issue['id_collision'])
-            except DAError as foo:
+            except DAError:
                 variables_html = None
                 flash_message = flash_as_html(word('Saved at') + ' ' + the_time + '.  ' + word('Problem detected.'), message_type='error', is_ajax=is_ajax)
             if is_ajax:
@@ -20460,13 +21094,13 @@ def playground_page():
             form.original_playground_name.data = the_file
             form.playground_name.data = the_file
             content = fp.read()
-            #if not form.playground_content.data:
-                #form.playground_content.data = content
+            # if not form.playground_content.data:
+            #     form.playground_content.data = content
     if active_file != '':
         is_fictitious = False
-        interview_path = 'docassemble.playground' + str(current_user.id) + project_name(current_project) + ':' + active_file
+        interview_path = 'docassemble.playground' + str(playground_user.id) + project_name(current_project) + ':' + active_file
         if is_default:
-            interview_source = docassemble.base.parse.InterviewSourceString(content=content, directory=the_directory, package="docassemble.playground" + str(current_user.id) + project_name(current_project), path="docassemble.playground" + str(current_user.id) + project_name(current_project) + ":" + active_file, testing=True)
+            interview_source = docassemble.base.parse.InterviewSourceString(content=content, directory=the_directory, package="docassemble.playground" + str(playground_user.id) + project_name(current_project), path="docassemble.playground" + str(playground_user.id) + project_name(current_project) + ":" + active_file, testing=True)
         else:
             interview_source = docassemble.base.parse.interview_source_from_string(interview_path)
             interview_source.set_testing(True)
@@ -20478,13 +21112,13 @@ def playground_page():
             is_new = True
         if form.playground_content.data:
             content = re.sub(r'\r', '', form.playground_content.data)
-            interview_source = docassemble.base.parse.InterviewSourceString(content=content, directory=the_directory, package="docassemble.playground" + str(current_user.id) + project_name(current_project), path="docassemble.playground" + str(current_user.id) + project_name(current_project) + ":" + active_file, testing=True)
+            interview_source = docassemble.base.parse.InterviewSourceString(content=content, directory=the_directory, package="docassemble.playground" + str(playground_user.id) + project_name(current_project), path="docassemble.playground" + str(playground_user.id) + project_name(current_project) + ":" + active_file, testing=True)
         else:
-            interview_source = docassemble.base.parse.InterviewSourceString(content='', directory=the_directory, package="docassemble.playground" + str(current_user.id) + project_name(current_project), path="docassemble.playground" + str(current_user.id) + project_name(current_project) + ":" + active_file, testing=True)
+            interview_source = docassemble.base.parse.InterviewSourceString(content='', directory=the_directory, package="docassemble.playground" + str(playground_user.id) + project_name(current_project), path="docassemble.playground" + str(playground_user.id) + project_name(current_project) + ":" + active_file, testing=True)
     interview = interview_source.get_interview()
     if hasattr(interview, 'mandatory_id_issue') and interview.mandatory_id_issue:
         console_messages.append(word("Note: it is a best practice to tag every mandatory block with an id."))
-    the_current_info = current_info(yaml='docassemble.playground' + str(current_user.id) + project_name(current_project) + ':' + active_file, req=request, action=None, device_id=request.cookies.get('ds', None))
+    the_current_info = current_info(yaml='docassemble.playground' + str(playground_user.id) + project_name(current_project) + ':' + active_file, req=request, action=None, device_id=request.cookies.get('ds', None))
     docassemble.base.functions.this_thread.current_info = the_current_info
     interview_status = docassemble.base.parse.InterviewStatus(current_info=the_current_info)
     variables_html, vocab_list, vocab_dict = get_vars_in_use(interview, interview_status, debug_mode=debug_mode, current_project=current_project)
@@ -21016,7 +21650,7 @@ $( document ).ready(function() {
           return {list: list, from: CodeMirror.Pos(cur.line, start), to: CodeMirror.Pos(cur.line, end)};
         });""" + upload_js() + """
       });
-    </script>"""
+    </script>"""  # noqa: W605
     if keymap:
         kbOpt = 'keyMap: "' + keymap + '", cursorBlinkRate: 0, '
         kbLoad = '<script src="' + url_for('static', filename="codemirror/keymap/" + keymap + ".js", v=da_version) + '"></script>\n    '
@@ -21024,15 +21658,19 @@ $( document ).ready(function() {
         kbOpt = ''
         kbLoad = ''
     page_title = word("Playground")
+    if current_user.id != playground_user.id:
+        page_title += " / " + playground_user.email
     if current_project != 'default':
         page_title += " / " + current_project
-    response = make_response(render_template('pages/playground.html', projects=get_list_of_projects(current_user.id), current_project=current_project, version_warning=None, bodyclass='daadminbody', use_gd=use_gd, use_od=use_od, userid=current_user.id, page_title=Markup(page_title), tab_title=word("Playground"), extra_css=Markup('\n    <link href="' + url_for('static', filename='app/playgroundbundle.css', v=da_version) + '" rel="stylesheet">'), extra_js=Markup('\n    <script src="' + url_for('static', filename="app/playgroundbundle.js", v=da_version) + '"></script>\n    ' + kbLoad + cm_setup + '<script>\n      var daConsoleMessages = ' + json.dumps(console_messages) + ';\n      $("#daDelete").click(function(event){if (originalFileName != $("#playground_name").val() || $("#playground_name").val() == \'\'){ $("#form button[name=\'submit\']").click(); event.preventDefault(); return false; } if(!confirm("' + word("Are you sure that you want to delete this playground file?") + '")){event.preventDefault();}});\n      daTextArea = document.getElementById("playground_content");\n      var daCodeMirror = CodeMirror.fromTextArea(daTextArea, {specialChars: /[\\u00a0\\u0000-\\u001f\\u007f-\\u009f\\u00ad\\u061c\\u200b-\\u200f\\u2028\\u2029\\ufeff]/, mode: "' + ('yamlmixed' if daconfig.get('test yamlmixed mode') else 'yamlmixed') + '", ' + kbOpt + 'tabSize: 2, tabindex: 70, autofocus: false, lineNumbers: true, matchBrackets: true, lineWrapping: ' + ('true' if daconfig.get('wrap lines in playground', True) else 'false') + '});\n      $(window).bind("beforeunload", function(){daCodeMirror.save(); $("#form").trigger("checkform.areYouSure");});\n      $("#form").areYouSure(' + json.dumps({'message': word("There are unsaved changes.  Are you sure you wish to leave this page?")}) + ');\n      $("#form").bind("submit", function(){daCodeMirror.save(); $("#form").trigger("reinitialize.areYouSure"); return true;});\n      daCodeMirror.setSize(null, null);\n      daCodeMirror.setOption("extraKeys", { Tab: function(cm) { var spaces = Array(cm.getOption("indentUnit") + 1).join(" "); cm.replaceSelection(spaces); }, "Ctrl-Space": "autocomplete", "F11": function(cm) { cm.setOption("fullScreen", !cm.getOption("fullScreen")); }, "Esc": function(cm) { if (cm.getOption("fullScreen")) cm.setOption("fullScreen", false); }});\n      daCodeMirror.setOption("coverGutterNextToScrollbar", true);\n' + indent_by(ajax, 6) + '\n      exampleData = JSON.parse(atob("' + pg_ex['encoded_data_dict'] + '"));\n      activateExample("' + str(pg_ex['pg_first_id'][0]) + '", false);\n    $("#my-form").trigger("reinitialize.areYouSure");\n      $("#daVariablesReport").on("shown.bs.modal", function () { daFetchVariableReport(); })\n    </script>'), form=form, fileform=fileform, files=sorted(files, key=lambda y: y['name'].lower()), any_files=any_files, pulldown_files=sorted(pulldown_files, key=lambda y: y.lower()), current_file=the_file, active_file=active_file, content=content, variables_html=Markup(variables_html), example_html=pg_ex['encoded_example_html'], interview_path=interview_path, is_new=str(is_new), valid_form=str(valid_form)), 200)
+    response = make_response(render_template('pages/playground.html', projects=get_list_of_projects(playground_user.id), current_project=current_project, version_warning=None, bodyclass='daadminbody', use_gd=use_gd, use_od=use_od, userid=playground_user.id, page_title=Markup(page_title), tab_title=word("Playground"), extra_css=Markup('\n    <link href="' + url_for('static', filename='app/playgroundbundle.css', v=da_version) + '" rel="stylesheet">'), extra_js=Markup('\n    <script src="' + url_for('static', filename="app/playgroundbundle.js", v=da_version) + '"></script>\n    ' + kbLoad + cm_setup + '<script>\n      var daConsoleMessages = ' + json.dumps(console_messages) + ';\n      $("#daDelete").click(function(event){if (originalFileName != $("#playground_name").val() || $("#playground_name").val() == \'\'){ $("#form button[name=\'submit\']").click(); event.preventDefault(); return false; } if(!confirm("' + word("Are you sure that you want to delete this playground file?") + '")){event.preventDefault();}});\n      daTextArea = document.getElementById("playground_content");\n      var daCodeMirror = CodeMirror.fromTextArea(daTextArea, {specialChars: /[\\u00a0\\u0000-\\u001f\\u007f-\\u009f\\u00ad\\u061c\\u200b-\\u200f\\u2028\\u2029\\ufeff]/, mode: "' + ('yamlmixed' if daconfig.get('test yamlmixed mode') else 'yamlmixed') + '", ' + kbOpt + 'tabSize: 2, tabindex: 70, autofocus: false, lineNumbers: true, matchBrackets: true, lineWrapping: ' + ('true' if daconfig.get('wrap lines in playground', True) else 'false') + '});\n      $(window).bind("beforeunload", function(){daCodeMirror.save(); $("#form").trigger("checkform.areYouSure");});\n      $("#form").areYouSure(' + json.dumps({'message': word("There are unsaved changes.  Are you sure you wish to leave this page?")}) + ');\n      $("#form").bind("submit", function(){daCodeMirror.save(); $("#form").trigger("reinitialize.areYouSure"); return true;});\n      daCodeMirror.setSize(null, null);\n      daCodeMirror.setOption("extraKeys", { Tab: function(cm) { var spaces = Array(cm.getOption("indentUnit") + 1).join(" "); cm.replaceSelection(spaces); }, "Ctrl-Space": "autocomplete", "F11": function(cm) { cm.setOption("fullScreen", !cm.getOption("fullScreen")); }, "Esc": function(cm) { if (cm.getOption("fullScreen")) cm.setOption("fullScreen", false); }});\n      daCodeMirror.setOption("coverGutterNextToScrollbar", true);\n' + indent_by(ajax, 6) + '\n      exampleData = JSON.parse(atob("' + pg_ex['encoded_data_dict'] + '"));\n      activateExample("' + str(pg_ex['pg_first_id'][0]) + '", false);\n    $("#my-form").trigger("reinitialize.areYouSure");\n      $("#daVariablesReport").on("shown.bs.modal", function () { daFetchVariableReport(); })\n    </script>'), form=form, fileform=fileform, files=sorted(files, key=lambda y: y['name'].lower()), any_files=any_files, pulldown_files=sorted(pulldown_files, key=lambda y: y.lower()), current_file=the_file, active_file=active_file, content=content, variables_html=Markup(variables_html), example_html=pg_ex['encoded_example_html'], interview_path=interview_path, is_new=str(is_new), valid_form=str(valid_form), own_playground=bool(playground_user.id == current_user.id)), 200)
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
 
+
 @app.errorhandler(404)
-def page_not_found_error(the_error):
+def page_not_found_error(the_error):  # pylint: disable=unused-argument
     return render_template('pages/404.html'), 404
+
 
 @app.errorhandler(Exception)
 def server_error(the_error):
@@ -21162,12 +21800,16 @@ def server_error(the_error):
         });
         daShowNotifications();
       });
-    </script>"""
+    </script>"""  # noqa: W605
     error_notification(the_error, message=errmess, history=the_history, trace=the_trace, the_request=request, the_vars=the_vars)
-    if (request.path.endswith('/interview') or request.path.endswith('/start') or request.path.endswith('/run')) and 'in error' not in session and docassemble.base.functions.this_thread.interview is not None and 'error action' in docassemble.base.functions.this_thread.interview.consolidated_metadata and docassemble.base.functions.interview_path() is not None:
-        session['in error'] = True
-        #session['action'] = docassemble.base.functions.myb64quote(json.dumps({'action': docassemble.base.functions.this_thread.interview.consolidated_metadata['error action'], 'arguments': dict(error_message=orig_errmess)}))
-        return index(action_argument={'action': docassemble.base.functions.this_thread.interview.consolidated_metadata['error action'], 'arguments': dict(error_message=orig_errmess)}, refer=['error'])
+    if (request.path.endswith('/interview') or request.path.endswith('/start') or request.path.endswith('/run')) and docassemble.base.functions.interview_path() is not None:
+        try:
+            release_lock(docassemble.base.functions.this_thread.current_info['session'], docassemble.base.functions.this_thread.current_info['yaml_filename'])
+        except:
+            pass
+        if 'in error' not in session and docassemble.base.functions.this_thread.interview is not None and 'error action' in docassemble.base.functions.this_thread.interview.consolidated_metadata:
+            session['in error'] = True
+            return index(action_argument={'action': docassemble.base.functions.this_thread.interview.consolidated_metadata['error action'], 'arguments': dict(error_message=orig_errmess)}, refer=['error'])
     show_debug = not bool((not DEBUG) and isinstance(the_error, DAError))
     if int(int(error_code)/100) == 4:
         show_debug = False
@@ -21182,6 +21824,7 @@ def server_error(the_error):
     show_retry = request.path.endswith('/interview') or request.path.endswith('/start') or request.path.endswith('/run')
     return render_template(the_template, verbose=daconfig.get('verbose error messages', True), version_warning=None, tab_title=word("Error"), page_title=word("Error"), error=errmess, historytext=str(the_history), logtext=str(the_trace), extra_js=Markup(script), special_error=special_error_html, show_debug=show_debug, yaml_filename=yaml_filename, show_retry=show_retry), error_code
 
+
 @app.route('/bundle.css', methods=['GET'])
 def css_bundle():
     base_path = pkg_resources.resource_filename(pkg_resources.Requirement.parse('docassemble.webapp'), os.path.join('docassemble', 'webapp', 'static'))
@@ -21191,6 +21834,7 @@ def css_bundle():
             output += fp.read()
         output += "\n"
     return Response(output, mimetype='text/css')
+
 
 @app.route('/playgroundbundle.css', methods=['GET'])
 def playground_css_bundle():
@@ -21202,6 +21846,7 @@ def playground_css_bundle():
         output += "\n"
     return Response(output, mimetype='text/css')
 
+
 @app.route('/bundle.js', methods=['GET'])
 def js_bundle():
     base_path = pkg_resources.resource_filename(pkg_resources.Requirement.parse('docassemble.webapp'), os.path.join('docassemble', 'webapp', 'static'))
@@ -21211,6 +21856,7 @@ def js_bundle():
             output += fp.read()
         output += "\n"
     return Response(output, mimetype='application/javascript')
+
 
 @app.route('/playgroundbundle.js', methods=['GET'])
 def playground_js_bundle():
@@ -21222,6 +21868,7 @@ def playground_js_bundle():
         output += "\n"
     return Response(output, mimetype='application/javascript')
 
+
 @app.route('/adminbundle.js', methods=['GET'])
 def js_admin_bundle():
     base_path = pkg_resources.resource_filename(pkg_resources.Requirement.parse('docassemble.webapp'), os.path.join('docassemble', 'webapp', 'static'))
@@ -21231,6 +21878,7 @@ def js_admin_bundle():
             output += fp.read()
         output += "\n"
     return Response(output, mimetype='application/javascript')
+
 
 @app.route('/bundlewrapjquery.js', methods=['GET'])
 def js_bundle_wrap():
@@ -21243,6 +21891,7 @@ def js_bundle_wrap():
     output += '})(jQuery);'
     return Response(output, mimetype='application/javascript')
 
+
 @app.route('/bundlenojquery.js', methods=['GET'])
 def js_bundle_no_query():
     base_path = pkg_resources.resource_filename(pkg_resources.Requirement.parse('docassemble.webapp'), os.path.join('docassemble', 'webapp', 'static'))
@@ -21253,6 +21902,7 @@ def js_bundle_no_query():
         output += "\n"
     output += ''
     return Response(output, mimetype='application/javascript')
+
 
 @app.route('/packagestatic/<package>/<path:filename>', methods=['GET'])
 def package_static(package, filename):
@@ -21266,7 +21916,7 @@ def package_static(package, filename):
         return redirect(url_for('static', filename='bootstrap/fonts/' + filename, v=da_version))
     try:
         filename = re.sub(r'^\.+', '', filename)
-        filename = re.sub(r'\/\.+', '\/', filename)
+        filename = re.sub(r'\/\.+', '/', filename)
         the_file = docassemble.base.functions.package_data_filename(str(package) + ':data/static/' + str(filename))
     except:
         return ('File not found', 404)
@@ -21274,12 +21924,13 @@ def package_static(package, filename):
         return ('File not found', 404)
     if not os.path.isfile(the_file):
         return ('File not found', 404)
-    extension, mimetype = get_ext_and_mimetype(the_file)
+    extension, mimetype = get_ext_and_mimetype(the_file)  # pylint: disable=unused-variable
     response = send_file(the_file, mimetype=str(mimetype), download_name=filename)
     if attach:
         filename = os.path.basename(filename)
         response.headers['Content-Disposition'] = 'attachment; filename=' + json.dumps(filename)
     return response
+
 
 @app.route('/logfile/<filename>', methods=['GET'])
 @login_required
@@ -21291,14 +21942,15 @@ def logfile(filename):
             return ('File not found', 404)
     else:
         h = httplib2.Http()
-        resp, content = h.request("http://" + LOGSERVER + ':8082', "GET")
+        resp, content = h.request("http://" + LOGSERVER + ':8082', "GET")  # pylint: disable=unused-variable
         try:
-            the_file, headers = urlretrieve("http://" + LOGSERVER + ':8082/' + urllibquote(filename))
+            the_file, headers = urlretrieve("http://" + LOGSERVER + ':8082/' + urllibquote(filename))  # pylint: disable=unused-variable
         except:
             return ('File not found', 404)
     response = send_file(the_file, as_attachment=True, mimetype='text/plain', attachment_filename=filename, cache_timeout=0)
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
+
 
 @app.route('/logs', methods=['GET', 'POST'])
 @login_required
@@ -21306,6 +21958,8 @@ def logfile(filename):
 def logs():
     print("in /logs route")
     setup_translation()
+    if not app.config['ALLOW_LOG_VIEWING']:
+        return ('File not found', 404)
     form = LogForm(request.form)
     use_zip = true_or_false(request.args.get('zip', None))
     if LOGSERVER is None and use_zip:
@@ -21373,7 +22027,7 @@ def logs():
             if the_file is None:
                 the_file = files[0]
             print("retrieving log file")
-            filename, headers = urlretrieve("http://" + LOGSERVER + ':8082/' + urllibquote(the_file))
+            filename, headers = urlretrieve("http://" + LOGSERVER + ':8082/' + urllibquote(the_file))  # pylint: disable=unused-variable
     if len(files) > 0 and not os.path.isfile(filename):
         flash(word("The file you requested does not exist."), 'error')
         if len(files) > 0:
@@ -21412,6 +22066,7 @@ def logs():
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return response
 
+
 @app.route('/reqdev', methods=['GET', 'POST'])
 @login_required
 def request_developer():
@@ -21421,13 +22076,13 @@ def request_developer():
     form = RequestDeveloperForm(request.form)
     recipients = []
     if request.method == 'POST':
-        for user in db.session.execute(select(UserModel.id, UserModel.email).join(UserRoles, UserModel.id == UserRoles.user_id).join(Role, UserRoles.role_id == Role.id).where(and_(UserModel.active == True, Role.name == 'admin'))):
+        for user in db.session.execute(select(UserModel.id, UserModel.email).join(UserRoles, UserModel.id == UserRoles.user_id).join(Role, UserRoles.role_id == Role.id).where(and_(UserModel.active == True, Role.name == 'admin'))):  # noqa: E712 # pylint: disable=singleton-comparison
             if user.email not in recipients:
                 recipients.append(user.email)
         body = "User " + str(current_user.email) + " (" + str(current_user.id) + ") has requested developer privileges.\n\n"
         if form.reason.data:
             body += "Reason given: " + str(form.reason.data) + "\n\n"
-        body += "Go to " + url_for('edit_user_profile_page', id=current_user.id, _external=True) + " to change the user's privileges."
+        body += "Go to " + url_for('edit_user_profile_page', the_id=current_user.id, _external=True) + " to change the user's privileges."
         msg = Message("Request for developer account from " + str(current_user.email), recipients=recipients, body=body)
         if len(recipients) == 0:
             flash(word('No administrators could be found.'), 'error')
@@ -21440,16 +22095,19 @@ def request_developer():
         return redirect(url_for('user.profile'))
     return render_template('users/request_developer.html', version_warning=None, bodyclass='daadminbody', tab_title=word("Developer Access"), page_title=word("Developer Access"), form=form)
 
+
 def docx_variable_fix(variable):
     variable = re.sub(r'\\', '', variable)
     variable = re.sub(r'^([A-Za-z\_][A-Za-z\_0-9]*).*', r'\1', variable)
     return variable
+
 
 def sanitize(default):
     default = re.sub(r'\n?\r\n?', "\n", str(default))
     if re.search(r'[\#\!\?\:\n\r\"\'\[\]\{\}]+', default):
         return "|\n" + docassemble.base.functions.indent(default, by=10)
     return default
+
 
 def read_fields(filename, orig_file_name, input_format, output_format):
     if output_format == 'yaml':
@@ -21465,7 +22123,7 @@ def read_fields(filename, orig_file_name, input_format, output_format):
                     fields_seen.add(field)
             fields_output += "---"
             return fields_output
-        if input_format == 'docx' or input_format == 'markdown':
+        if input_format in ('docx', 'markdown'):
             if input_format == 'docx':
                 result_file = word_to_markdown(filename, 'docx')
                 if result_file is None:
@@ -21507,7 +22165,7 @@ def read_fields(filename, orig_file_name, input_format, output_format):
                         output['locations'][field] = dict(page=int(pageno), box=rect)
                         output['export_values'][field] = export_value
             return json.dumps(output, sort_keys=True, indent=2)
-        if input_format == 'docx' or input_format == 'markdown':
+        if input_format in ('docx', 'markdown'):
             if input_format == 'docx':
                 result_file = word_to_markdown(filename, 'docx')
                 if result_file is None:
@@ -21523,6 +22181,8 @@ def read_fields(filename, orig_file_name, input_format, output_format):
             for variable in re.findall(r'{%[a-z]* for [A-Za-z\_][A-Za-z0-9\_]* in *([^\} ]+) *%}', result):
                 fields.add(docx_variable_fix(variable))
             return json.dumps(dict(fields=list(fields)), sort_keys=True, indent=2)
+    return None
+
 
 @app.route('/utilities', methods=['GET', 'POST'])
 @login_required
@@ -21545,7 +22205,7 @@ def utilities():
             if 'google' in daconfig and 'api key' in daconfig['google'] and daconfig['google']['api key']:
                 try:
                     service = googleapiclient.discovery.build('translate', 'v2',
-                                    developerKey=daconfig['google']['api key'])
+                                                              developerKey=daconfig['google']['api key'])
                     use_google_translate = True
                 except:
                     logmessage("utilities: attempt to call Google Translate failed")
@@ -21561,7 +22221,7 @@ def utilities():
             chunk_limit = daconfig.get('google translate words at a time', 20)
             chunks = []
             interim_list = []
-            while len(words_to_translate):
+            while len(words_to_translate) > 0:
                 the_word = words_to_translate.pop(0)
                 interim_list.append(the_word)
                 if len(interim_list) >= chunk_limit:
@@ -21581,11 +22241,11 @@ def utilities():
                         logmessage("utilities: translation failed: " + str(errstr))
                         resp = None
                     if isinstance(resp, dict) and 'translations' in resp and isinstance(resp['translations'], list) and len(resp['translations']) == len(chunk):
-                        for index in range(len(chunk)):
-                            if isinstance(resp['translations'][index], dict) and 'translatedText' in resp['translations'][index]:
-                                result[language][chunk[index]] = re.sub(r'&#39;', r"'", str(resp['translations'][index]['translatedText']))
+                        for the_index, the_chunk in enumerate(chunk):
+                            if isinstance(resp['translations'][the_index], dict) and 'translatedText' in resp['translations'][the_index]:
+                                result[language][the_chunk] = re.sub(r'&#39;', r"'", str(resp['translations'][the_index]['translatedText']))
                             else:
-                                result[language][chunk[index]] = 'XYZNULLXYZ'
+                                result[language][the_chunk] = 'XYZNULLXYZ'
                                 uses_null = True
                     else:
                         for the_word in chunk:
@@ -21596,7 +22256,7 @@ def utilities():
                         result[language][the_word] = 'XYZNULLXYZ'
                     uses_null = True
             if form.systemfiletype.data == 'YAML':
-                word_box = ruamel.yaml.safe_dump(result, default_flow_style=False, default_style = '"', allow_unicode=True, width=1000)
+                word_box = ruamel.yaml.safe_dump(result, default_flow_style=False, default_style='"', allow_unicode=True, width=1000)
                 word_box = re.sub(r'"XYZNULLXYZ"', r'null', word_box)
             elif form.systemfiletype.data == 'XLSX':
                 temp_file = tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False)
@@ -21670,7 +22330,6 @@ def utilities():
                 xliff.set('version', '2.0')
                 xliff.set('srcLang', 'en')
                 xliff.set('trgLang', language)
-                file_index = 1
                 the_file = ET.SubElement(xliff, 'file')
                 the_file.set('id', 'f1')
                 the_file.set('original', 'self')
@@ -21696,7 +22355,7 @@ def utilities():
                 return response
         if 'pdfdocxfile' in request.files and request.files['pdfdocxfile'].filename:
             filename = secure_filename(request.files['pdfdocxfile'].filename)
-            extension, mimetype = get_ext_and_mimetype(filename)
+            extension, mimetype = get_ext_and_mimetype(filename)  # pylint: disable=unused-variable
             if mimetype == 'application/pdf':
                 file_type = 'pdf'
                 pdf_file = tempfile.NamedTemporaryFile(mode="wb", suffix=".pdf", delete=True)
@@ -21746,12 +22405,13 @@ def utilities():
 #         return render_template('pages/save_for_later.html', interview=sdf)
 #     secret = request.cookies.get('secret', None)
 
+
 @app.route('/after_reset', methods=['GET', 'POST'])
 def after_reset():
-    #logmessage("after_reset")
+    # logmessage("after_reset")
     response = redirect(url_for('user.login'))
     if 'newsecret' in session:
-        #logmessage("after_reset: fixing cookie")
+        # logmessage("after_reset: fixing cookie")
         response.set_cookie('secret', session['newsecret'], httponly=True, secure=app.config['SESSION_COOKIE_SECURE'], samesite=app.config['SESSION_COOKIE_SAMESITE'])
         del session['newsecret']
     return response
@@ -21765,18 +22425,20 @@ def after_reset():
 #     docassemble.base.functions.close_files()
 #     return response
 
+
 def needs_to_change_password():
     if not current_user.has_role('admin'):
         return False
     if not (current_user.social_id and current_user.social_id.startswith('local')):
         return False
-    #logmessage("needs_to_change_password: starting")
+    # logmessage("needs_to_change_password: starting")
     if app.user_manager.verify_password('password', current_user):
         session.pop('_flashes', None)
         flash(word("Your password is insecure and needs to be changed"), "warning")
         return True
-    #logmessage("needs_to_change_password: ending")
+    # logmessage("needs_to_change_password: ending")
     return False
+
 
 def fix_group_id(the_package, the_file, the_group_id):
     if the_package == '_global':
@@ -21790,13 +22452,14 @@ def fix_group_id(the_package, the_file, the_group_id):
         group_id_to_use += ':' + the_group_id
     return group_id_to_use
 
+
 def ensure_training_loaded(interview):
     # parts = yaml_filename.split(':')
     # if len(parts) != 2:
     #     logmessage("ensure_training_loaded: could not read yaml_filename " + str(yaml_filename))
     #     return
     # source_filename = parts[0] + ':data/sources/ml-' + re.sub(r'\.ya?ml$', '', re.sub(r'.*/', '', parts[1])) + '.json'
-    #logmessage("Source filename is " + source_filename)
+    # logmessage("Source filename is " + source_filename)
     source_filename = interview.get_ml_store()
     parts = source_filename.split(':')
     if len(parts) == 3 and parts[0].startswith('docassemble.') and re.match(r'data/sources/.*\.json$', parts[1]):
@@ -21838,22 +22501,24 @@ def ensure_training_loaded(interview):
     else:
         logmessage("ensure_training_loaded: source filename " + source_filename + " was not part of a package")
 
+
 def get_corresponding_interview(the_package, the_file):
-    #logmessage("get_corresponding_interview: " + the_package + " " + the_file)
+    # logmessage("get_corresponding_interview: " + the_package + " " + the_file)
     interview = None
     if re.match(r'docassemble.playground[0-9]+', the_package):
         separator = ':'
     else:
         separator = ':data/questions/'
     for interview_file in (the_package + separator + the_file + '.yml', the_package + separator + the_file + '.yaml', the_package + separator + 'examples/' + the_file + '.yml'):
-        #logmessage("Looking for " + interview_file)
+        # logmessage("Looking for " + interview_file)
         try:
             interview = docassemble.base.interview_cache.get_interview(interview_file)
             break
-        except Exception as the_err:
-            #logmessage("There was an exception looking for " + interview_file + ": " + str(the_err))
+        except:
+            # logmessage("There was an exception looking for " + interview_file + ": " + str(the_err))
             continue
     return interview
+
 
 def ml_prefix(the_package, the_file):
     the_prefix = the_package
@@ -21862,6 +22527,7 @@ def ml_prefix(the_package, the_file):
     else:
         the_prefix += ':data/sources/ml-' + the_file + '.json'
     return the_prefix
+
 
 @app.route('/train', methods=['GET', 'POST'])
 @login_required
@@ -21916,7 +22582,7 @@ def train():
                     logmessage("train: could not import part of JSON file.  Items in dictionary must be lists.")
                     continue
                 if uploadform.importtype.data == 'replace':
-                    db.session.execute(delete(MachineLearning).filter_by(group_id=the_prefix + ':' + group_id))
+                    db.session.execute(sqldelete(MachineLearning).filter_by(group_id=the_prefix + ':' + group_id))
                     db.session.commit()
                     for entry in train_list:
                         if 'independent' in entry:
@@ -21965,7 +22631,6 @@ def train():
                 if not m:
                     continue
                 orig_key = 'original' + m.group(1)
-                delete_key = 'delete' + m.group(1)
                 if orig_key in post_data and post_data[orig_key] != val and val != '':
                     entry_id = int(m.group(1))
                     model = docassemble.base.util.SimpleTextMachineLearner(group_id=group_id_to_use)
@@ -21979,10 +22644,10 @@ def train():
             return redirect(url_for('train', package=the_package, file=the_file, group_id=the_group_id, show_all=show_all))
     if show_all:
         show_all = 1
-        show_cond = MachineLearning.id != None
+        show_cond = MachineLearning.id != None  # noqa: E711 # pylint: disable=singleton-comparison
     else:
         show_all = 0
-        show_cond = MachineLearning.dependent == None
+        show_cond = MachineLearning.dependent == None  # noqa: E711 # pylint: disable=singleton-comparison
     package_list = {}
     file_list = {}
     group_id_list = {}
@@ -22025,7 +22690,7 @@ def train():
         file_list = {}
         for record in db.session.execute(select(MachineLearning.group_id, db.func.count(MachineLearning.id).label('cnt')).where(and_(MachineLearning.group_id.like(the_package + ':%'), show_cond)).group_by(MachineLearning.group_id)):
             parts = record.group_id.split(':')
-            #logmessage("Group id is " + str(parts))
+            # logmessage("Group id is " + str(parts))
             if not is_package_ml(parts):
                 continue
             if re.match(r'data/sources/ml-.*\.json$', parts[1]):
@@ -22036,7 +22701,7 @@ def train():
         if not show_all:
             for record in db.session.execute(select(MachineLearning.group_id).where(MachineLearning.group_id.like(the_package + ':%')).group_by(MachineLearning.group_id)):
                 parts = record.group_id.split(':')
-                #logmessage("Other group id is " + str(parts))
+                # logmessage("Other group id is " + str(parts))
                 if not is_package_ml(parts):
                     continue
                 if re.match(r'data/sources/ml-.*\.json$', parts[1]):
@@ -22046,7 +22711,7 @@ def train():
         if playground_package and the_package == playground_package:
             area = SavedFile(current_user.id, fix=False, section='playgroundsources')
             for filename in area.list_of_files():
-                #logmessage("hey file is " + str(filename))
+                # logmessage("hey file is " + str(filename))
                 if re.match(r'ml-.*\.json$', filename):
                     short_file_name = re.sub(r'^ml-|\.json$', '', filename)
                     if short_file_name not in file_list:
@@ -22074,8 +22739,8 @@ def train():
                         the_dependent = fix_pickle_obj(codecs.decode(bytearray(record.dependent, encoding='utf-8'), 'base64'))
                     the_independent = fix_pickle_obj(codecs.decode(bytearray(record.independent, encoding='utf-8'), 'base64'))
                     try:
-                        str(the_independent) + ""
-                        str(the_dependent) + ""
+                        str(the_independent) + ""  # pylint: disable=expression-not-assigned
+                        str(the_dependent) + ""  # pylint: disable=expression-not-assigned
                     except Exception as e:
                         logmessage("Bad record: id " + str(record.id) + " where error was " + str(e))
                         continue
@@ -22106,9 +22771,8 @@ def train():
                 response = send_file(the_json_file, mimetype='application/json', as_attachment=True, attachment_filename=json_filename)
                 response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
                 return response
-            else:
-                flash(word("No data existed in training set.  JSON file not created."), "error")
-                return redirect(url_for('train', package=the_package, file=the_file, show_all=show_all))
+            flash(word("No data existed in training set.  JSON file not created."), "error")
+            return redirect(url_for('train', package=the_package, file=the_file, show_all=show_all))
         if the_package == '_global':
             for record in db.session.execute(select(MachineLearning.group_id, db.func.count(MachineLearning.id).label('cnt')).where(show_cond).group_by(MachineLearning.group_id)):
                 if is_package_ml(record.group_id.split(':')):
@@ -22124,7 +22788,7 @@ def train():
                         group_id_list[record.group_id] = 0
         else:
             the_prefix = ml_prefix(the_package, the_file)
-            #logmessage("My prefix is " + the_prefix)
+            # logmessage("My prefix is " + the_prefix)
             for record in db.session.execute(select(MachineLearning.group_id, db.func.count(MachineLearning.id).label('cnt')).where(and_(MachineLearning.group_id.like(the_prefix + ':%'), show_cond)).group_by(MachineLearning.group_id)):
                 parts = record.group_id.split(':')
                 if not is_package_ml(parts):
@@ -22183,78 +22847,77 @@ def train():
         response = make_response(render_template('pages/train.html', extra_js=Markup(extra_js), version_warning=version_warning, bodyclass='daadminbody', tab_title=word("Train"), page_title=word("Train machine learning models"), the_package=the_package, the_package_display=the_package_display, the_file=the_file, the_group_id=the_group_id, package_list=package_list, file_list=file_list, group_id_list=group_id_list, entry_list=entry_list, show_all=show_all, show_group_id_list=True, package_file_available=package_file_available, the_package_location=the_prefix, uploadform=uploadform), 200)
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
         return response
-    else:
-        group_id_to_use = fix_group_id(the_package, the_file, the_group_id)
-        model = docassemble.base.util.SimpleTextMachineLearner(group_id=group_id_to_use)
-        for record in db.session.execute(select(MachineLearning.id, MachineLearning.group_id, MachineLearning.key, MachineLearning.info, MachineLearning.independent, MachineLearning.dependent, MachineLearning.create_time, MachineLearning.modtime, MachineLearning.active).where(and_(MachineLearning.group_id == group_id_to_use, show_cond))):
-            new_entry = dict(id=record.id, group_id=record.group_id, key=record.key, independent=fix_pickle_obj(codecs.decode(bytearray(record.independent, encoding='utf-8'), 'base64')) if record.independent is not None else None, dependent=fix_pickle_obj(codecs.decode(bytearray(record.dependent, encoding='utf-8'), 'base64')) if record.dependent is not None else None, info=fix_pickle_obj(codecs.decode(bytearray(record.info, encoding='utf-8'), 'base64')) if record.info is not None else None, create_type=record.create_time, modtime=record.modtime, active=MachineLearning.active)
-            if new_entry['dependent'] is None and new_entry['active'] is True:
-                new_entry['active'] = False
-            if isinstance(new_entry['independent'], DADict) or isinstance(new_entry['independent'], dict):
-                new_entry['independent_display'] = '<div class="damldatacontainer">' + '<br>'.join(['<span class="damldatakey">' + str(key) + '</span>: <span class="damldatavalue">' + str(val) + ' (' + str(val.__class__.__name__) + ')</span>' for key, val in new_entry['independent'].items()]) + '</div>'
-                new_entry['type'] = 'data'
-            else:
-                new_entry['type'] = 'text'
-            if new_entry['dependent'] is None:
-                new_entry['predictions'] = model.predict(new_entry['independent'], probabilities=True)
-                if len(new_entry['predictions']) == 0:
-                    new_entry['predictions'] = None
-                elif len(new_entry['predictions']) > 10:
-                    new_entry['predictions'] = new_entry['predictions'][0:10]
-                if new_entry['predictions'] is not None:
-                    new_entry['predictions'] = [(prediction, '%d%%' % (100.0*probability)) for prediction, probability in new_entry['predictions']]
-            else:
+    group_id_to_use = fix_group_id(the_package, the_file, the_group_id)
+    model = docassemble.base.util.SimpleTextMachineLearner(group_id=group_id_to_use)
+    for record in db.session.execute(select(MachineLearning.id, MachineLearning.group_id, MachineLearning.key, MachineLearning.info, MachineLearning.independent, MachineLearning.dependent, MachineLearning.create_time, MachineLearning.modtime, MachineLearning.active).where(and_(MachineLearning.group_id == group_id_to_use, show_cond))):
+        new_entry = dict(id=record.id, group_id=record.group_id, key=record.key, independent=fix_pickle_obj(codecs.decode(bytearray(record.independent, encoding='utf-8'), 'base64')) if record.independent is not None else None, dependent=fix_pickle_obj(codecs.decode(bytearray(record.dependent, encoding='utf-8'), 'base64')) if record.dependent is not None else None, info=fix_pickle_obj(codecs.decode(bytearray(record.info, encoding='utf-8'), 'base64')) if record.info is not None else None, create_type=record.create_time, modtime=record.modtime, active=MachineLearning.active)
+        if new_entry['dependent'] is None and new_entry['active'] is True:
+            new_entry['active'] = False
+        if isinstance(new_entry['independent'], (DADict, dict)):
+            new_entry['independent_display'] = '<div class="damldatacontainer">' + '<br>'.join(['<span class="damldatakey">' + str(key) + '</span>: <span class="damldatavalue">' + str(val) + ' (' + str(val.__class__.__name__) + ')</span>' for key, val in new_entry['independent'].items()]) + '</div>'
+            new_entry['type'] = 'data'
+        else:
+            new_entry['type'] = 'text'
+        if new_entry['dependent'] is None:
+            new_entry['predictions'] = model.predict(new_entry['independent'], probabilities=True)
+            if len(new_entry['predictions']) == 0:
                 new_entry['predictions'] = None
-            if new_entry['info'] is not None:
-                if isinstance(new_entry['info'], DAFile):
-                    image_file_list = [new_entry['info']]
-                elif isinstance(new_entry['info'], DAFileList):
-                    image_file_list = new_entry['info']
-                else:
-                    logmessage("train: info is not a DAFile or DAFileList")
-                    continue
-                new_entry['image_files'] = []
-                for image_file in image_file_list:
-                    if not isinstance(image_file, DAFile):
-                        logmessage("train: file is not a DAFile")
-                        continue
-                    if not image_file.ok:
-                        logmessage("train: file does not have a number")
-                        continue
-                    if image_file.extension not in ('pdf', 'png', 'jpg', 'jpeg', 'gif'):
-                        logmessage("train: file did not have a recognizable image type")
-                        continue
-                    doc_url = get_url_from_file_reference(image_file)
-                    if image_file.extension == 'pdf':
-                        image_url = get_url_from_file_reference(image_file, size="screen", page=1, ext='pdf')
-                    else:
-                        image_url = doc_url
-                    new_entry['image_files'].append(dict(doc_url=doc_url, image_url=image_url))
-            entry_list.append(new_entry)
-        if len(entry_list) == 0:
-            record = db.session.execute(select(MachineLearning.independent).where(and_(MachineLearning.group_id == group_id_to_use, MachineLearning.independent != None))).first()
-            if record is not None:
-                sample_indep = fix_pickle_obj(codecs.decode(bytearray(record.independent, encoding='utf-8'), 'base64'))
+            elif len(new_entry['predictions']) > 10:
+                new_entry['predictions'] = new_entry['predictions'][0:10]
+            if new_entry['predictions'] is not None:
+                new_entry['predictions'] = [(prediction, '%d%%' % (100.0*probability)) for prediction, probability in new_entry['predictions']]
+        else:
+            new_entry['predictions'] = None
+        if new_entry['info'] is not None:
+            if isinstance(new_entry['info'], DAFile):
+                image_file_list = [new_entry['info']]
+            elif isinstance(new_entry['info'], DAFileList):
+                image_file_list = new_entry['info']
             else:
-                sample_indep = None
-        else:
-            sample_indep = entry_list[0]['independent']
-        is_data = bool(isinstance(sample_indep, DADict) or isinstance(sample_indep, dict))
-        choices = {}
-        for record in db.session.execute(select(MachineLearning.dependent, db.func.count(MachineLearning.id).label('cnt')).where(and_(MachineLearning.group_id == group_id_to_use)).group_by(MachineLearning.dependent)):
-            #logmessage("There is a choice")
-            if record.dependent is None:
+                logmessage("train: info is not a DAFile or DAFileList")
                 continue
-            key = fix_pickle_obj(codecs.decode(bytearray(record.dependent, encoding='utf-8'), 'base64'))
-            if key is not None:
-                choices[key] = record.cnt
-        if len(choices) > 0:
-            #logmessage("There are choices")
-            choices = [(x, choices[x]) for x in sorted(choices, key=operator.itemgetter(0), reverse=False)]
+            new_entry['image_files'] = []
+            for image_file in image_file_list:
+                if not isinstance(image_file, DAFile):
+                    logmessage("train: file is not a DAFile")
+                    continue
+                if not image_file.ok:
+                    logmessage("train: file does not have a number")
+                    continue
+                if image_file.extension not in ('pdf', 'png', 'jpg', 'jpeg', 'gif'):
+                    logmessage("train: file did not have a recognizable image type")
+                    continue
+                doc_url = get_url_from_file_reference(image_file)
+                if image_file.extension == 'pdf':
+                    image_url = get_url_from_file_reference(image_file, size="screen", page=1, ext='pdf')
+                else:
+                    image_url = doc_url
+                new_entry['image_files'].append(dict(doc_url=doc_url, image_url=image_url))
+        entry_list.append(new_entry)
+    if len(entry_list) == 0:
+        record = db.session.execute(select(MachineLearning.independent).where(and_(MachineLearning.group_id == group_id_to_use, MachineLearning.independent != None))).first()  # noqa: E711 # pylint: disable=singleton-comparison
+        if record is not None:
+            sample_indep = fix_pickle_obj(codecs.decode(bytearray(record.independent, encoding='utf-8'), 'base64'))
         else:
-            #logmessage("There are no choices")
-            choices = None
-        extra_js = """
+            sample_indep = None
+    else:
+        sample_indep = entry_list[0]['independent']
+    is_data = isinstance(sample_indep, (DADict, dict))
+    choices = {}
+    for record in db.session.execute(select(MachineLearning.dependent, db.func.count(MachineLearning.id).label('cnt')).where(and_(MachineLearning.group_id == group_id_to_use)).group_by(MachineLearning.dependent)):
+        # logmessage("There is a choice")
+        if record.dependent is None:
+            continue
+        key = fix_pickle_obj(codecs.decode(bytearray(record.dependent, encoding='utf-8'), 'base64'))
+        if key is not None:
+            choices[key] = record.cnt
+    if len(choices) > 0:
+        # logmessage("There are choices")
+        choices = [(x, choices[x]) for x in sorted(choices, key=operator.itemgetter(0), reverse=False)]
+    else:
+        # logmessage("There are no choices")
+        choices = None
+    extra_js = """
     <script>
       $( document ).ready(function(){
         $("button.prediction").click(function(){
@@ -22284,9 +22947,10 @@ def train():
         });
       });
     </script>"""
-        response = make_response(render_template('pages/train.html', extra_js=Markup(extra_js), form=form, version_warning=version_warning, bodyclass='daadminbody', tab_title=word("Train"), page_title=word("Train machine learning models"), the_package=the_package, the_package_display=the_package_display, the_file=the_file, the_group_id=the_group_id, entry_list=entry_list, choices=choices, show_all=show_all, show_entry_list=True, is_data=is_data), 200)
-        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
-        return response
+    response = make_response(render_template('pages/train.html', extra_js=Markup(extra_js), form=form, version_warning=version_warning, bodyclass='daadminbody', tab_title=word("Train"), page_title=word("Train machine learning models"), the_package=the_package, the_package_display=the_package_display, the_file=the_file, the_group_id=the_group_id, entry_list=entry_list, choices=choices, show_all=show_all, show_entry_list=True, is_data=is_data), 200)
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
+    return response
+
 
 def user_interviews_filter(obj):
     if isinstance(obj, docassemble.base.DA.Condition):
@@ -22362,20 +23026,22 @@ def user_interviews_filter(obj):
         raise Exception("Column " + repr(obj.name) + " not available")
     return obj
 
-def user_interviews(user_id=None, secret=None, exclude_invalid=True, action=None, filename=None, session=None, tag=None, include_dict=True, delete_shared=False, admin=False, start_id=None, temp_user_id=None, query=None):
+
+def user_interviews(user_id=None, secret=None, exclude_invalid=True, action=None, filename=None, session=None, tag=None, include_dict=True, delete_shared=False, admin=False, start_id=None, temp_user_id=None, query=None, minimal=False):  # pylint: disable=redefined-outer-name
     # logmessage("user_interviews: user_id is " + str(user_id) + " and secret is " + str(secret))
-    if session is not None and user_id is None and temp_user_id is None and current_user.is_authenticated and not current_user.has_role_or_permission('admin', 'advocate', permissions=['access_sessions']):
-        user_id = current_user.id
-    elif user_id is None and (current_user.is_anonymous or not current_user.has_role_or_permission('admin', 'advocate', permissions=['access_sessions'])):
-        raise Exception('user_interviews: you do not have sufficient privileges to access information about other users')
-    if user_id is not None and admin is False and not (current_user.is_authenticated and (current_user.same_as(user_id) or current_user.has_role_or_permission('admin', 'advocate', permissions=['access_sessions']))):
-        raise Exception('user_interviews: you do not have sufficient privileges to access information about other users')
-    if action is not None and admin is False and not current_user.has_role_or_permission('admin', 'advocate', permissions=['edit_sessions']):
-        if user_id is None:
-            raise Exception("user_interviews: no user_id provided")
-        the_user = get_person(int(user_id), {})
-        if the_user is None:
-            raise Exception("user_interviews: user_id " + str(user_id) + " not valid")
+    if minimal is False:
+        if session is not None and user_id is None and temp_user_id is None and current_user.is_authenticated and not current_user.has_role_or_permission('admin', 'advocate', permissions=['access_sessions']):
+            user_id = current_user.id
+        elif user_id is None and (current_user.is_anonymous or not current_user.has_role_or_permission('admin', 'advocate', permissions=['access_sessions'])):
+            raise Exception('user_interviews: you do not have sufficient privileges to access information about other users')
+        if user_id is not None and admin is False and not (current_user.is_authenticated and (current_user.same_as(user_id) or current_user.has_role_or_permission('admin', 'advocate', permissions=['access_sessions']))):
+            raise Exception('user_interviews: you do not have sufficient privileges to access information about other users')
+        if action is not None and admin is False and not current_user.has_role_or_permission('admin', 'advocate', permissions=['edit_sessions']):
+            if user_id is None:
+                raise Exception("user_interviews: no user_id provided")
+            the_user = get_person(int(user_id), {})
+            if the_user is None:
+                raise Exception("user_interviews: user_id " + str(user_id) + " not valid")
     if query is not None:
         the_query = user_interviews_filter(query)
     if action == 'delete_all':
@@ -22383,7 +23049,7 @@ def user_interviews(user_id=None, secret=None, exclude_invalid=True, action=None
         if tag or query is not None:
             start_id = None
             while True:
-                (the_list, start_id) = user_interviews(user_id=user_id, secret=secret, filename=filename, session=session, tag=tag, include_dict=False, start_id=start_id, temp_user_id=temp_user_id, query=query)
+                (the_list, start_id) = user_interviews(user_id=user_id, secret=secret, filename=filename, session=session, tag=tag, include_dict=False, exclude_invalid=False, start_id=start_id, temp_user_id=temp_user_id, query=query, minimal=True)
                 for interview_info in the_list:
                     sessions_to_delete.add((interview_info['session'], interview_info['filename'], interview_info['user_id'], interview_info['temp_user_id']))
                 if start_id is None:
@@ -22412,22 +23078,24 @@ def user_interviews(user_id=None, secret=None, exclude_invalid=True, action=None
         if len(sessions_to_delete) > 0:
             for session_id, yaml_filename, the_user_id, the_temp_user_id in sessions_to_delete:
                 manual_checkout(manual_session_id=session_id, manual_filename=yaml_filename, user_id=the_user_id, delete_session=True, temp_user_id=the_temp_user_id)
-                #obtain_lock(session_id, yaml_filename)
+                # obtain_lock(session_id, yaml_filename)
                 if the_user_id is None or delete_shared:
                     reset_user_dict(session_id, yaml_filename, user_id=the_user_id, temp_user_id=the_temp_user_id, force=True)
                 else:
                     reset_user_dict(session_id, yaml_filename, user_id=the_user_id, temp_user_id=the_temp_user_id)
-                #release_lock(session_id, yaml_filename)
+                # release_lock(session_id, yaml_filename)
         return len(sessions_to_delete)
     if action == 'delete':
         if filename is None or session is None:
             raise Exception("user_interviews: filename and session must be provided in order to delete interview")
         manual_checkout(manual_session_id=session, manual_filename=filename, user_id=user_id, temp_user_id=temp_user_id, delete_session=True)
-        #obtain_lock(session, filename)
+        # obtain_lock(session, filename)
         reset_user_dict(session, filename, user_id=user_id, temp_user_id=temp_user_id, force=delete_shared)
-        #release_lock(session, filename)
+        # release_lock(session, filename)
         return True
-    if admin is False and current_user and current_user.is_authenticated and current_user.timezone:
+    if minimal:
+        the_timezone = None
+    elif admin is False and current_user and current_user.is_authenticated and current_user.timezone:
         the_timezone = zoneinfo.ZoneInfo(current_user.timezone)
     else:
         the_timezone = zoneinfo.ZoneInfo(get_default_timezone())
@@ -22454,7 +23122,7 @@ def user_interviews(user_id=None, secret=None, exclude_invalid=True, action=None
             if len(subq_filter_elements) > 0:
                 subq = subq.where(and_(*subq_filter_elements))
             subq = subq.group_by(UserDictKeys.filename, UserDictKeys.key).subquery()
-            interview_query = select(*query_elements).select_from(subq.join(UserDict, subq.c.indexno == UserDict.indexno).join(UserDictKeys, and_(UserDict.filename == UserDictKeys.filename, UserDict.key == UserDictKeys.key, UserDictKeys.temp_user_id == temp_user_id)).outerjoin(UserModel, 0 == 1))
+            interview_query = select(*query_elements).select_from(subq.join(UserDict, subq.c.indexno == UserDict.indexno).join(UserDictKeys, and_(UserDict.filename == UserDictKeys.filename, UserDict.key == UserDictKeys.key, UserDictKeys.temp_user_id == temp_user_id)).outerjoin(UserModel, 0 == 1))  # pylint: disable=comparison-of-constants
             if query is not None:
                 interview_query = interview_query.where(the_query)
             interview_query = interview_query.order_by(UserDict.indexno)
@@ -22496,7 +23164,7 @@ def user_interviews(user_id=None, secret=None, exclude_invalid=True, action=None
             if len(subq_filter_elements) > 0:
                 subq = subq.where(and_(*subq_filter_elements))
             subq = subq.group_by(UserDict.filename, UserDict.key).subquery()
-            interview_query = select(*query_elements).select_from(subq.join(UserDict, subq.c.indexno == UserDict.indexno).join(UserDictKeys, and_(UserDict.filename == UserDictKeys.filename, UserDict.key == UserDictKeys.key)).outerjoin(UserModel, and_(UserDictKeys.user_id == UserModel.id, UserModel.active == True)))
+            interview_query = select(*query_elements).select_from(subq.join(UserDict, subq.c.indexno == UserDict.indexno).join(UserDictKeys, and_(UserDict.filename == UserDictKeys.filename, UserDict.key == UserDictKeys.key)).outerjoin(UserModel, and_(UserDictKeys.user_id == UserModel.id, UserModel.active == True)))  # noqa: E712 # pylint: disable=singleton-comparison
             if query is not None:
                 interview_query = interview_query.where(the_query)
             interview_query = interview_query.order_by(UserDict.indexno)
@@ -22508,7 +23176,7 @@ def user_interviews(user_id=None, secret=None, exclude_invalid=True, action=None
             if results_in_query == PAGINATION_LIMIT_PLUS_ONE:
                 there_are_more = True
                 break
-            #logmessage("filename is " + str(interview_info.filename) + " " + str(interview_info.key))
+            # logmessage("filename is " + str(interview_info.filename) + " " + str(interview_info.key))
             if session is not None and interview_info.key != session:
                 continue
             if include_dict and interview_info.dictionary is None:
@@ -22535,19 +23203,23 @@ def user_interviews(user_id=None, secret=None, exclude_invalid=True, action=None
                 there_are_more = True
                 break
             start_id = interview_info['indexno']
+            if minimal:
+                interviews.append({'filename': interview_info['filename'], 'session': interview_info['key'], 'user_id': interview_info['user_id'], 'temp_user_id': interview_info['temp_user_id']})
+                interviews_length += 1
+                continue
             interview_title = {}
             is_valid = True
             interview_valid = True
             try:
                 interview = docassemble.base.interview_cache.get_interview(interview_info['filename'])
-            except Exception as the_err:
+            except:
                 if exclude_invalid:
                     continue
                 logmessage("user_interviews: unable to load interview file " + interview_info['filename'])
                 interview_title['full'] = word('Error: interview not found')
                 interview_valid = False
                 is_valid = False
-            #logmessage("Found old interview with title " + interview_title)
+            # logmessage("Found old interview with title " + interview_title)
             if include_dict:
                 if interview_info['encrypted']:
                     try:
@@ -22635,8 +23307,8 @@ def user_interviews(user_id=None, secret=None, exclude_invalid=True, action=None
             break
     if there_are_more:
         return (interviews, start_id)
-    else:
-        return (interviews, None)
+    return (interviews, None)
+
 
 @app.route('/interviews', methods=['GET', 'POST'])
 @login_required
@@ -22653,7 +23325,7 @@ def interview_list():
     if tag is not None:
         tag = werkzeug.utils.secure_filename(tag)
     if 'newsecret' in session:
-        #logmessage("interview_list: fixing cookie")
+        # logmessage("interview_list: fixing cookie")
         the_args = {}
         if is_json:
             the_args['json'] = '1'
@@ -22674,7 +23346,7 @@ def interview_list():
     secret = request.cookies.get('secret', None)
     if secret is not None:
         secret = str(secret)
-    #logmessage("interview_list: secret is " + repr(secret))
+    # logmessage("interview_list: secret is " + repr(secret))
     if request.method == 'POST':
         if form.delete_all.data:
             num_deleted = user_interviews(user_id=current_user.id, secret=secret, action='delete_all', tag=tag)
@@ -22683,7 +23355,7 @@ def interview_list():
             if is_json:
                 return redirect(url_for('interview_list', json='1'))
             return redirect(url_for('interview_list'))
-        elif form.delete.data:
+        if form.delete.data:
             yaml_file = form.i.data
             session_id = form.session.data
             if yaml_file is not None and session_id is not None:
@@ -22692,11 +23364,11 @@ def interview_list():
             if is_json:
                 return redirect(url_for('interview_list', json='1'))
             return redirect(url_for('interview_list'))
-    #if daconfig.get('resume interview after login', False) and 'i' in session and 'uid' in session and (request.args.get('from_login', False) or (re.search(r'user/(register|sign-in)', str(request.referrer)) and 'next=' not in str(request.referrer))):
-    #    if is_json:
-    #        return redirect(url_for('index', i=session['i'], json='1'))
-    #    else:
-    #        return redirect(url_for('index', i=session['i']))
+    # if daconfig.get('resume interview after login', False) and 'i' in session and 'uid' in session and (request.args.get('from_login', False) or (re.search(r'user/(register|sign-in)', str(request.referrer)) and 'next=' not in str(request.referrer))):
+    #     if is_json:
+    #         return redirect(url_for('index', i=session['i'], json='1'))
+    #     else:
+    #         return redirect(url_for('index', i=session['i']))
     if request.args.get('from_login', False) or (re.search(r'user/(register|sign-in)', str(request.referrer)) and 'next=' not in str(request.referrer)):
         next_page = app.user_manager.make_safe_url_function(request.args.get('next', page_after_login()))
         if next_page is None:
@@ -22707,8 +23379,7 @@ def interview_list():
     if daconfig.get('session list interview', None) is not None:
         if is_json:
             return redirect(url_for('index', i=daconfig.get('session list interview'), from_list='1', json='1'))
-        else:
-            return redirect(url_for('index', i=daconfig.get('session list interview'), from_list='1'))
+        return redirect(url_for('index', i=daconfig.get('session list interview'), from_list='1'))
     exclude_invalid = not current_user.has_role('admin', 'developer')
     resume_interview = request.args.get('resume', None)
     if resume_interview is None and daconfig.get('auto resume interview', None) is not None and (request.args.get('from_login', False) or (re.search(r'user/(register|sign-in)', str(request.referrer)) and 'next=' not in str(request.referrer))):
@@ -22779,9 +23450,9 @@ def interview_list():
         for the_tag in interview['tags']:
             if the_tag != tag:
                 tags_used.add(the_tag)
-    #interview_page_title = word(daconfig.get('interview page title', 'Interviews'))
-    #title = word(daconfig.get('interview page heading', 'Resume an interview'))
-    argu = dict(version_warning=version_warning, tags_used=sorted(tags_used) if len(tags_used) > 0 else None, numinterviews=len([y for y in interviews if not y['metadata'].get('hidden', False)]), interviews=sorted(interviews, key=valid_date_key), tag=tag, next_id=next_id, show_back=show_back, form=form, page_js=Markup(script)) # extra_css=Markup(global_css), extra_js=Markup(script), tab_title=interview_page_title, page_title=interview_page_title, title=title
+    # interview_page_title = word(daconfig.get('interview page title', 'Interviews'))
+    # title = word(daconfig.get('interview page heading', 'Resume an interview'))
+    argu = dict(version_warning=version_warning, tags_used=sorted(tags_used) if len(tags_used) > 0 else None, numinterviews=len([y for y in interviews if not y['metadata'].get('hidden', False)]), interviews=sorted(interviews, key=valid_date_key), tag=tag, next_id=next_id, show_back=show_back, form=form, page_js=Markup(script))  # extra_css=Markup(global_css), extra_js=Markup(script), tab_title=interview_page_title, page_title=interview_page_title, title=title
     if 'interview page template' in daconfig and daconfig['interview page template']:
         the_page = docassemble.base.functions.package_template_filename(daconfig['interview page template'])
         if the_page is None:
@@ -22796,13 +23467,15 @@ def interview_list():
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
         return response
 
+
 def valid_date_key(x):
     if x['dict']['_internal']['starttime'] is None:
         return datetime.datetime.now()
     return x['dict']['_internal']['starttime']
 
+
 def fix_secret(user=None, to_convert=None):
-    #logmessage("fix_secret starting")
+    # logmessage("fix_secret starting")
     if user is None:
         user = current_user
     password = str(request.form.get('password', request.form.get('new_password', None)))
@@ -22810,17 +23483,18 @@ def fix_secret(user=None, to_convert=None):
         secret = str(request.cookies.get('secret', None))
         newsecret = pad_to_16(MD5Hash(data=password).hexdigest())
         if secret == 'None' or secret != newsecret:
-            #logmessage("fix_secret: calling substitute_secret with " + str(secret) + ' and ' + str(newsecret))
-            #logmessage("fix_secret: setting newsecret session")
+            # logmessage("fix_secret: calling substitute_secret with " + str(secret) + ' and ' + str(newsecret))
+            # logmessage("fix_secret: setting newsecret session")
             session['newsecret'] = substitute_secret(str(secret), newsecret, user=user, to_convert=to_convert)
         # else:
         #     logmessage("fix_secret: secrets are the same")
     else:
         logmessage("fix_secret: password not in request")
 
-def login_or_register(sender, user, source, **extra):
-    #logmessage("login or register!")
-    if 'i' in session: #TEMPORARY
+
+def login_or_register(sender, user, source, **extra):  # pylint: disable=unused-argument
+    # logmessage("login or register!")
+    if 'i' in session:  # TEMPORARY
         get_session(session['i'])
     to_convert = []
     if 'tempuser' in session:
@@ -22839,31 +23513,35 @@ def login_or_register(sender, user, source, **extra):
         session['language'] = user.language
         docassemble.base.functions.set_language(user.language)
 
+
 def update_last_login(user):
     user.last_login = datetime.datetime.utcnow()
     db.session.commit()
 
+
 @user_logged_in.connect_via(app)
 def _on_user_login(sender, user, **extra):
-    #logmessage("on user login")
+    # logmessage("on user login")
     update_last_login(user)
     login_or_register(sender, user, 'login', **extra)
-    #flash(word('You have signed in successfully.'), 'success')
+    # flash(word('You have signed in successfully.'), 'success')
+
 
 @user_changed_password.connect_via(app)
-def _on_password_change(sender, user, **extra):
-    #logmessage("on password change")
+def _on_password_change(sender, user, **extra):  # pylint: disable=unused-argument
+    # logmessage("on password change")
     fix_secret(user=user)
 
 # @user_reset_password.connect_via(app)
 # def _on_password_reset(sender, user, **extra):
-#     #logmessage("on password reset")
+#     # logmessage("on password reset")
 #     fix_secret(user=user)
+
 
 @user_registered.connect_via(app)
 def on_register_hook(sender, user, **extra):
-    #why did I not just import it globally?
-    #from docassemble.webapp.users.models import Role
+    # why did I not just import it globally?
+    # from docassemble.webapp.users.models import Role
     user_invite = extra.get('user_invite', None)
     this_user_role = None
     if user_invite is not None:
@@ -22880,6 +23558,7 @@ def on_register_hook(sender, user, **extra):
     update_last_login(user)
     login_or_register(sender, user, 'register', **extra)
 
+
 @app.route("/fax_callback", methods=['POST'])
 @csrf.exempt
 def fax_callback():
@@ -22891,7 +23570,7 @@ def fax_callback():
         logmessage("fax_callback: FaxSid and/or AccountSid missing")
         return ('', 204)
     tconfig = None
-    for config_name, config_info in twilio_config['name'].items():
+    for config_name, config_info in twilio_config['name'].items():  # pylint: disable=unused-variable
         if 'account sid' in config_info and config_info['account sid'] == post_data['AccountSid']:
             tconfig = config_info
     if tconfig is None:
@@ -22908,6 +23587,7 @@ def fax_callback():
     pipe.expire(the_key, 86400)
     pipe.execute()
     return ('', 204)
+
 
 @app.route("/clicksend_fax_callback", methods=['POST'])
 @csrf.exempt
@@ -22933,6 +23613,7 @@ def clicksend_fax_callback():
     pipe.expire(the_key, 86400)
     pipe.execute()
     return ('', 204)
+
 
 @app.route("/telnyx_fax_callback", methods=['POST'])
 @csrf.exempt
@@ -22975,6 +23656,7 @@ def telnyx_fax_callback():
     pipe.execute()
     return ('', 204)
 
+
 @app.route("/voice", methods=['POST', 'GET'])
 @csrf.exempt
 def voice():
@@ -23009,6 +23691,7 @@ def voice():
 
     return Response(str(resp), mimetype='text/xml')
 
+
 @app.route("/digits", methods=['POST', 'GET'])
 @csrf.exempt
 def digits_endpoint():
@@ -23028,13 +23711,14 @@ def digits_endpoint():
             resp.hangup()
         else:
             phone_number = phone_number.decode()
-            dial = resp.dial(number=phone_number)
+            resp.dial(number=phone_number)
             r.delete('da:callforward:' + str(the_digits))
     else:
         logmessage("digits: no digits received")
         resp.say(word("No access code was entered."))
         resp.hangup()
     return Response(str(resp), mimetype='text/xml')
+
 
 def sms_body(phone_number, body='question', config='default'):
     if twilio_config is None:
@@ -23063,6 +23747,7 @@ def sms_body(phone_number, body='question', config='default'):
         return None
     return resp.verbs[0].verbs[0].body
 
+
 def favicon_file(filename, alt=None):
     the_dir = docassemble.base.functions.package_data_filename(daconfig.get('favicon', 'docassemble.webapp:data/static/favicon'))
     if the_dir is None or not os.path.isdir(the_dir):
@@ -23077,9 +23762,10 @@ def favicon_file(filename, alt=None):
     if filename == 'site.webmanifest':
         mimetype = 'application/manifest+json'
     else:
-        extension, mimetype = get_ext_and_mimetype(the_file)
+        extension, mimetype = get_ext_and_mimetype(the_file)  # pylint: disable=unused-variable
     response = send_file(the_file, mimetype=mimetype, download_name=filename)
     return response
+
 
 def test_favicon_file(filename, alt=None):
     the_dir = docassemble.base.functions.package_data_filename(daconfig.get('favicon', 'docassemble.webapp:data/static/favicon'))
@@ -23093,39 +23779,61 @@ def test_favicon_file(filename, alt=None):
             return False
     return True
 
+
 @app.route("/favicon.ico", methods=['GET'])
 def favicon():
     return favicon_file('favicon.ico')
+
+
 @app.route("/apple-touch-icon.png", methods=['GET'])
 def apple_touch_icon():
     return favicon_file('apple-touch-icon.png')
+
+
 @app.route("/favicon-32x32.png", methods=['GET'])
 def favicon_md():
     return favicon_file('favicon-32x32.png')
+
+
 @app.route("/favicon-16x16.png", methods=['GET'])
 def favicon_sm():
     return favicon_file('favicon-16x16.png')
+
+
 @app.route("/site.webmanifest", methods=['GET'])
 def favicon_site_webmanifest():
     return favicon_file('site.webmanifest', alt='manifest.json')
+
+
 @app.route("/manifest.json", methods=['GET'])
 def favicon_manifest_json():
     return favicon_file('manifest.json', alt='site.webmanifest')
+
+
 @app.route("/safari-pinned-tab.svg", methods=['GET'])
 def favicon_safari_pinned_tab():
     return favicon_file('safari-pinned-tab.svg')
+
+
 @app.route("/android-chrome-192x192.png", methods=['GET'])
 def favicon_android_md():
     return favicon_file('android-chrome-192x192.png')
+
+
 @app.route("/android-chrome-512x512.png", methods=['GET'])
 def favicon_android_lg():
     return favicon_file('android-chrome-512x512.png')
+
+
 @app.route("/mstile-150x150.png", methods=['GET'])
 def favicon_mstile():
     return favicon_file('mstile-150x150.png')
+
+
 @app.route("/browserconfig.xml", methods=['GET'])
 def favicon_browserconfig():
     return favicon_file('browserconfig.xml')
+
 
 @app.route("/robots.txt", methods=['GET'])
 def robots():
@@ -23141,15 +23849,17 @@ def robots():
     response = send_file(the_file, mimetype='text/plain', download_name='robots.txt')
     return response
 
+
 @app.route("/sms", methods=['POST'])
 @csrf.exempt
 def sms():
-    #logmessage("Received: " + str(request.form))
+    # logmessage("Received: " + str(request.form))
     form = request.form
     base_url = url_for('rootindex', _external=True)
     url_root = base_url
     resp = do_sms(form, base_url, url_root)
     return Response(str(resp), mimetype='text/xml')
+
 
 def do_sms(form, base_url, url_root, config='default', save=True):
     docassemble.base.functions.set_language(DEFAULT_LANGUAGE)
@@ -23174,21 +23884,21 @@ def do_sms(form, base_url, url_root, config='default', save=True):
         logmessage("do_sms: request to sms ignored because message had no content")
         return resp
     inp = form['Body'].strip()
-    #logmessage("do_sms: received >" + inp + "<")
+    # logmessage("do_sms: received >" + inp + "<")
     key = 'da:sms:client:' + form["From"] + ':server:' + tconfig['number']
     action = None
     action_performed = False
-    for try_num in (0, 1):
+    for try_num in (0, 1):  # pylint: disable=unused-variable
         sess_contents = r.get(key)
         if sess_contents is None:
-            #logmessage("do_sms: received input '" + str(inp) + "' from new user")
+            # logmessage("do_sms: received input '" + str(inp) + "' from new user")
             yaml_filename = tconfig.get('default interview', default_yaml_filename)
             if 'dispatch' in tconfig and isinstance(tconfig['dispatch'], dict):
                 if inp.lower() in tconfig['dispatch']:
                     yaml_filename = tconfig['dispatch'][inp.lower()]
-                    #logmessage("do_sms: using interview from dispatch: " + str(yaml_filename))
+                    # logmessage("do_sms: using interview from dispatch: " + str(yaml_filename))
             if yaml_filename is None:
-                #logmessage("do_sms: request to sms ignored because no interview could be determined")
+                # logmessage("do_sms: request to sms ignored because no interview could be determined")
                 return resp
             if (not DEBUG) and (yaml_filename.startswith('docassemble.base') or yaml_filename.startswith('docassemble.demo')):
                 raise Exception("do_sms: not authorized to run interviews in docassemble.base or docassemble.demo")
@@ -23219,9 +23929,9 @@ def do_sms(form, base_url, url_root, config='default', save=True):
         if sess_info['user_id'] is not None:
             user = load_user(sess_info['user_id'])
         if user is None:
-            ci = dict(user=dict(is_anonymous=True, is_authenticated=False, email=None, theid=sess_info['tempuser'], the_user_id='t' + str(sess_info['tempuser']), roles=['user'], firstname='SMS', lastname='User', nickname=None, country=None, subdivisionfirst=None, subdivisionsecond=None, subdivisionthird=None, organization=None, timezone=None, location=None, session_uid=sess_info['session_uid'], device_id=form["From"]), session=sess_info['uid'], secret=sess_info['secret'], yaml_filename=sess_info['yaml_filename'], interface='sms', url=base_url, url_root=url_root, encrypted=encrypted, headers={}, clientip=None, method=None, skip=user_dict['_internal']['skip'], sms_sender=form["From"])
+            ci = dict(user=dict(is_anonymous=True, is_authenticated=False, email=None, theid=sess_info['tempuser'], the_user_id='t' + str(sess_info['tempuser']), roles=['user'], firstname='SMS', lastname='User', nickname=None, country=None, subdivisionfirst=None, subdivisionsecond=None, subdivisionthird=None, organization=None, timezone=None, location=None, session_uid=sess_info['session_uid'], device_id=form["From"]), session=sess_info['uid'], secret=sess_info['secret'], yaml_filename=sess_info['yaml_filename'], interface='sms', url=base_url, url_root=url_root, encrypted=sess_info['encrypted'], headers={}, clientip=None, method=None, skip={}, sms_sender=form["From"])
         else:
-            ci = dict(user=dict(is_anonymous=False, is_authenticated=True, email=user.email, theid=user.id, the_user_id=user.id, roles=user.roles, firstname=user.first_name, lastname=user.last_name, nickname=user.nickname, country=user.country, subdivisionfirst=user.subdivisionfirst, subdivisionsecond=user.subdivisionsecond, subdivisionthird=user.subdivisionthird, organization=user.organization, timezone=user.timezone, location=None, session_uid=sess_info['session_uid'], device_id=form["From"]), session=sess_info['uid'], secret=sess_info['secret'], yaml_filename=sess_info['yaml_filename'], interface='sms', url=base_url, url_root=url_root, encrypted=encrypted, headers={}, clientip=None, method=None, skip=user_dict['_internal']['skip'])
+            ci = dict(user=dict(is_anonymous=False, is_authenticated=True, email=user.email, theid=user.id, the_user_id=user.id, roles=user.roles, firstname=user.first_name, lastname=user.last_name, nickname=user.nickname, country=user.country, subdivisionfirst=user.subdivisionfirst, subdivisionsecond=user.subdivisionsecond, subdivisionthird=user.subdivisionthird, organization=user.organization, timezone=user.timezone, location=None, session_uid=sess_info['session_uid'], device_id=form["From"]), session=sess_info['uid'], secret=sess_info['secret'], yaml_filename=sess_info['yaml_filename'], interface='sms', url=base_url, url_root=url_root, encrypted=sess_info['encrypted'], headers={}, clientip=None, method=None, skip={})
         if action is not None:
             logmessage("do_sms: setting action to " + str(action))
             ci.update(action)
@@ -23252,7 +23962,7 @@ def do_sms(form, base_url, url_root, config='default', save=True):
         if 'skip' not in user_dict['_internal']:
             user_dict['_internal']['skip'] = {}
         # if 'smsgather' in user_dict['_internal']:
-        #     #logmessage("do_sms: need to gather smsgather " + user_dict['_internal']['smsgather'])
+        #     # logmessage("do_sms: need to gather smsgather " + user_dict['_internal']['smsgather'])
         #     sms_variable = user_dict['_internal']['smsgather']
         # else:
         #     sms_variable = None
@@ -23285,10 +23995,10 @@ def do_sms(form, base_url, url_root, config='default', save=True):
                 inp = 'question'
                 r.set(key, pickle.dumps(sess_info))
 
-        #logmessage("do_sms: inp is " + inp.lower() + " and steps is " + str(steps) + " and can go back is " + str(interview_status.can_go_back))
+        # logmessage("do_sms: inp is " + inp.lower() + " and steps is " + str(steps) + " and can go back is " + str(interview_status.can_go_back))
         m = re.search(r'^(' + word('menu') + '|' + word('link') + ')([0-9]+)', inp.lower())
         if m:
-            #logmessage("Got " + inp)
+            # logmessage("Got " + inp)
             arguments = {}
             selection_type = m.group(1)
             selection_number = int(m.group(2)) - 1
@@ -23297,18 +24007,18 @@ def do_sms(form, base_url, url_root, config='default', save=True):
             sms_info = as_sms(interview_status, user_dict, links=links, menu_items=menu_items)
             target_url = None
             if selection_type == word('menu') and selection_number < len(menu_items):
-                (target_url, label) = menu_items[selection_number]
+                (target_url, label) = menu_items[selection_number]  # pylint: disable=unused-variable
             if selection_type == word('link') and selection_number < len(links):
-                (target_url, label) = links[selection_number]
+                (target_url, label) = links[selection_number]  # pylint: disable=unused-variable
             if target_url is not None:
                 uri_params = re.sub(r'^[\?]*\?', r'', target_url)
                 for statement in re.split(r'&', uri_params):
                     parts = re.split(r'=', statement)
                     arguments[parts[0]] = parts[1]
             if 'action' in arguments:
-                #logmessage(myb64unquote(urllibunquote(arguments['action'])))
+                # logmessage(myb64unquote(urllibunquote(arguments['action'])))
                 action = json.loads(myb64unquote(urllibunquote(arguments['action'])))
-                #logmessage("Action is " + str(action))
+                # logmessage("Action is " + str(action))
                 action_performed = True
                 accepting_input = False
                 inp = ''
@@ -23329,7 +24039,6 @@ def do_sms(form, base_url, url_root, config='default', save=True):
                 inp = ''
                 continue
             if steps > 1 and interview_status.can_go_back:
-                old_user_dict = user_dict
                 steps, user_dict, is_encrypted = fetch_previous_user_dict(sess_info['uid'], sess_info['yaml_filename'], secret=sess_info['secret'])
                 ci['encrypted'] = is_encrypted
                 if 'question' in sess_info:
@@ -23345,7 +24054,6 @@ def do_sms(form, base_url, url_root, config='default', save=True):
     inp_lower = inp.lower()
     skip_it = False
     changed = False
-    nothing_more = False
     if accepting_input:
         if inp_lower == word('?'):
             sms_info = as_sms(interview_status, user_dict)
@@ -23457,7 +24165,7 @@ def do_sms(form, base_url, url_root, config='default', save=True):
                             break
                         if fileindex >= num_media or 'MediaUrl' + str(fileindex) not in form:
                             break
-                        #logmessage("mime type is" + form.get('MediaContentType' + str(fileindex), 'Unknown'))
+                        # logmessage("mime type is" + form.get('MediaContentType' + str(fileindex), 'Unknown'))
                         mimetype = form.get('MediaContentType' + str(fileindex), 'image/jpeg')
                         extension = re.sub(r'\.', r'', mimetypes.guess_extension(mimetype))
                         if extension == 'jpe':
@@ -23470,7 +24178,7 @@ def do_sms(form, base_url, url_root, config='default', save=True):
                         file_number = get_new_file_number(sess_info['uid'], filename, yaml_file_name=sess_info['yaml_filename'])
                         saved_file = SavedFile(file_number, extension=extension, fix=True, should_not_exist=True)
                         the_url = form['MediaUrl' + str(fileindex)]
-                        #logmessage("Fetching from >" + the_url + "<")
+                        # logmessage("Fetching from >" + the_url + "<")
                         saved_file.fetch_url(the_url)
                         process_file(saved_file, saved_file.path, mimetype, extension)
                         files_to_process.append((filename, file_number, mimetype, extension))
@@ -23614,15 +24322,15 @@ def do_sms(form, base_url, url_root, config='default', save=True):
                                 the_string = choice[1] + ' = False'
                             user_dict['_internal']['command_cache'][field.number].append(the_string)
                     else:
-                        #regular multiple choice
-                        #logmessage("do_sms: user selected " + inp_lower + " and data is " + str(cdata))
+                        # regular multiple choice
+                        # logmessage("do_sms: user selected " + inp_lower + " and data is " + str(cdata))
                         for potential_abb, value in cdata['abblower'].items():
                             if inp_lower.startswith(potential_abb):
-                                #logmessage("do_sms: user selected " + value)
+                                # logmessage("do_sms: user selected " + value)
                                 for choice in choice_list:
-                                    #logmessage("do_sms: considering " + choice[0])
+                                    # logmessage("do_sms: considering " + choice[0])
                                     if value == choice[0]:
-                                        #logmessage("do_sms: found a match")
+                                        # logmessage("do_sms: found a match")
                                         saveas = choice[1]
                                         if hasattr(field, 'datatype') and field.datatype in ('object', 'object_radio'):
                                             data = choice[2]
@@ -23797,15 +24505,15 @@ def do_sms(form, base_url, url_root, config='default', save=True):
                 else:
                     logmessage("do_sms: next_field is not None")
                     user_dict['_internal']['skip'][field.number] = True
-                    #user_dict['_internal']['smsgather'] = interview_status.sought
+                    # user_dict['_internal']['smsgather'] = interview_status.sought
                 # if 'smsgather' in user_dict['_internal'] and user_dict['_internal']['smsgather'] == saveas:
-                #     #logmessage("do_sms: deleting " + user_dict['_internal']['smsgather'])
+                #     # logmessage("do_sms: deleting " + user_dict['_internal']['smsgather'])
                 #     del user_dict['_internal']['smsgather']
             except Exception as the_err:
                 logmessage("do_sms: failure to set variable with " + the_string)
                 logmessage("do_sms: error was " + str(the_err))
                 release_lock(sess_info['uid'], sess_info['yaml_filename'])
-                #if 'uid' in session:
+                # if 'uid' in session:
                 #    del session['uid']
                 return resp
         if changed and next_field is None and question.name not in user_dict['_internal']['answers']:
@@ -23833,16 +24541,16 @@ def do_sms(form, base_url, url_root, config='default', save=True):
     else:
         if not interview_status.can_go_back:
             user_dict['_internal']['steps_offset'] = steps
-        #I had commented this out in do_sms(), but not in index()
-        #user_dict['_internal']['answers'] = {}
-        #Why do this?
+        # I had commented this out in do_sms(), but not in index()
+        # user_dict['_internal']['answers'] = {}
+        # Why do this?
         if (not interview_status.followed_mc) and len(user_dict['_internal']['answers']):
             user_dict['_internal']['answers'].clear()
         # if interview_status.question.name and interview_status.question.name in user_dict['_internal']['answers']:
         #     del user_dict['_internal']['answers'][interview_status.question.name]
-        #logmessage("do_sms: " + as_sms(interview_status, user_dict))
-        #twilio_client = TwilioRestClient(tconfig['account sid'], tconfig['auth token'])
-        #message = twilio_client.messages.create(to=form["From"], from_=form["To"], body=as_sms(interview_status, user_dict))
+        # logmessage("do_sms: " + as_sms(interview_status, user_dict))
+        # twilio_client = TwilioRestClient(tconfig['account sid'], tconfig['auth token'])
+        # message = twilio_client.messages.create(to=form["From"], from_=form["To"], body=as_sms(interview_status, user_dict))
         logmessage("do_sms: calling as_sms")
         sms_info = as_sms(interview_status, user_dict)
         qoutput = sms_info['question']
@@ -23850,7 +24558,7 @@ def do_sms(form, base_url, url_root, config='default', save=True):
             logmessage("do_sms: next variable is " + sms_info['next'])
             if interview_status.sought is None:
                 logmessage("do_sms: sought variable is None")
-            #user_dict['_internal']['smsgather'] = interview_status.sought
+            # user_dict['_internal']['smsgather'] = interview_status.sought
         if (accepting_input or changed or action_performed or sms_info['next'] is not None) and save:
             save_user_dict(sess_info['uid'], user_dict, sess_info['yaml_filename'], secret=sess_info['secret'], encrypt=encrypted, changed=changed, steps=steps)
         for special_message in special_messages:
@@ -23882,16 +24590,17 @@ def do_sms(form, base_url, url_root, config='default', save=True):
                         if doc_format not in ('pdf', 'rtf'):
                             continue
                         filename = attachment['filename'] + '.' + docassemble.base.parse.extension_of_doc_format[doc_format]
-                        #saved_file = save_numbered_file(filename, attachment['file'][doc_format], yaml_file_name=sess_info['yaml_filename'], uid=sess_info['uid'])
+                        # saved_file = save_numbered_file(filename, attachment['file'][doc_format], yaml_file_name=sess_info['yaml_filename'], uid=sess_info['uid'])
                         url = url_for('serve_stored_file', _external=True, uid=sess_info['uid'], number=attachment['file'][doc_format], filename=attachment['filename'], extension=docassemble.base.parse.extension_of_doc_format[doc_format])
-                        #logmessage('sms: url is ' + str(url))
+                        # logmessage('sms: url is ' + str(url))
                         m.media(url)
                         media_count += 1
         else:
             resp.message(qoutput)
     release_lock(sess_info['uid'], sess_info['yaml_filename'])
-    #logmessage(str(form))
+    # logmessage(str(form))
     return resp
+
 
 def get_api_key():
     api_key = request.args.get('key', None)
@@ -23905,9 +24614,14 @@ def get_api_key():
         api_key = request.cookies['X-API-Key']
     if api_key is None and 'X-API-Key' in request.headers:
         api_key = request.headers['X-API-Key']
+    if api_key is None and 'Authorization' in request.headers:
+        m = re.search(r'^bearer (.*)', request.headers['Authorization'], flags=re.IGNORECASE)
+        if m:
+            api_key = m.group(1).strip()
     return api_key
 
-def api_verify(req, roles=None, permissions=None):
+
+def api_verify(roles=None, permissions=None):
     api_key = get_api_key()
     if api_key is None:
         logmessage("api_verify: no API key provided")
@@ -23989,15 +24703,18 @@ def api_verify(req, roles=None, permissions=None):
     docassemble.base.functions.this_thread.current_info = current_info(req=request, interface='api', device_id=request.cookies.get('ds', None), session_uid=current_user.email)
     return True
 
+
 def jsonify_with_status(data, code):
     resp = jsonify(data)
     resp.status_code = code
     return resp
 
+
 def true_or_false(text):
     if text in (False, None) or text == 0 or str(text).lower().strip() in ('0', 'false', 'f'):
         return False
     return True
+
 
 def get_user_list(include_inactive=False, start_id=None):
     if not (current_user.is_authenticated and current_user.has_role_or_permission('admin', 'advocate', permissions=['access_user_info', 'create_user'])):
@@ -24010,7 +24727,7 @@ def get_user_list(include_inactive=False, start_id=None):
         if start_id is not None:
             filter_list.append(UserModel.id > start_id)
         if not include_inactive:
-            filter_list.append(UserModel.active == True)
+            filter_list.append(UserModel.active == True)  # noqa: E712 # pylint: disable=singleton-comparison
         the_users = select(UserModel).options(db.joinedload(UserModel.roles))
         if len(filter_list) > 0:
             the_users = the_users.where(*filter_list)
@@ -24042,6 +24759,7 @@ def get_user_list(include_inactive=False, start_id=None):
     if not there_are_more:
         start_id = None
     return (user_list, start_id)
+
 
 @app.route('/translation_file', methods=['POST'])
 @login_required
@@ -24337,30 +25055,30 @@ def translation_file():
                     parts.append(fixedunlockedcell)
                     worksheet.write_rich_string(*parts)
                 num_lines = item.count('\n')
-                #if num_lines > 25:
+                # if num_lines > 25:
                 #    num_lines = 25
                 if num_lines > 0:
                     worksheet.set_row(row, 15*(num_lines + 1))
                 indexno += 1
                 row += 1
                 seen.append(item)
-        for item in tr_cache:
-            if item in seen or language not in tr_cache[item] or tr_lang not in tr_cache[item][language]:
+        for item, cache_item in tr_cache.items():
+            if item in seen or language not in cache_item or tr_lang not in cache_item[language]:
                 continue
-            worksheet.write_string(row, 0, tr_cache[item][language][tr_lang]['interview'], text)
-            worksheet.write_string(row, 1, tr_cache[item][language][tr_lang]['question_id'], text)
-            worksheet.write_number(row, 2, 1000 + tr_cache[item][language][tr_lang]['index_num'], numb)
-            worksheet.write_string(row, 3, tr_cache[item][language][tr_lang]['hash'], text)
-            worksheet.write_string(row, 4, tr_cache[item][language][tr_lang]['orig_lang'], text)
-            worksheet.write_string(row, 5, tr_cache[item][language][tr_lang]['tr_lang'], text)
-            mako = mako_parts(tr_cache[item][language][tr_lang]['orig_text'])
+            worksheet.write_string(row, 0, cache_item[language][tr_lang]['interview'], text)
+            worksheet.write_string(row, 1, cache_item[language][tr_lang]['question_id'], text)
+            worksheet.write_number(row, 2, 1000 + cache_item[language][tr_lang]['index_num'], numb)
+            worksheet.write_string(row, 3, cache_item[language][tr_lang]['hash'], text)
+            worksheet.write_string(row, 4, cache_item[language][tr_lang]['orig_lang'], text)
+            worksheet.write_string(row, 5, cache_item[language][tr_lang]['tr_lang'], text)
+            mako = mako_parts(cache_item[language][tr_lang]['orig_text'])
             if len(mako) == 1:
                 if mako[0][1] == 0:
-                    worksheet.write_string(row, 6, tr_cache[item][language][tr_lang]['orig_text'], wholefixed)
+                    worksheet.write_string(row, 6, cache_item[language][tr_lang]['orig_text'], wholefixed)
                 elif mako[0][1] == 1:
-                    worksheet.write_string(row, 6, tr_cache[item][language][tr_lang]['orig_text'], wholefixedone)
+                    worksheet.write_string(row, 6, cache_item[language][tr_lang]['orig_text'], wholefixedone)
                 elif mako[0][1] == 2:
-                    worksheet.write_string(row, 6, tr_cache[item][language][tr_lang]['orig_text'], wholefixedtwo)
+                    worksheet.write_string(row, 6, cache_item[language][tr_lang]['orig_text'], wholefixedtwo)
             else:
                 parts = [row, 6]
                 for part in mako:
@@ -24372,14 +25090,14 @@ def translation_file():
                         parts.extend([fixedtwo, part[0]])
                 parts.append(fixedcell)
                 worksheet.write_rich_string(*parts)
-            mako = mako_parts(tr_cache[item][language][tr_lang]['tr_text'])
+            mako = mako_parts(cache_item[language][tr_lang]['tr_text'])
             if len(mako) == 1:
                 if mako[0][1] == 0:
-                    worksheet.write_string(row, 7, tr_cache[item][language][tr_lang]['tr_text'], wholefixedunlocked)
+                    worksheet.write_string(row, 7, cache_item[language][tr_lang]['tr_text'], wholefixedunlocked)
                 elif mako[0][1] == 1:
-                    worksheet.write_string(row, 7, tr_cache[item][language][tr_lang]['tr_text'], wholefixedunlockedone)
+                    worksheet.write_string(row, 7, cache_item[language][tr_lang]['tr_text'], wholefixedunlockedone)
                 elif mako[0][1] == 2:
-                    worksheet.write_string(row, 7, tr_cache[item][language][tr_lang]['tr_text'], wholefixedunlockedtwo)
+                    worksheet.write_string(row, 7, cache_item[language][tr_lang]['tr_text'], wholefixedunlockedtwo)
             else:
                 parts = [row, 7]
                 for part in mako:
@@ -24391,7 +25109,7 @@ def translation_file():
                         parts.extend([fixedunlockedtwo, part[0]])
                 parts.append(fixedunlockedcell)
                 worksheet.write_rich_string(*parts)
-            num_lines = tr_cache[item][language][tr_lang]['orig_text'].count('\n')
+            num_lines = cache_item[language][tr_lang]['orig_text'].count('\n')
             if num_lines > 0:
                 worksheet.set_row(row, 15*(num_lines + 1))
             row += 1
@@ -24589,10 +25307,11 @@ def translation_file():
     flash(word("Bad file format"), 'error')
     return redirect(url_for('utilities'))
 
+
 @app.route('/api/user_list', methods=['GET'])
 @cross_origin(origins='*', methods=['GET', 'HEAD'], automatic_options=True)
 def api_user_list():
-    if not api_verify(request, roles=['admin', 'advocate'], permissions=['access_user_info']):
+    if not api_verify(roles=['admin', 'advocate'], permissions=['access_user_info']):
         return jsonify_with_status("Access denied.", 403)
     include_inactive = true_or_false(request.args.get('include_inactive', False))
     next_id_code = request.args.get('next_id', None)
@@ -24613,6 +25332,7 @@ def api_user_list():
     else:
         next_id = safeid(str(start_id))
     return jsonify(dict(next_id=next_id, items=user_list))
+
 
 def get_user_info(user_id=None, email=None, case_sensitive=False, admin=False):
     if user_id is not None:
@@ -24642,6 +25362,7 @@ def get_user_info(user_id=None, email=None, case_sensitive=False, admin=False):
     user_info['account_type'] = re.sub(r'\$.*', '', user.social_id)
     return user_info
 
+
 def make_user_inactive(user_id=None, email=None):
     if not current_user.has_role_or_permission('admin', permissions=['edit_user_active_status']):
         raise Exception("You do not have sufficient privileges to make a user inactive")
@@ -24658,11 +25379,12 @@ def make_user_inactive(user_id=None, email=None):
     user.active = False
     db.session.commit()
 
-@app.route('/api/user', methods=['GET', 'POST'])
+
+@app.route('/api/user', methods=['GET', 'POST', 'PATCH'])
 @csrf.exempt
-@cross_origin(origins='*', methods=['GET', 'POST', 'HEAD'], automatic_options=True)
+@cross_origin(origins='*', methods=['GET', 'POST', 'PATCH', 'HEAD'], automatic_options=True)
 def api_user():
-    if not api_verify(request):
+    if not api_verify():
         return jsonify_with_status("Access denied.", 403)
     if current_user.limited_api and not current_user.can_do('access_user_info'):
         return jsonify_with_status("You do not have sufficient privileges to access user information", 403)
@@ -24674,14 +25396,14 @@ def api_user():
         return jsonify_with_status('User not found', 404)
     if request.method == 'GET':
         return jsonify(user_info)
-    if request.method == 'POST':
+    if request.method in ('POST', 'PATCH'):
         if current_user.limited_api and not current_user.can_do('edit_user_info'):
             return jsonify_with_status("You do not have sufficient privileges to edit a user's information", 403)
         post_data = request.get_json(silent=True)
         if post_data is None:
             post_data = request.form.copy()
         info = {}
-        for key in ('first_name', 'last_name', 'country', 'subdivisionfirst', 'subdivisionsecond', 'subdivisionthird', 'organization', 'timezone', 'language', 'password'):
+        for key in ('first_name', 'last_name', 'country', 'subdivisionfirst', 'subdivisionsecond', 'subdivisionthird', 'organization', 'timezone', 'language', 'password', 'old_password'):
             if key in post_data:
                 info[key] = post_data[key]
         if 'password' in info and not current_user.has_role_or_permission('admin', permissions='edit_user_password'):
@@ -24693,11 +25415,12 @@ def api_user():
         return ('', 204)
     return ('', 204)
 
+
 @app.route('/api/user/privileges', methods=['GET'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['GET', 'HEAD'], automatic_options=True)
 def api_user_privileges():
-    if not api_verify(request):
+    if not api_verify():
         return jsonify_with_status("Access denied.", 403)
     try:
         user_info = get_user_info(user_id=current_user.id)
@@ -24705,19 +25428,19 @@ def api_user_privileges():
         return jsonify_with_status("Error obtaining user information: " + str(err), 400)
     if user_info is None:
         return jsonify_with_status('User not found', 404)
-    if request.method == 'GET':
-        return jsonify(user_info['privileges'])
+    return jsonify(user_info['privileges'])
+
 
 @app.route('/api/user/new', methods=['POST'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['POST', 'HEAD'], automatic_options=True)
 def api_create_user():
-    if not api_verify(request, roles=['admin'], permissions=['create_user']):
+    if not api_verify(roles=['admin'], permissions=['create_user']):
         return jsonify_with_status("Access denied.", 403)
     post_data = request.get_json(silent=True)
     if post_data is None:
         post_data = request.form.copy()
-    if 'email' in post_data and 'username' not in post_data: # temporary
+    if 'email' in post_data and 'username' not in post_data:  # temporary
         post_data['username'] = post_data['email'].strip()
         del post_data['email']
     if 'username' not in post_data:
@@ -24753,11 +25476,12 @@ def api_create_user():
         return jsonify_with_status(str(err), 400)
     return jsonify_with_status(dict(user_id=user_id, password=password), 200)
 
+
 @app.route('/api/user_invite', methods=['POST'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['POST', 'HEAD'], automatic_options=True)
 def api_invite_user():
-    if not api_verify(request, roles=['admin'], permissions=['create_user']):
+    if not api_verify(roles=['admin'], permissions=['create_user']):
         return jsonify_with_status("Access denied.", 403)
     is_admin = current_user.has_role('admin')
     post_data = request.get_json(silent=True)
@@ -24782,7 +25506,7 @@ def api_invite_user():
         raw_email_addresses = [str(raw_email_addresses)]
     email_addresses = []
     for email_address in raw_email_addresses:
-        (part_one, part_two) = email.utils.parseaddr(str(email_address))
+        (part_one, part_two) = emailpackage.utils.parseaddr(str(email_address))  # pylint: disable=unused-variable
         if not re.match(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', part_two):
             return jsonify_with_status("Invalid e-mail address.", 400)
         email_addresses.append(part_two)
@@ -24796,7 +25520,7 @@ def api_invite_user():
     if the_role_id is None:
         return jsonify_with_status("Invalid privilege name.", 400)
     for email_address in email_addresses:
-        user, user_email = app.user_manager.find_user_by_email(email_address)
+        user, user_email = app.user_manager.find_user_by_email(email_address)  # pylint: disable=unused-variable
         if user:
             return jsonify_with_status("That e-mail address is already being used.", 400)
     invite_info = []
@@ -24831,10 +25555,11 @@ def api_invite_user():
         invite_info.append(info)
     return jsonify(invite_info)
 
+
 @app.route('/api/user_info', methods=['GET'])
 @cross_origin(origins='*', methods=['GET', 'HEAD'], automatic_options=True)
 def api_user_info():
-    if not api_verify(request, roles=['admin', 'advocate'], permissions=['access_user_info']):
+    if not api_verify(roles=['admin', 'advocate'], permissions=['access_user_info']):
         return jsonify_with_status("Access denied.", 403)
     if 'username' not in request.args:
         return jsonify_with_status("An e-mail address must be supplied.", 400)
@@ -24845,14 +25570,14 @@ def api_user_info():
         return jsonify_with_status("Error obtaining user information: " + str(err), 400)
     if user_info is None:
         return jsonify_with_status("User not found.", 404)
-    if request.method == 'GET':
-        return jsonify(user_info)
+    return jsonify(user_info)
 
-@app.route('/api/user/<int:user_id>', methods=['GET', 'DELETE', 'POST'])
+
+@app.route('/api/user/<int:user_id>', methods=['GET', 'DELETE', 'POST', 'PATCH'])
 @csrf.exempt
-@cross_origin(origins='*', methods=['GET', 'DELETE', 'POST', 'HEAD'], automatic_options=True)
+@cross_origin(origins='*', methods=['GET', 'DELETE', 'POST', 'PATCH', 'HEAD'], automatic_options=True)
 def api_user_by_id(user_id):
-    if not api_verify(request):
+    if not api_verify():
         return jsonify_with_status("Access denied.", 403)
     try:
         user_id = int(user_id)
@@ -24869,7 +25594,7 @@ def api_user_by_id(user_id):
     if request.method == 'GET':
         return jsonify(user_info)
     if request.method == 'DELETE':
-        if user_id == 1 or user_id == current_user.id:
+        if user_id in (1, current_user.id):
             return jsonify_with_status("This user account cannot be deleted or deactivated.", 403)
         if request.args.get('remove', None) == 'account':
             if not (current_user.id == user_id or current_user.has_role_or_permission('admin', permissions=['delete_user'])):
@@ -24886,14 +25611,14 @@ def api_user_by_id(user_id):
                 return jsonify_with_status("You do not have sufficient privileges to inactivate user accounts.", 403)
             make_user_inactive(user_id=user_id)
         return ('', 204)
-    if request.method == 'POST':
+    if request.method in ('POST', 'PATCH'):
         if not (current_user.has_role_or_permission('admin', permissions=['edit_user_info']) or current_user.same_as(user_id)):
             return jsonify_with_status("You do not have sufficient privileges to edit user information.", 403)
         post_data = request.get_json(silent=True)
         if post_data is None:
             post_data = request.form.copy()
         info = {}
-        for key in ('first_name', 'last_name', 'country', 'subdivisionfirst', 'subdivisionsecond', 'subdivisionthird', 'organization', 'timezone', 'language', 'password'):
+        for key in ('first_name', 'last_name', 'country', 'subdivisionfirst', 'subdivisionsecond', 'subdivisionthird', 'organization', 'timezone', 'language', 'password', 'old_password'):
             if key in post_data:
                 info[key] = post_data[key]
         if 'password' in info and not current_user.has_role_or_permission('admin', permissions=['edit_user_password']):
@@ -24905,11 +25630,12 @@ def api_user_by_id(user_id):
         return ('', 204)
     return ('', 204)
 
+
 @app.route('/api/fields', methods=['POST'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['POST', 'HEAD'], automatic_options=True)
 def api_fields():
-    if not api_verify(request, roles=['admin', 'developer'], permissions=['template_parse']):
+    if not api_verify(roles=['admin', 'developer'], permissions=['template_parse']):
         return jsonify_with_status("Access denied.", 403)
     post_data = request.get_json(silent=True)
     if post_data is None:
@@ -24940,8 +25666,7 @@ def api_fields():
             logmessage("api_fields: got error " + err.__class__.__name__ + ": " + str(err))
             if output_format == 'yaml':
                 return jsonify_with_status("No fields could be found.", 400)
-            else:
-                return jsonify(dict(fields=[]))
+            return jsonify(dict(fields=[]))
         break
     if output_format == 'yaml':
         response = make_response(output.encode('utf-8'), '200 OK')
@@ -24951,11 +25676,12 @@ def api_fields():
         response.headers['Content-Type'] = 'application/json; charset=utf-8'
     return response
 
+
 @app.route('/api/privileges', methods=['GET', 'DELETE', 'POST'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['GET', 'DELETE', 'POST', 'HEAD'], automatic_options=True)
 def api_privileges():
-    if not api_verify(request):
+    if not api_verify():
         return jsonify_with_status("Access denied.", 403)
     if request.method == 'GET':
         try:
@@ -24985,6 +25711,8 @@ def api_privileges():
         except Exception as err:
             return jsonify_with_status(str(err), 400)
         return ('', 204)
+    return ('', 204)
+
 
 def get_privileges_list(admin=False):
     if admin is False and not current_user.has_role_or_permission('admin', 'developer', permissions=['access_privileges']):
@@ -24993,6 +25721,7 @@ def get_privileges_list(admin=False):
     for role in db.session.execute(select(Role.name).order_by(Role.name)):
         role_names.append(role.name)
     return role_names
+
 
 def get_permissions_of_privilege(privilege):
     if not current_user.has_role_or_permission('admin', 'developer', permissions=['access_privileges']):
@@ -25009,6 +25738,7 @@ def get_permissions_of_privilege(privilege):
         return list(docassemble.base.config.allowed[privilege])
     return []
 
+
 def add_privilege(privilege):
     if not current_user.has_role_or_permission('admin', permissions=['edit_privileges']):
         raise Exception('You do not have sufficient privileges to add a privilege.')
@@ -25018,23 +25748,24 @@ def add_privilege(privilege):
     db.session.add(Role(name=privilege))
     db.session.commit()
 
+
 def remove_privilege(privilege):
     if not current_user.has_role_or_permission('admin', permissions=['edit_privileges']):
         raise Exception('You do not have sufficient privileges to delete a privilege.')
     if privilege in ['user', 'admin', 'developer', 'advocate', 'cron']:
         raise Exception('The specified privilege is built-in and cannot be deleted.')
-    user_role = db.session.execute(select(Role).filter_by(name='user')).scalar()
     role = db.session.execute(select(Role).filter_by(name=privilege)).scalar()
     if role is None:
         raise Exception('The privilege ' + str(privilege) + ' did not exist.')
     db.session.delete(role)
     db.session.commit()
 
+
 @app.route('/api/user/<int:user_id>/privileges', methods=['GET', 'DELETE', 'POST'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['GET', 'DELETE', 'POST', 'HEAD'], automatic_options=True)
 def api_user_by_id_privileges(user_id):
-    if not api_verify(request):
+    if not api_verify():
         return jsonify_with_status("Access denied.", 403)
     try:
         user_info = get_user_info(user_id=user_id)
@@ -25068,6 +25799,8 @@ def api_user_by_id_privileges(user_id):
                 return jsonify_with_status(str(err), 400)
         db.session.commit()
         return ('', 204)
+    return ('', 204)
+
 
 def add_user_privilege(user_id, privilege):
     if not current_user.has_role_or_permission('admin', permissions=['edit_user_privileges']):
@@ -25093,6 +25826,7 @@ def add_user_privilege(user_id, privilege):
     user.roles.append(role_to_add)
     db.session.commit()
 
+
 def remove_user_privilege(user_id, privilege):
     if not current_user.has_role_or_permission('admin', permissions=['edit_user_privileges']):
         raise Exception('You do not have sufficient privileges to take a privilege away from a user.')
@@ -25114,6 +25848,7 @@ def remove_user_privilege(user_id, privilege):
     user.roles.remove(role_to_remove)
     db.session.commit()
 
+
 def create_user(email, password, privileges=None, info=None):
     if not current_user.has_role_or_permission('admin', permissions=['create_user']):
         raise Exception("You do not have sufficient privileges to create a user")
@@ -25121,7 +25856,6 @@ def create_user(email, password, privileges=None, info=None):
     password = str(password).strip()
     if len(password) < 4 or len(password) > 254:
         raise Exception("Password too short or too long")
-    role_dict = {}
     if privileges is None:
         privileges = []
     if isinstance(privileges, DAList):
@@ -25136,7 +25870,7 @@ def create_user(email, password, privileges=None, info=None):
         info = info.elements
     if not isinstance(info, dict):
         raise Exception("The info parameter to create_user() must be a dictionary.")
-    user, user_email = app.user_manager.find_user_by_email(email)
+    user, user_email = app.user_manager.find_user_by_email(email)  # pylint: disable=unused-variable
     if user:
         raise Exception("That e-mail address is already being used.")
     user_auth = UserAuthModel(password=app.user_manager.hash_password(password))
@@ -25161,14 +25895,14 @@ def create_user(email, password, privileges=None, info=None):
         organization=info.get('organization', ''),
         timezone=info.get('timezone', ''),
         language=info.get('language', ''),
-        confirmed_at = datetime.datetime.now()
+        confirmed_at=datetime.datetime.now()
     )
     num_roles = 0
     is_admin = current_user.has_role('admin')
     for role in db.session.execute(select(Role).where(Role.name != 'cron').order_by(Role.id)).scalars():
         if role.name in privileges and (is_admin or role.name not in ('admin', 'developer', 'advocate')):
             the_user.roles.append(role)
-        num_roles +=1
+        num_roles += 1
     if num_roles == 0:
         user_role = db.session.execute(select(Role).filter_by(name='user')).scalar_one()
         the_user.roles.append(user_role)
@@ -25176,6 +25910,7 @@ def create_user(email, password, privileges=None, info=None):
     db.session.add(the_user)
     db.session.commit()
     return the_user.id
+
 
 def set_user_info(**kwargs):
     user_id = kwargs.get('user_id', None)
@@ -25206,15 +25941,19 @@ def set_user_info(**kwargs):
             raise Exception("The active parameter must be True or False")
         if editing_self:
             raise Exception("Cannot change active status of the current user.")
-        else:
-            if not current_user.has_role_or_permission('admin', permissions=['edit_user_active_status']):
-                raise Exception("You do not have sufficient privileges to edit this user's active status.")
+        if not current_user.has_role_or_permission('admin', permissions=['edit_user_active_status']):
+            raise Exception("You do not have sufficient privileges to edit this user's active status.")
     for key, val in kwargs.items():
         if key in ('first_name', 'last_name', 'country', 'subdivisionfirst', 'subdivisionsecond', 'subdivisionthird', 'organization', 'timezone', 'language'):
             setattr(user, key, val)
     if 'password' in kwargs:
         if not editing_self and not current_user.has_role_or_permission('admin', permissions=['edit_user_password']):
             raise Exception("You do not have sufficient privileges to change a user's password.")
+        if 'old_password' in kwargs and kwargs['password'] != kwargs['old_password']:
+            user_manager = current_app.user_manager
+            if (not user_manager.get_password(user)) or (not user_manager.verify_password(kwargs['old_password'], user)):
+                raise Exception("The old_password is incorrect")
+            substitute_secret(pad_to_16(MD5Hash(data=kwargs['old_password']).hexdigest()), pad_to_16(MD5Hash(data=kwargs['password']).hexdigest()), user=user)
         user.user_auth.password = app.user_manager.hash_password(kwargs['password'])
     if 'active' in kwargs:
         user.active = kwargs['active']
@@ -25236,10 +25975,11 @@ def set_user_info(**kwargs):
         for role in roles_to_add:
             add_user_privilege(user.id, role)
 
+
 @app.route('/api/secret', methods=['GET'])
 @cross_origin(origins='*', methods=['GET', 'HEAD'], automatic_options=True)
 def api_get_secret():
-    if not api_verify(request):
+    if not api_verify():
         return jsonify_with_status("Access denied.", 403)
     username = request.args.get('username', None)
     password = request.args.get('password', None)
@@ -25250,6 +25990,7 @@ def api_get_secret():
     except Exception as err:
         return jsonify_with_status(str(err), 403)
     return jsonify(secret)
+
 
 def get_secret(username, password, case_sensitive=False):
     if case_sensitive:
@@ -25268,6 +26009,7 @@ def get_secret(username, password, case_sensitive=False):
         raise Exception("Incorrect password")
     return pad_to_16(MD5Hash(data=password).hexdigest())
 
+
 def parse_api_sessions_query(query):
     if query is None or query.strip() == '':
         return None
@@ -25275,11 +26017,12 @@ def parse_api_sessions_query(query):
         raise Exception("Illegal query")
     return eval(query, {'DA': docassemble.base.DA})
 
+
 @app.route('/api/users/interviews', methods=['GET', 'DELETE'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['GET', 'DELETE', 'HEAD'], automatic_options=True)
 def api_users_interviews():
-    if not api_verify(request, roles=['admin', 'advocate'], permissions=['access_sessions']):
+    if not api_verify(roles=['admin', 'advocate'], permissions=['access_sessions']):
         return jsonify_with_status("Access denied.", 403)
     user_id = request.args.get('user_id', None)
     filename = request.args.get('i', None)
@@ -25327,11 +26070,12 @@ def api_users_interviews():
         return ('', 204)
     return ('', 204)
 
+
 @app.route('/api/user/<int:user_id>/interviews', methods=['GET', 'DELETE'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['GET', 'DELETE', 'HEAD'], automatic_options=True)
 def api_user_user_id_interviews(user_id):
-    if not api_verify(request):
+    if not api_verify():
         return jsonify_with_status("Access denied.", 403)
     if not (current_user.id == user_id or current_user.has_role_or_permission('admin', 'advocate', permissions=['access_sessions'])):
         return jsonify_with_status("Access denied.", 403)
@@ -25380,11 +26124,12 @@ def api_user_user_id_interviews(user_id):
         return ('', 204)
     return ('', 204)
 
+
 @app.route('/api/session/back', methods=['POST'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['POST', 'HEAD'], automatic_options=True)
 def api_session_back():
-    if not api_verify(request):
+    if not api_verify():
         return jsonify_with_status("Access denied.", 403)
     post_data = request.get_json(silent=True)
     if post_data is None:
@@ -25402,9 +26147,10 @@ def api_session_back():
         return jsonify_with_status(str(the_err), 400)
     if data is None:
         return ('', 204)
-    if data.get('questionType', None) is 'response':
+    if data.get('questionType', None) == 'response':
         return data['response']
     return jsonify(**data)
+
 
 def transform_json_variables(obj):
     if isinstance(obj, str):
@@ -25431,7 +26177,7 @@ def transform_json_variables(obj):
                 if the_module:
                     importlib.import_module(the_module)
                 new_obj = eval(obj['name'])
-                if not isinstance(the_class, TypeType):
+                if not isinstance(new_obj, TypeType):
                     raise Exception("name is not a class")
                 return new_obj
             except Exception as err:
@@ -25463,11 +26209,12 @@ def transform_json_variables(obj):
         return set(transform_json_variables(val) for val in obj)
     return obj
 
+
 @app.route('/api/session', methods=['GET', 'POST', 'DELETE'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['GET', 'POST', 'DELETE', 'HEAD'], automatic_options=True)
 def api_session():
-    if not api_verify(request):
+    if not api_verify():
         return jsonify_with_status("Access denied.", 403)
     if request.method == 'GET':
         yaml_filename = request.args.get('i', None)
@@ -25537,7 +26284,6 @@ def api_session():
             return jsonify_with_status("Delete variables data is not a list.", 400)
         if not isinstance(event_list, list):
             return jsonify_with_status("Event list data is not a list.", 400)
-        files = []
         literal_variables = {}
         for filekey in request.files:
             if filekey not in file_variables:
@@ -25572,7 +26318,7 @@ def api_session():
             return jsonify_with_status(str(the_err), 400)
         if data is None:
             return ('', 204)
-        if data.get('questionType', None) is 'response':
+        if data.get('questionType', None) == 'response':
             return data['response']
         return jsonify(**data)
     if request.method == 'DELETE':
@@ -25584,57 +26330,56 @@ def api_session():
         return ('', 204)
     return ('', 204)
 
+
 @app.route('/api/file/<int:file_number>', methods=['GET'])
 @cross_origin(origins='*', methods=['GET', 'HEAD'], automatic_options=True)
 def api_file(file_number):
-    if not api_verify(request):
+    if not api_verify():
         return jsonify_with_status("Access denied.", 403)
-    if request.method == 'GET':
-        yaml_filename = request.args.get('i', None)
-        session_id = request.args.get('session', None)
-        number = re.sub(r'[^0-9]', '', str(file_number))
-        privileged = bool(current_user.is_authenticated and current_user.has_role('admin', 'advocate'))
-        try:
-            file_info = get_info_from_file_number(number, privileged=privileged, uids=get_session_uids())
-        except:
-            return ('File not found', 404)
-        if 'path' not in file_info:
-            return ('File not found', 404)
-        else:
-            if 'extension' in request.args:
-                extension = werkzeug.utils.secure_filename(request.args['extension'])
-                if os.path.isfile(file_info['path'] + '.' + extension):
-                    the_path = file_info['path'] + '.' + extension
-                    extension, mimetype = get_ext_and_mimetype(file_info['path'] + '.' + extension)
-                else:
-                    return ('File not found', 404)
-            elif 'filename' in request.args:
-                the_filename = secure_filename_spaces_ok(request.args['filename'])
-                if os.path.isfile(os.path.join(os.path.dirname(file_info['path']), the_filename)):
-                    the_path = os.path.join(os.path.dirname(file_info['path']), the_filename)
-                    extension, mimetype = get_ext_and_mimetype(the_filename)
-                else:
-                    return ('File not found', 404)
-            else:
-                the_path = file_info['path']
-                mimetype = file_info['mimetype']
-            if not os.path.isfile(the_path):
-                return ('File not found', 404)
-            response = send_file(the_path, mimetype=mimetype)
-            response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
-            return response
+    # yaml_filename = request.args.get('i', None)
+    # session_id = request.args.get('session', None)
+    number = re.sub(r'[^0-9]', '', str(file_number))
+    privileged = bool(current_user.is_authenticated and current_user.has_role('admin', 'advocate'))
+    try:
+        file_info = get_info_from_file_number(number, privileged=privileged, uids=get_session_uids())
+    except:
         return ('File not found', 404)
+    if 'path' not in file_info:
+        return ('File not found', 404)
+    if 'extension' in request.args:
+        extension = werkzeug.utils.secure_filename(request.args['extension'])
+        if os.path.isfile(file_info['path'] + '.' + extension):
+            the_path = file_info['path'] + '.' + extension
+            extension, mimetype = get_ext_and_mimetype(file_info['path'] + '.' + extension)
+        else:
+            return ('File not found', 404)
+    elif 'filename' in request.args:
+        the_filename = secure_filename_spaces_ok(request.args['filename'])
+        if os.path.isfile(os.path.join(os.path.dirname(file_info['path']), the_filename)):
+            the_path = os.path.join(os.path.dirname(file_info['path']), the_filename)
+            extension, mimetype = get_ext_and_mimetype(the_filename)
+        else:
+            return ('File not found', 404)
+    else:
+        the_path = file_info['path']
+        mimetype = file_info['mimetype']
+    if not os.path.isfile(the_path):
+        return ('File not found', 404)
+    response = send_file(the_path, mimetype=mimetype)
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
+    return response
+
 
 def get_session_variables(yaml_filename, session_id, secret=None, simplify=True, use_lock=False):
     if use_lock:
         obtain_lock(session_id, yaml_filename)
-    #sys.stderr.write("get_session_variables: fetch_user_dict\n")
+    # logmessage("get_session_variables: fetch_user_dict")
     if secret is None:
         secret = docassemble.base.functions.this_thread.current_info.get('secret', None)
     tbackup = docassemble.base.functions.backup_thread_variables()
     docassemble.base.functions.this_thread.current_info['yaml_filename'] = yaml_filename
     try:
-        steps, user_dict, is_encrypted = fetch_user_dict(session_id, yaml_filename, secret=str(secret))
+        steps, user_dict, is_encrypted = fetch_user_dict(session_id, yaml_filename, secret=str(secret))  # pylint: disable=unused-variable
     except Exception as the_err:
         if use_lock:
             release_lock(session_id, yaml_filename)
@@ -25647,9 +26392,10 @@ def get_session_variables(yaml_filename, session_id, secret=None, simplify=True,
         raise Exception("Unable to obtain interview dictionary.")
     if simplify:
         variables = docassemble.base.functions.serializable_dict(user_dict, include_internal=True)
-        #variables['_internal'] = docassemble.base.functions.serializable_dict(user_dict['_internal'])
+        # variables['_internal'] = docassemble.base.functions.serializable_dict(user_dict['_internal'])
         return variables
     return user_dict
+
 
 def go_back_in_session(yaml_filename, session_id, secret=None, return_question=False, use_lock=False, encode=False):
     if use_lock:
@@ -25694,6 +26440,7 @@ def go_back_in_session(yaml_filename, session_id, secret=None, return_question=F
         release_lock(session_id, yaml_filename)
     docassemble.base.functions.restore_thread_variables(tbackup)
     return data
+
 
 def set_session_variables(yaml_filename, session_id, variables, secret=None, return_question=False, literal_variables=None, del_variables=None, question_name=None, event_list=None, advance_progress_meter=False, post_setting=True, use_lock=False, encode=False, process_objects=False):
     if use_lock:
@@ -25836,22 +26583,22 @@ def set_session_variables(yaml_filename, session_id, variables, secret=None, ret
             docassemble.base.functions.restore_thread_variables(tbackup)
             raise Exception("Problem deleting variables: " + str(the_err))
     session_uid = docassemble.base.functions.this_thread.current_info['user']['session_uid']
-    #if 'event_stack' in user_dict['_internal']:
-    #    logmessage("Event stack starting as: " + repr(user_dict['_internal']['event_stack']))
-    #else:
-    #    logmessage("No event stack.")
+    # if 'event_stack' in user_dict['_internal']:
+    #     logmessage("Event stack starting as: " + repr(user_dict['_internal']['event_stack']))
+    # else:
+    #     logmessage("No event stack.")
     if event_list is not None and len(event_list) and 'event_stack' in user_dict['_internal'] and session_uid in user_dict['_internal']['event_stack'] and len(user_dict['_internal']['event_stack'][session_uid]):
         for event_name in event_list:
             if user_dict['_internal']['event_stack'][session_uid][0]['action'] == event_name:
                 user_dict['_internal']['event_stack'][session_uid].pop(0)
-                #logmessage("Popped " + str(event_name))
+                # logmessage("Popped " + str(event_name))
             if len(user_dict['_internal']['event_stack'][session_uid]) == 0:
                 break
     if len(vars_set) > 0 and 'event_stack' in user_dict['_internal'] and session_uid in user_dict['_internal']['event_stack'] and len(user_dict['_internal']['event_stack'][session_uid]):
         for var_name in vars_set:
             if user_dict['_internal']['event_stack'][session_uid][0]['action'] == var_name:
                 user_dict['_internal']['event_stack'][session_uid].pop(0)
-                #logmessage("Popped " + str(var_name))
+                # logmessage("Popped " + str(var_name))
             if len(user_dict['_internal']['event_stack'][session_uid]) == 0:
                 break
     if question_name is not None:
@@ -25862,8 +26609,8 @@ def set_session_variables(yaml_filename, session_id, variables, secret=None, ret
                 del user_dict['_internal']['dirty'][var_name]
             except:
                 pass
-    #if 'event_stack' in user_dict['_internal']:
-    #    logmessage("Event stack now: " + repr(user_dict['_internal']['event_stack']))
+    # if 'event_stack' in user_dict['_internal']:
+    #     logmessage("Event stack now: " + repr(user_dict['_internal']['event_stack']))
     if post_setting:
         steps += 1
     if return_question:
@@ -25892,10 +26639,11 @@ def set_session_variables(yaml_filename, session_id, variables, secret=None, ret
     docassemble.base.functions.restore_thread_variables(tbackup)
     return data
 
+
 @app.route('/api/session/new', methods=['GET'])
 @cross_origin(origins='*', methods=['GET', 'HEAD'], automatic_options=True)
 def api_session_new():
-    if not api_verify(request):
+    if not api_verify():
         return jsonify_with_status("Access denied.", 403)
     yaml_filename = request.args.get('i', None)
     if yaml_filename is None:
@@ -25920,8 +26668,8 @@ def api_session_new():
         return jsonify_with_status(err.__class__.__name__ + ': ' + str(err), 400)
     if encrypted and new_secret:
         return jsonify(dict(session=session_id, i=yaml_filename, secret=secret, encrypted=encrypted))
-    else:
-        return jsonify(dict(session=session_id, i=yaml_filename, encrypted=encrypted))
+    return jsonify(dict(session=session_id, i=yaml_filename, encrypted=encrypted))
+
 
 def create_new_interview(yaml_filename, secret, url_args=None, referer=None, req=None):
     interview = docassemble.base.interview_cache.get_interview(yaml_filename)
@@ -25958,7 +26706,7 @@ def create_new_interview(yaml_filename, secret, url_args=None, referer=None, req
     interview_status.checkin = True
     try:
         interview.assemble(user_dict, interview_status)
-    except DAErrorMissingVariable as err:
+    except DAErrorMissingVariable:
         pass
     except Exception as e:
         release_lock(session_id, yaml_filename)
@@ -25977,10 +26725,11 @@ def create_new_interview(yaml_filename, secret, url_args=None, referer=None, req
     release_lock(session_id, yaml_filename)
     return (encrypted, session_id)
 
+
 @app.route('/api/session/question', methods=['GET'])
 @cross_origin(origins='*', methods=['GET', 'HEAD'], automatic_options=True)
 def api_session_question():
-    if not api_verify(request):
+    if not api_verify():
         return jsonify_with_status("Access denied.", 403)
     yaml_filename = request.args.get('i', None)
     session_id = request.args.get('session', None)
@@ -25997,6 +26746,7 @@ def api_session_question():
     if data.get('questionType', None) == 'response':
         return data['response']
     return jsonify(**data)
+
 
 def get_question_data(yaml_filename, session_id, secret, use_lock=True, user_dict=None, steps=None, is_encrypted=None, old_user_dict=None, save=True, post_setting=False, advance_progress_meter=False, action=None, encode=False):
     if use_lock:
@@ -26025,12 +26775,12 @@ def get_question_data(yaml_filename, session_id, secret, use_lock=True, user_dic
             raise Exception("Unable to obtain interview dictionary: " + str(err))
     ci['encrypted'] = is_encrypted
     interview_status = docassemble.base.parse.InterviewStatus(current_info=ci)
-    #interview_status.checkin = True
+    # interview_status.checkin = True
     try:
         interview.assemble(user_dict, interview_status=interview_status, old_user_dict=old_user_dict)
     except DAErrorMissingVariable as err:
         if use_lock:
-            #save_user_dict(session_id, user_dict, yaml_filename, secret=secret, encrypt=is_encrypted, changed=False, steps=steps)
+            # save_user_dict(session_id, user_dict, yaml_filename, secret=secret, encrypt=is_encrypted, changed=False, steps=steps)
             release_lock(session_id, yaml_filename)
         restore_session(sbackup)
         docassemble.base.functions.restore_thread_variables(tbackup)
@@ -26121,7 +26871,6 @@ def get_question_data(yaml_filename, session_id, secret, use_lock=True, user_dic
     interview_status.submit = title_info.get('submit', the_main_page_parts['main page submit'])
     interview_status.back = title_info.get('back button label', the_main_page_parts['main page back button label'] or interview_status.question.back())
     interview_status.cornerback = title_info.get('corner back button label', the_main_page_parts['main page corner back button label'] or interview_status.question.cornerback())
-    bootstrap_theme = interview.get_bootstrap_theme()
     if steps is None:
         steps = user_dict['_internal']['steps']
     allow_going_back = bool(interview_status.question.can_go_back and (steps is None or (steps - user_dict['_internal']['steps_offset']) > 1))
@@ -26132,16 +26881,16 @@ def get_question_data(yaml_filename, session_id, secret, use_lock=True, user_dic
     if 'source' in data:
         data['source']['varsLink'] = url_for('get_variables', i=yaml_filename)
         data['source']['varsLabel'] = word('Show variables and values')
-    #if interview_status.question.question_type == "review" and len(interview_status.question.fields_used):
-    #    next_action_review = dict(action=list(interview_status.question.fields_used)[0], arguments={})
-    #else:
-    #    next_action_review = None
+    # if interview_status.question.question_type == "review" and len(interview_status.question.fields_used):
+    #     next_action_review = dict(action=list(interview_status.question.fields_used)[0], arguments={})
+    # else:
+    #     next_action_review = None
     if 'reload_after' in interview_status.extras:
         reload_after = 1000 * int(interview_status.extras['reload_after'])
     else:
         reload_after = 0
-    #if next_action_review:
-    #    data['next_action'] = next_action_review
+    # if next_action_review:
+    #     data['next_action'] = next_action_review
     data['interview_options'] = interview.options
     if reload_after and reload_after > 0:
         data['reload_after'] = reload_after
@@ -26196,19 +26945,20 @@ def get_question_data(yaml_filename, session_id, secret, use_lock=True, user_dic
                     if current_user.has_role('admin', 'developer'):
                         if app.config['ALLOW_UPDATES']:
                             menu_items.append({'href': url_for('update_package'), 'anchor': word('Package Management')})
-                        menu_items.append({'href': url_for('logs'), 'anchor': word('Logs')})
+                        if app.config['ALLOW_LOG_VIEWING']:
+                            menu_items.append({'href': url_for('logs'), 'anchor': word('Logs')})
                         if app.config['ENABLE_PLAYGROUND']:
                             menu_items.append({'href': url_for('playground_page'), 'anchor': word('Playground')})
                         menu_items.append({'href': url_for('utilities'), 'anchor': word('Utilities')})
                         if current_user.has_role('admin', 'advocate') or current_user.can_do('access_user_info'):
                             menu_items.append({'href': url_for('user_list'), 'anchor': word('User List')})
-                        if current_user.has_role('admin'):
+                        if current_user.has_role('admin') and app.config['ALLOW_CONFIGURATION_EDITING']:
                             menu_items.append({'href': url_for('config_page'), 'anchor': word('Configuration')})
                     if app.config['SHOW_DISPATCH']:
                         menu_items.append({'href': url_for('interview_start'), 'anchor': word('Available Interviews')})
                     for item in app.config['ADMIN_INTERVIEWS']:
                         if item.can_use() and docassemble.base.functions.this_thread.current_info.get('yaml_filename', '') != item.interview:
-                            menu_items.append({'href': url_for('index'), 'anchor': item.get_title(docassemble.base.functions.get_language())})
+                            menu_items.append({'href': url_for_interview(i=item.interview, new_session='1'), 'anchor': item.get_title(docassemble.base.functions.get_language())})
                     if app.config['SHOW_MY_INTERVIEWS'] or current_user.has_role('admin'):
                         menu_items.append({'href': url_for('interview_list'), 'anchor': word('My Interviews')})
                     if current_user.has_role('admin', 'developer'):
@@ -26223,17 +26973,18 @@ def get_question_data(yaml_filename, session_id, secret, use_lock=True, user_dic
         if len(menu_items) > 0:
             data['menu']['top'] = {'anchor': word("Menu")}
             if not interview.options.get('hide standard menu', False):
-                menu_items.append({'href': exit_href(interview_status), 'anchor': interview_status.exit_label})
+                menu_items.append({'href': exit_href(data=True), 'anchor': interview_status.exit_label})
         else:
-            data['menu']['top'] = {'href': exit_href(interview_status), 'anchor': interview_status.exit_label}
-    #logmessage("Ok returning")
+            data['menu']['top'] = {'href': exit_href(data=True), 'anchor': interview_status.exit_label}
+    # logmessage("Ok returning")
     return data
+
 
 @app.route('/api/session/action', methods=['POST'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['POST', 'HEAD'], automatic_options=True)
 def api_session_action():
-    if not api_verify(request):
+    if not api_verify():
         return jsonify_with_status("Access denied.", 403)
     post_data = request.get_json(silent=True)
     if post_data is None:
@@ -26244,6 +26995,7 @@ def api_session_action():
     if result['status'] == 'success':
         return ('', 204)
     return jsonify_with_status(result['message'], 400)
+
 
 def run_action_in_session(**kwargs):
     yaml_filename = kwargs.get('i', None)
@@ -26297,7 +27049,7 @@ def run_action_in_session(**kwargs):
     changed = True
     try:
         interview.assemble(user_dict, interview_status)
-    except DAErrorMissingVariable as err:
+    except DAErrorMissingVariable:
         if overwrite:
             save_status = 'overwrite'
             changed = False
@@ -26375,11 +27127,12 @@ def run_action_in_session(**kwargs):
     docassemble.base.functions.restore_thread_variables(tbackup)
     return {'status': 'success'}
 
+
 @app.route('/api/login_url', methods=['POST'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['POST', 'HEAD'], automatic_options=True)
 def api_login_url():
-    if not api_verify(request, roles=['admin'], permissions=['log_user_in']):
+    if not api_verify(roles=['admin'], permissions=['log_user_in']):
         return jsonify_with_status("Access denied.", 403)
     post_data = request.get_json(silent=True)
     if post_data is None:
@@ -26392,6 +27145,7 @@ def api_login_url():
     if result['status'] == 'success':
         return jsonify(result['url'])
     return jsonify_with_status("Error", 400)
+
 
 def get_login_url(**kwargs):
     username = kwargs.get('username', None)
@@ -26443,7 +27197,7 @@ def get_login_url(**kwargs):
         docassemble.base.functions.this_thread.current_info['yaml_filename'] = info['i']
         if 'session' in info:
             try:
-                steps, user_dict, is_encrypted = fetch_user_dict(info['session'], info['i'], secret=secret)
+                steps, user_dict, is_encrypted = fetch_user_dict(info['session'], info['i'], secret=secret)  # pylint: disable=unused-variable
                 info['encrypted'] = is_encrypted
             except:
                 if old_yaml_filename:
@@ -26470,18 +27224,20 @@ def get_login_url(**kwargs):
     pipe.execute()
     return {"status": "success", "url": url_for('auto_login', key=encryption_key + code, _external=True)}
 
+
 @app.route('/api/list', methods=['GET'])
 @cross_origin(origins='*', methods=['GET', 'HEAD'], automatic_options=True)
 def api_list():
-    if not api_verify(request):
+    if not api_verify():
         return jsonify_with_status("Access denied.", 403)
     return jsonify(interview_menu(absolute_urls=true_or_false(request.args.get('absolute_urls', True)), tag=request.args.get('tag', None)))
+
 
 @app.route('/api/user/interviews', methods=['GET', 'DELETE'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['GET', 'DELETE', 'HEAD'], automatic_options=True)
 def api_user_interviews():
-    if not api_verify(request):
+    if not api_verify():
         return jsonify_with_status("Access denied.", 403)
     filename = request.args.get('i', None)
     session_id = request.args.get('session', None)
@@ -26528,11 +27284,12 @@ def api_user_interviews():
         return ('', 204)
     return ('', 204)
 
+
 @app.route('/api/interviews', methods=['GET', 'DELETE'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['GET', 'DELETE', 'HEAD'], automatic_options=True)
 def api_interviews():
-    if not api_verify(request, roles=['admin', 'advocate'], permissions=['access_sessions']):
+    if not api_verify(roles=['admin', 'advocate'], permissions=['access_sessions']):
         return jsonify_with_status("Access denied.", 403)
     filename = request.args.get('i', None)
     session_id = request.args.get('session', None)
@@ -26584,6 +27341,7 @@ def api_interviews():
         return ('', 204)
     return ('', 204)
 
+
 def jsonify_task(result):
     while True:
         code = random_string(24)
@@ -26595,6 +27353,7 @@ def jsonify_task(result):
     pipe.expire(the_key, 3600)
     pipe.execute()
     return jsonify({'task_id': code})
+
 
 def jsonify_restart_task():
     while True:
@@ -26608,19 +27367,21 @@ def jsonify_restart_task():
     pipe.execute()
     return jsonify({'task_id': code})
 
+
 def should_run_create(package_name):
     if package_name in ('docassemble.base', 'docassemble.webapp', 'docassemble.demo', 'docassemble'):
         return True
     return False
 
+
 @app.route('/api/package', methods=['GET', 'POST', 'DELETE'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['GET', 'POST', 'DELETE', 'HEAD'], automatic_options=True)
 def api_package():
-    if not api_verify(request, roles=['admin', 'developer'], permissions=['manage_packages']):
+    if not api_verify(roles=['admin', 'developer'], permissions=['manage_packages']):
         return jsonify_with_status("Access denied.", 403)
     if request.method == 'GET':
-        package_list, package_auth = get_package_info(exclude_core=True)
+        package_list, package_auth = get_package_info()  # pylint: disable=unused-variable
         packages = []
         for package in package_list:
             if not package.package.active:
@@ -26637,6 +27398,8 @@ def api_package():
             packages.append(item)
         return jsonify(packages)
     if request.method == 'DELETE':
+        if not app.config['ALLOW_UPDATES']:
+            return ('File not found', 404)
         target = request.args.get('package', None)
         do_restart = true_or_false(request.args.get('restart', True))
         if target is None:
@@ -26659,6 +27422,8 @@ def api_package():
             result = docassemble.webapp.worker.update_packages.delay(restart=False)
         return jsonify_task(result)
     if request.method == 'POST':
+        if not app.config['ALLOW_UPDATES']:
+            return ('File not found', 404)
         post_data = request.get_json(silent=True)
         if post_data is None:
             post_data = request.form.copy()
@@ -26725,8 +27490,7 @@ def api_package():
                 else:
                     result = docassemble.webapp.worker.update_packages.delay(restart=False)
                 return jsonify_task(result)
-            else:
-                jsonify_with_status("You do not have permission to install that package.", 403)
+            jsonify_with_status("You do not have permission to install that package.", 403)
         if 'pip' in post_data:
             m = re.match(r'([^>=<]+)([>=<]+.+)', post_data['pip'])
             if m:
@@ -26744,8 +27508,7 @@ def api_package():
                 else:
                     result = docassemble.webapp.worker.update_packages.delay(restart=False)
                 return jsonify_task(result)
-            else:
-                return jsonify_with_status("You do not have permission to install that package.", 403)
+            return jsonify_with_status("You do not have permission to install that package.", 403)
         if 'zip' in request.files and request.files['zip'].filename:
             try:
                 the_file = request.files['zip']
@@ -26769,12 +27532,16 @@ def api_package():
                 return jsonify_with_status("You do not have permission to install that package.", 403)
             except:
                 return jsonify_with_status("There was an error when installing that package.", 400)
+    return ('File not found', 404)
+
 
 @app.route('/api/package_update_status', methods=['GET'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['GET', 'HEAD'], automatic_options=True)
 def api_package_update_status():
-    if not api_verify(request, roles=['admin', 'developer'], permissions=['manage_packages']):
+    if not app.config['ALLOW_UPDATES']:
+        return ('File not found', 404)
+    if not api_verify(roles=['admin', 'developer'], permissions=['manage_packages']):
         return jsonify_with_status("Access denied.", 403)
     code = request.args.get('task_id', None)
     if code is None:
@@ -26805,11 +27572,12 @@ def api_package_update_status():
         return jsonify(status='completed', ok=False, error_message=str(the_result))
     return jsonify(status='working')
 
+
 @app.route('/api/temp_url', methods=['GET'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['GET', 'HEAD'], automatic_options=True)
 def api_temporary_redirect():
-    if not api_verify(request):
+    if not api_verify():
         return jsonify_with_status("Access denied.", 403)
     url = request.args.get('url', None)
     if url is None:
@@ -26825,11 +27593,12 @@ def api_temporary_redirect():
         return jsonify_with_status("Invalid number of seconds.", 400)
     return jsonify(docassemble.base.functions.temp_redirect(url, expire, False, one_time))
 
+
 @app.route('/api/resume_url', methods=['POST'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['POST', 'HEAD'], automatic_options=True)
 def api_resume_url():
-    if not api_verify(request):
+    if not api_verify():
         return jsonify_with_status("Access denied.", 403)
     post_data = request.get_json(silent=True)
     if post_data is None:
@@ -26837,7 +27606,7 @@ def api_resume_url():
     filename = post_data.get('i', None)
     if filename is None:
         return jsonify_with_status("No filename supplied.", 400)
-    session_id = post_data.get('session_id', None)
+    session_id = post_data.get('session', post_data.get('session_id', None))
     if 'url_args' in post_data:
         if isinstance(post_data['url_args'], dict):
             url_args = post_data['url_args']
@@ -26874,27 +27643,31 @@ def api_resume_url():
     pipe.execute()
     return jsonify(url_for('launch', c=code, _external=True))
 
+
 @app.route('/api/clear_cache', methods=['POST'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['POST', 'HEAD'], automatic_options=True)
 def api_clear_cache():
-    if not api_verify(request, roles=['admin', 'developer'], permissions=['playground_control']):
+    if not api_verify(roles=['admin', 'developer'], permissions=['playground_control']):
         return jsonify_with_status("Access denied.", 403)
     for key in r.keys('da:interviewsource:*'):
         r.incr(key.decode())
     return ('', 204)
 
+
 @app.route('/api/config', methods=['GET', 'POST', 'PATCH'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['GET', 'POST', 'PATCH', 'HEAD'], automatic_options=True)
 def api_config():
-    if not api_verify(request, roles=['admin'], permissions=['manage_config']):
+    if not app.config['ALLOW_CONFIGURATION_EDITING']:
+        return ('File not found', 404)
+    if not api_verify(roles=['admin'], permissions=['manage_config']):
         return jsonify_with_status("Access denied.", 403)
     if request.method == 'GET':
         try:
             with open(daconfig['config file'], 'r', encoding='utf-8') as fp:
                 content = fp.read()
-            data = yaml.load(content, Loader=yaml.FullLoader)
+            data = standardyaml.load(content, Loader=standardyaml.FullLoader)
         except:
             return jsonify_with_status("Could not parse Configuration.", 400)
         return jsonify(data)
@@ -26911,7 +27684,7 @@ def api_config():
                 data = json.loads(post_data['config'])
             except:
                 return jsonify_with_status("Configuration was not valid JSON.", 400)
-        yaml_data = ruamel.yaml.safe_dump(data, default_flow_style=False, default_style = '"', allow_unicode=True, width=10000)
+        yaml_data = ruamel.yaml.safe_dump(data, default_flow_style=False, default_style='"', allow_unicode=True, width=10000)
         if cloud is not None:
             key = cloud.get_key('config.yml')
             key.set_contents_from_string(yaml_data)
@@ -26924,15 +27697,15 @@ def api_config():
         try:
             with open(daconfig['config file'], 'r', encoding='utf-8') as fp:
                 content = fp.read()
-            data = yaml.load(content, Loader=yaml.FullLoader)
+            data = standardyaml.load(content, Loader=standardyaml.FullLoader)
         except:
             return jsonify_with_status("Could not parse Configuration.", 400)
         patch_data = request.get_json(silent=True)
         if patch_data is None:
-            using_json = False
+            # using_json = False
             patch_data = request.form.copy()
-        else:
-            using_json = True
+        # else:
+        #     using_json = True
         if 'config_changes' not in patch_data:
             return jsonify_with_status("Configuration changes not supplied.", 400)
         if isinstance(patch_data['config_changes'], dict):
@@ -26943,7 +27716,7 @@ def api_config():
             except:
                 return jsonify_with_status("Configuration changes were not valid JSON.", 400)
         data.update(new_data)
-        yaml_data = ruamel.yaml.safe_dump(data, default_flow_style=False, default_style = '"', allow_unicode=True, width=10000)
+        yaml_data = ruamel.yaml.safe_dump(data, default_flow_style=False, default_style='"', allow_unicode=True, width=10000)
         if cloud is not None:
             key = cloud.get_key('config.yml')
             key.set_contents_from_string(yaml_data)
@@ -26952,12 +27725,16 @@ def api_config():
         return_val = jsonify_restart_task()
         restart_all()
         return return_val
+    return ('File not found', 404)
+
 
 @app.route('/api/playground_pull', methods=['GET', 'POST'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['POST', 'HEAD'], automatic_options=True)
 def api_playground_pull():
-    if not api_verify(request, roles=['admin', 'developer'], permissions=['playground_control']):
+    if not app.config['ENABLE_PLAYGROUND']:
+        return ('File not found', 404)
+    if not api_verify(roles=['admin', 'developer'], permissions=['playground_control']):
         return jsonify_with_status("Access denied.", 403)
     post_data = request.get_json(silent=True)
     if post_data is None:
@@ -26965,7 +27742,7 @@ def api_playground_pull():
     do_restart = true_or_false(post_data.get('restart', True))
     current_project = post_data.get('project', 'default')
     try:
-        if current_user.has_role_or_permission('admin', permissions=['playground_control']):
+        if app.config['ENABLE_SHARING_PLAYGROUNDS'] or current_user.has_role_or_permission('admin', permissions=['playground_control']):
             user_id = int(post_data.get('user_id', current_user.id))
         else:
             if 'user_id' in post_data:
@@ -26999,15 +27776,15 @@ def api_playground_pull():
         m = re.match(r'([^>=<]+)([>=<]+.+)', post_data['pip'])
         if m:
             pypi_package = m.group(1)
-            limitation = m.group(2)
+            # limitation = m.group(2)
         else:
             pypi_package = post_data['pip']
-            limitation = None
+            # limitation = None
         packagename = re.sub(r'[^A-Za-z0-9\_\-\.]', '', pypi_package)
     else:
         return jsonify_with_status("Either github_url or pip is required.", 400)
     area = {}
-    area_sec = dict(templates='playgroundtemplate', static='playgroundstatic', sources='playgroundsources', questions='playground')
+    # area_sec = dict(templates='playgroundtemplate', static='playgroundstatic', sources='playgroundsources', questions='playground')
     for sec in ('playground', 'playgroundpackages', 'playgroundtemplate', 'playgroundstatic', 'playgroundsources', 'playgroundmodules'):
         area[sec] = SavedFile(user_id, fix=True, section=sec)
     result = do_playground_pull(area, current_project, github_url=github_url, branch=branch, pypi_package=pypi_package, can_publish_to_github=can_publish_to_github, github_email=current_user.email)
@@ -27020,21 +27797,27 @@ def api_playground_pull():
             return return_val
     return ('', 204)
 
+
 @app.route('/api/restart', methods=['POST'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['POST', 'HEAD'], automatic_options=True)
 def api_restart():
-    if not api_verify(request, roles=['admin', 'developer'], permissions=['playground_control']):
+    if not app.config['ALLOW_RESTARTING']:
+        return ('File not found', 404)
+    if not api_verify(roles=['admin', 'developer'], permissions=['playground_control']):
         return jsonify_with_status("Access denied.", 403)
     return_val = jsonify_restart_task()
     restart_all()
     return return_val
 
+
 @app.route('/api/restart_status', methods=['GET'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['GET', 'HEAD'], automatic_options=True)
 def api_restart_status():
-    if not api_verify(request, roles=['admin', 'developer'], permissions=['playground_control']):
+    if not app.config['ALLOW_RESTARTING']:
+        return ('File not found', 404)
+    if not api_verify(roles=['admin', 'developer'], permissions=['playground_control']):
         return jsonify_with_status("Access denied.", 403)
     code = request.args.get('task_id', None)
     if code is None:
@@ -27042,18 +27825,21 @@ def api_restart_status():
     the_key = 'da:restart_status:' + str(code)
     task_data = r.get(the_key)
     if task_data is None:
-        return jsonify(status= 'unknown')
+        return jsonify(status='unknown')
     task_info = json.loads(task_data.decode())
     if START_TIME <= task_info['server_start_time']:
         return jsonify(status='working')
     r.expire(the_key, 30)
     return jsonify(status='completed')
 
+
 @app.route('/api/playground_install', methods=['POST'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['POST', 'HEAD'], automatic_options=True)
 def api_playground_install():
-    if not api_verify(request, roles=['admin', 'developer'], permissions=['playground_control']):
+    if not app.config['ENABLE_PLAYGROUND']:
+        return ('File not found', 404)
+    if not api_verify(roles=['admin', 'developer'], permissions=['playground_control']):
         return jsonify_with_status("Access denied.", 403)
     post_data = request.get_json(silent=True)
     if post_data is None:
@@ -27061,7 +27847,7 @@ def api_playground_install():
     do_restart = true_or_false(post_data.get('restart', True))
     current_project = post_data.get('project', 'default')
     try:
-        if current_user.has_role_or_permission('admin', permissions=['playground_control']):
+        if app.config['ENABLE_SHARING_PLAYGROUNDS'] or current_user.has_role_or_permission('admin', permissions=['playground_control']):
             user_id = int(post_data.get('user_id', current_user.id))
         else:
             if 'user_id' in post_data:
@@ -27166,18 +27952,18 @@ def api_playground_install():
                                 inner_item = re.sub(r'^"+', '', inner_item)
                                 the_list.append(inner_item)
                             extracted[m.group(1)] = the_list
-                    info_dict = dict(readme=readme_text, interview_files=data_files['questions'], sources_files=data_files['sources'], static_files=data_files['static'], module_files=data_files['modules'], template_files=data_files['templates'], dependencies=[z for z in map(lambda y: re.sub(r'[\>\<\=].*', '', y), extracted.get('install_requires', []))], description=extracted.get('description', ''), author_name=extracted.get('author', ''), author_email=extracted.get('author_email', ''), license=extracted.get('license', ''), url=extracted.get('url', ''), version=extracted.get('version', ''))
+                    info_dict = dict(readme=readme_text, interview_files=data_files['questions'], sources_files=data_files['sources'], static_files=data_files['static'], module_files=data_files['modules'], template_files=data_files['templates'], dependencies=list(map(lambda y: re.sub(r'[\>\<\=].*', '', y), extracted.get('install_requires', []))), description=extracted.get('description', ''), author_name=extracted.get('author', ''), author_email=extracted.get('author_email', ''), license=extracted.get('license', ''), url=extracted.get('url', ''), version=extracted.get('version', ''))
 
-                    info_dict['dependencies'] = [x for x in [z for z in map(lambda y: re.sub(r'[\>\<\=].*', '', y), info_dict['dependencies'])] if x not in ('docassemble', 'docassemble.base', 'docassemble.webapp')]
+                    info_dict['dependencies'] = [x for x in map(lambda y: re.sub(r'[\>\<\=].*', '', y), info_dict['dependencies']) if x not in ('docassemble', 'docassemble.base', 'docassemble.webapp')]
                     package_name = re.sub(r'^docassemble\.', '', extracted.get('name', expected_name))
                     with open(os.path.join(directory_for(area['playgroundpackages'], current_project), 'docassemble.' + package_name), 'w', encoding='utf-8') as fp:
-                        the_yaml = yaml.safe_dump(info_dict, default_flow_style=False, default_style='|')
+                        the_yaml = standardyaml.safe_dump(info_dict, default_flow_style=False, default_style='|')
                         fp.write(str(the_yaml))
-                    for key in r.keys('da:interviewsource:docassemble.playground' + str(current_user.id) + project_name(current_project) + ':*'):
+                    for key in r.keys('da:interviewsource:docassemble.playground' + str(current_user.id) + project_name(current_project) + ':*'):  # pylint: disable=consider-using-dict-items
                         r.incr(key.decode())
-                    for sec in area:
-                        area[sec].finalize()
-                    the_file = package_name
+                    for the_area in area.values():
+                        the_area.finalize()
+                    # the_file = package_name
                 zippath.close()
     except Exception as err:
         logmessage("api_playground_install: " + err.__class__.__name__ + ": " + str(err))
@@ -27192,15 +27978,18 @@ def api_playground_install():
         return return_val
     return ('', 204)
 
+
 @app.route('/api/playground/project', methods=['GET', 'POST', 'DELETE'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['GET', 'POST', 'DELETE', 'HEAD'], automatic_options=True)
 def api_playground_projects():
-    if not api_verify(request, roles=['admin', 'developer'], permissions=['playground_control']):
+    if not app.config['ENABLE_PLAYGROUND']:
+        return ('File not found', 404)
+    if not api_verify(roles=['admin', 'developer'], permissions=['playground_control']):
         return jsonify_with_status("Access denied.", 403)
     if request.method in ('GET', 'DELETE'):
         try:
-            if current_user.has_role_or_permission('admin', permissions=['playground_control']):
+            if app.config['ENABLE_SHARING_PLAYGROUNDS'] or current_user.has_role_or_permission('admin', permissions=['playground_control']):
                 user_id = int(request.args.get('user_id', current_user.id))
             else:
                 if 'user_id' in request.args:
@@ -27223,7 +28012,7 @@ def api_playground_projects():
         if post_data is None:
             post_data = request.form.copy()
         try:
-            if current_user.has_role_or_permission('admin', permissions=['playground_control']):
+            if app.config['ENABLE_SHARING_PLAYGROUNDS'] or current_user.has_role_or_permission('admin', permissions=['playground_control']):
                 user_id = int(post_data.get('user_id', current_user.id))
             else:
                 if 'user_id' in post_data:
@@ -27240,18 +28029,22 @@ def api_playground_projects():
             return jsonify_with_status("Invalid project.", 400)
         create_project(user_id, project)
         return ('', 204)
+    return ('File not found', 404)
+
 
 @app.route('/api/playground', methods=['GET', 'POST', 'DELETE'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['GET', 'POST', 'DELETE', 'HEAD'], automatic_options=True)
 def api_playground():
-    if not api_verify(request, roles=['admin', 'developer'], permissions=['playground_control']):
+    if not app.config['ENABLE_PLAYGROUND']:
+        return ('File not found', 404)
+    if not api_verify(roles=['admin', 'developer'], permissions=['playground_control']):
         return jsonify_with_status("Access denied.", 403)
     if request.method in ('GET', 'DELETE'):
         folder = request.args.get('folder', 'static')
         project = request.args.get('project', 'default')
         try:
-            if current_user.has_role_or_permission('admin', permissions=['playground_control']):
+            if app.config['ENABLE_SHARING_PLAYGROUNDS'] or current_user.has_role_or_permission('admin', permissions=['playground_control']):
                 user_id = int(request.args.get('user_id', current_user.id))
             else:
                 if 'user_id' in request.args:
@@ -27267,7 +28060,7 @@ def api_playground():
         project = post_data.get('project', 'default')
         do_restart = true_or_false(post_data.get('restart', True))
         try:
-            if current_user.has_role_or_permission('admin', permissions=['playground_control']):
+            if app.config['ENABLE_SHARING_PLAYGROUNDS'] or current_user.has_role_or_permission('admin', permissions=['playground_control']):
                 user_id = int(post_data.get('user_id', current_user.id))
             else:
                 if 'user_id' in post_data:
@@ -27332,11 +28125,12 @@ def api_playground():
         return ('', 204)
     return ('', 204)
 
+
 @app.route('/api/convert_file', methods=['POST'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['POST', 'HEAD'], automatic_options=True)
 def api_convert_file():
-    if not api_verify(request):
+    if not api_verify():
         return jsonify_with_status("Access denied.", 403)
     post_data = request.form.copy()
     to_format = post_data.get('format', 'md')
@@ -27364,11 +28158,13 @@ def api_convert_file():
                 response = make_response(contents, 200)
                 response.headers['Content-Type'] = 'text/plain'
                 return response
+    return ('File not found', 404)
+
 
 def add_api_key(user_id, name, method, allowed):
     info = dict(constraints=allowed, method=method, name=name)
     success = False
-    for attempt in range(10):
+    for attempt in range(10):  # pylint: disable=unused-variable
         api_key = random_alphanumeric(32)
         info['last_four'] = api_key[-4:]
         new_api_key = encrypt_api_key(api_key, app.secret_key)
@@ -27380,11 +28176,13 @@ def add_api_key(user_id, name, method, allowed):
         return None
     return api_key
 
+
 def api_key_exists(user_id, api_key):
     rkeys = r.keys('da:apikey:userid:' + str(user_id) + ':key:' + encrypt_api_key(str(api_key), app.secret_key) + ':info')
     if len(rkeys) > 0:
         return True
     return False
+
 
 def existing_api_names(user_id, except_for=None):
     result = []
@@ -27401,6 +28199,7 @@ def existing_api_names(user_id, except_for=None):
         except:
             continue
     return result
+
 
 def get_api_info(user_id, name=None, api_key=None):
     result = []
@@ -27430,9 +28229,11 @@ def get_api_info(user_id, name=None, api_key=None):
         return None
     return result
 
+
 def delete_api_key(user_id, api_key):
     key = 'da:apikey:userid:' + str(user_id) + ':key:' + encrypt_api_key(api_key, app.secret_key) + ':info'
     r.delete(key)
+
 
 def update_api_key(user_id, api_key, name, method, allowed, add_to_allowed, remove_from_allowed, permissions, add_to_permissions, remove_from_permissions):
     key = 'da:apikey:userid:' + str(user_id) + ':key:' + encrypt_api_key(api_key, app.secret_key) + ':info'
@@ -27482,6 +28283,7 @@ def update_api_key(user_id, api_key, name, method, allowed, add_to_allowed, remo
                 info['permissions'].remove(item)
     r.set(key, json.dumps(info))
     return True
+
 
 def do_api_user_api(user_id):
     if request.method == 'GET':
@@ -27533,8 +28335,7 @@ def do_api_user_api(user_id):
         new_api_key = add_api_key(user_id, name, method, allowed)
         if new_api_key is None:
             return jsonify_with_status("Error creating API key", 400)
-        else:
-            return jsonify(new_api_key)
+        return jsonify(new_api_key)
     if request.method == 'PATCH':
         user = db.session.execute(select(UserModel).options(db.joinedload(UserModel.roles)).filter_by(id=user_id)).scalar()
         patch_data = request.get_json(silent=True)
@@ -27650,12 +28451,14 @@ def do_api_user_api(user_id):
         if not result:
             return jsonify_with_status("Error updating API key", 400)
         return ('', 204)
+    return ('', 204)
+
 
 @app.route('/api/user/api', methods=['GET', 'POST', 'DELETE', 'PATCH'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['GET', 'POST', 'DELETE', 'PATCH', 'HEAD'], automatic_options=True)
 def api_user_api():
-    if not api_verify(request):
+    if not api_verify():
         return jsonify_with_status("Access denied.", 403)
     if current_user.limited_api:
         if request.method == 'GET' and not current_user.can_do('access_user_api_info'):
@@ -27664,11 +28467,12 @@ def api_user_api():
             return jsonify_with_status("You do not have sufficient privileges to edit user API information", 403)
     return do_api_user_api(current_user.id)
 
+
 @app.route('/api/user/<int:user_id>/api', methods=['GET', 'POST', 'DELETE', 'PATCH'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['GET', 'POST', 'DELETE', 'PATCH', 'HEAD'], automatic_options=True)
 def api_user_userid_api(user_id):
-    if not api_verify(request):
+    if not api_verify():
         return jsonify_with_status("Access denied.", 403)
     try:
         user_id = int(user_id)
@@ -27687,11 +28491,12 @@ def api_user_userid_api(user_id):
         return jsonify_with_status("User not found.", 404)
     return do_api_user_api(user_id)
 
+
 @app.route('/api/interview_data', methods=['GET'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['GET', 'HEAD'], automatic_options=True)
 def api_interview_data():
-    if not api_verify(request, roles=['admin', 'developer'], permissions=['interview_data']):
+    if not api_verify(roles=['admin', 'developer'], permissions=['interview_data']):
         return jsonify_with_status("Access denied.", 403)
     filename = request.args.get('i', None)
     if filename is None:
@@ -27716,14 +28521,15 @@ def api_interview_data():
     else:
         use_playground = False
         current_project = 'default'
-    variables_json, vocab_list = get_vars_in_use(interview, interview_status, debug_mode=False, return_json=True, use_playground=use_playground, current_project=current_project)
+    variables_json, vocab_list, vocab_dict = get_vars_in_use(interview, interview_status, debug_mode=False, return_json=True, use_playground=use_playground, current_project=current_project)  # pylint: disable=unused-variable
     return jsonify({'names': variables_json, 'vocabulary': list(vocab_list)})
+
 
 @app.route('/api/stash_data', methods=['POST'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['POST', 'HEAD'], automatic_options=True)
 def api_stash_data():
-    if not api_verify(request):
+    if not api_verify():
         return jsonify_with_status("Access denied.", 403)
     post_data = request.get_json(silent=True)
     if post_data is None:
@@ -27732,7 +28538,7 @@ def api_stash_data():
             return jsonify_with_status("Data must be provided.", 400)
         try:
             data = json.loads(post_data['data'])
-        except Exception as err:
+        except:
             return jsonify_with_status("Malformed data.", 400)
     else:
         data = post_data['data']
@@ -27749,11 +28555,12 @@ def api_stash_data():
     (key, secret) = stash_data(data, expire)
     return jsonify({'stash_key': key, 'secret': secret})
 
+
 @app.route('/api/retrieve_stashed_data', methods=['GET'])
 @csrf.exempt
 @cross_origin(origins='*', methods=['GET', 'HEAD'], automatic_options=True)
 def api_retrieve_stashed_data():
-    if not api_verify(request):
+    if not api_verify():
         return jsonify_with_status("Access denied.", 403)
     do_delete = true_or_false(request.args.get('delete', False))
     refresh = request.args.get('refresh', None)
@@ -27773,6 +28580,7 @@ def api_retrieve_stashed_data():
     except Exception as err:
         return jsonify_with_status("The stashed data could not be retrieved: " + err.__class__.__name__ + " " + str(err) + ".", 400)
     return jsonify(docassemble.base.functions.safe_json(data))
+
 
 @app.route('/manage_api', methods=['GET', 'POST'])
 @login_required
@@ -27888,7 +28696,7 @@ def manage_api():
             permissions_data = form.permissions.data if is_admin else []
             info = dict(name=form.name.data, method=form.method.data, constraints=constraints, limits=permissions_data)
             success = False
-            for attempt in range(10):
+            for attempt in range(10):  # pylint: disable=unused-variable
                 api_key = random_alphanumeric(32)
                 info['last_four'] = api_key[-4:]
                 new_api_key = encrypt_api_key(api_key, app.secret_key)
@@ -27899,7 +28707,7 @@ def manage_api():
             if not success:
                 flash(word("Could not create new key"), 'error')
                 return render_template('pages/manage_api.html', **argu)
-            argu['description'] = Markup(word("Your new API key, known internally as %s, is %s") % (form.name.data, "<code>" + api_key + "</code>") + '.  ' + word("This is the only time you will be able to see your API key, so make sure to make a note of it and keep it in a secure place."))
+            argu['description'] = Markup(word("Your new API key, known internally as <strong>%s</strong>, is:<br />%s<br />") % (form.name.data, "<code>" + api_key + "</code>") + word("<strong>This is the only time you will be able to see your API key</strong>, so make sure to make a note of it and keep it in a secure place."))
         elif action == 'edit':
             argu['title'] = word("Edit API Key")
             argu['tab_title'] = argu['title']
@@ -27988,11 +28796,13 @@ def manage_api():
         argu['has_any_keys'] = bool(len(avail_keys) > 0)
     return render_template('pages/manage_api.html', **argu)
 
+
 @app.route(html_index_path, methods=['GET'])
 def html_index():
     resp = app.send_static_file('index.html')
     resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     return resp
+
 
 @app.route('/api/interview', methods=['GET', 'POST'])
 @csrf.exempt
@@ -28116,14 +28926,13 @@ def api_interview():
                 if len(daconfig['dispatch']) > 0:
                     output['redirect'] = url_for('interview_start')
                     return jsonify(output)
-                else:
-                    yaml_filename = final_default_yaml_filename
+                yaml_filename = final_default_yaml_filename
         refer = None
         if parts.path.startswith('/start/') or parts.path.startswith('/run/'):
             m = re.search(r'/(start|run)/([^/]+)/$', parts.path)
             if m:
                 refer = [m.group(1) + '_dispatch', m.group(2)]
-                dispatch = m.group(2)
+                # dispatch = m.group(2)
             else:
                 m = re.search(r'/(start|run)/([^/]+)/([^/]+)/(.*)/$', parts.path)
                 if m:
@@ -28181,7 +28990,7 @@ def api_interview():
     secret = str(secret)
     docassemble.base.functions.this_thread.current_info = current_info(req=request, interface='api', secret=secret)
     if yaml_filename not in user_info['sessions'] or need_to_reset or new_session:
-        was_new = True
+        # was_new = True
         if PREVENT_DEMO and (yaml_filename.startswith('docassemble.base:') or yaml_filename.startswith('docassemble.demo:')) and (current_user.is_anonymous or not current_user.has_role_or_permission('admin', 'developer', permissions=['demo_interviews'])):
             return jsonify_with_status(word("Not authorized"), 403)
         if current_user.is_anonymous and not daconfig.get('allow anonymous access', True):
@@ -28209,7 +29018,7 @@ def api_interview():
                     del user_info['sessions'][yaml_filename]
                 if current_user.is_authenticated:
                     while True:
-                        the_session_id, encrypted = get_existing_session(yaml_filename, secret)
+                        the_session_id, encrypted = get_existing_session(yaml_filename, secret)  # pylint: disable=unused-variable
                         if the_session_id:
                             reset_user_dict(the_session_id, yaml_filename)
                         else:
@@ -28265,7 +29074,7 @@ def api_interview():
             user_info['sessions'][yaml_filename] = session_id
             changed = True
             is_new = True
-        #output['session'] = session_id
+        # output['session'] = session_id
     if changed:
         key = 'da:apiinterview:usercode:' + user_code
         pipe = r.pipeline()
@@ -28359,28 +29168,29 @@ def api_interview():
             output['setup']['googleAnalytics'] = dict(enable=True, ga_id=google_config.get('analytics id'), prefix=interview_package + '/' + interview_filename)
         else:
             output['setup']['googleAnalytics'] = dict(enable=False)
-      #<script src="https://maps.googleapis.com/maps/api/js?key=' + api_key + '&libraries=places"></script>'
-      #window.dataLayer = window.dataLayer || [];
-      #function gtag(){dataLayer.push(arguments);}
-      #gtag('js', new Date());
-      #function daPageview(){
-      #  var idToUse = daQuestionID['id'];
-      #  if (daQuestionID['ga'] != undefined && daQuestionID['ga'] != null){
-      #    idToUse = daQuestionID['ga'];
-      #  }
-      #  if (idToUse != null){
-      #    gtag('config', """ + json.dumps(ga_id) + """, {""" + ("'cookie_flags': 'SameSite=None;Secure', " if app.config['SESSION_COOKIE_SECURE'] else '') + """'page_path': """ + json.dumps(interview_package) + """ + "/" + """ + json.dumps(interview_filename) + """ + "/" + idToUse.replace(/[^A-Za-z0-9]+/g, '_')});
-      #  }
-      #}
-      #<script async src="https://www.googletagmanager.com/gtag/js?id=""" + ga_id + """"></script>
+        # <script src="https://maps.googleapis.com/maps/api/js?key=' + api_key + '&libraries=places"></script>'
+        # window.dataLayer = window.dataLayer || [];
+        # function gtag(){dataLayer.push(arguments);}
+        # gtag('js', new Date());
+        # function daPageview(){
+        #   var idToUse = daQuestionID['id'];
+        #   if (daQuestionID['ga'] != undefined && daQuestionID['ga'] != null){
+        #     idToUse = daQuestionID['ga'];
+        #   }
+        #   if (idToUse != null){
+        #     gtag('config', """ + json.dumps(ga_id) + """, {""" + ("'cookie_flags': 'SameSite=None;Secure', " if app.config['SESSION_COOKIE_SECURE'] else '') + """'page_path': """ + json.dumps(interview_package) + """ + "/" + """ + json.dumps(interview_filename) + """ + "/" + idToUse.replace(/[^A-Za-z0-9]+/g, '_')});
+        #   }
+        # }
+        # <script async src="https://www.googletagmanager.com/gtag/js?id=""" + ga_id + """"></script>
     return jsonify(output)
+
 
 @app.route('/me', methods=['GET'])
 def whoami():
     if current_user.is_authenticated:
         return jsonify(logged_in=True, user_id=current_user.id, email=current_user.email, roles=[role.name for role in current_user.roles], firstname=current_user.first_name, lastname=current_user.last_name, bnpp_roles=current_user.bnpp_roles, social_id=current_user.social_id, country=current_user.country, subdivisionfirst=current_user.subdivisionfirst, subdivisionsecond=current_user.subdivisionsecond, subdivisionthird=current_user.subdivisionthird, organization=current_user.organization, timezone=current_user.timezone)
-    else:
-        return jsonify(logged_in=False)
+    return jsonify(logged_in=False)
+
 
 def retrieve_email(email_id):
     if not isinstance(email_id, int):
@@ -28397,23 +29207,20 @@ def retrieve_email(email_id):
         raise DAError("Short code did not exist")
     return get_email_obj(email, short_record, user)
 
+
 class AddressEmail:
+
     def __str__(self):
         return str(self.address)
 
+
 def retrieve_emails(**pargs):
     key = pargs.get('key', None)
-    index = pargs.get('index', None)
-    if key is None and index is not None:
+    the_index = pargs.get('index', None)
+    if key is None and the_index is not None:
         raise DAError("retrieve_emails: if you provide an index you must provide a key")
-    if 'i' in pargs:
-        yaml_filename = pargs['i']
-    else:
-        yaml_filename = docassemble.base.functions.this_thread.current_info.get('yaml_filename', None)
-    if 'uid' in pargs:
-        uid = pargs['uid']
-    else:
-        uid = docassemble.base.functions.get_uid()
+    yaml_filename = pargs.get('i', docassemble.base.functions.this_thread.current_info.get('yaml_filename', None))
+    uid = pargs.get('uid', docassemble.base.functions.get_uid())
     if 'user_id' in pargs:
         user_id = pargs['user_id']
         temp_user_id = None
@@ -28431,10 +29238,10 @@ def retrieve_emails(**pargs):
     if key is None:
         the_query = db.session.execute(select(Shortener).filter_by(filename=yaml_filename, uid=uid, user_id=user_id, temp_user_id=temp_user_id).order_by(Shortener.modtime)).scalars()
     else:
-        if index is None:
+        if the_index is None:
             the_query = db.session.execute(select(Shortener).filter_by(filename=yaml_filename, uid=uid, user_id=user_id, temp_user_id=temp_user_id, key=key).order_by(Shortener.modtime)).scalars()
         else:
-            the_query = db.session.execute(select(Shortener).filter_by(filename=yaml_filename, uid=uid, user_id=user_id, temp_user_id=temp_user_id, key=key, index=index).order_by(Shortener.modtime)).scalars()
+            the_query = db.session.execute(select(Shortener).filter_by(filename=yaml_filename, uid=uid, user_id=user_id, temp_user_id=temp_user_id, key=key, index=the_index).order_by(Shortener.modtime)).scalars()
     for record in the_query:
         result_for_short = AddressEmail()
         result_for_short.address = record.short
@@ -28456,6 +29263,7 @@ def retrieve_emails(**pargs):
         results.append(result_for_short)
     return results
 
+
 def get_email_obj(email, short_record, user):
     email_obj = DAEmail(short=email.short)
     email_obj.key = short_record.key
@@ -28474,19 +29282,19 @@ def get_email_obj(email, short_record, user):
     else:
         email_obj.address_owner = user.email
     for attachment_record in db.session.execute(select(EmailAttachment).filter_by(email_id=email.id).order_by(EmailAttachment.index)).scalars():
-        #sys.stderr.write("Attachment record is " + str(attachment_record.id) + "\n")
+        # logmessage("Attachment record is " + str(attachment_record.id))
         upload = db.session.execute(select(Uploads).filter_by(indexno=attachment_record.upload)).scalar()
         if upload is None:
             continue
-        #sys.stderr.write("Filename is " + upload.filename + "\n")
+        # logmessage("Filename is " + upload.filename)
         saved_file_att = SavedFile(attachment_record.upload, extension=attachment_record.extension, fix=True)
         process_file(saved_file_att, saved_file_att.path, attachment_record.content_type, attachment_record.extension, initial=False)
         extension, mimetype = get_ext_and_mimetype(upload.filename)
         if upload.filename == 'headers.json':
-            #sys.stderr.write("Processing headers\n")
+            # logmessage("Processing headers")
             email_obj.initializeAttribute('headers', DAFile, mimetype=mimetype, extension=extension, number=attachment_record.upload)
         elif upload.filename == 'attachment.txt' and attachment_record.index < 3:
-            #sys.stderr.write("Processing body text\n")
+            # logmessage("Processing body text")
             email_obj.initializeAttribute('body_text', DAFile, mimetype=mimetype, extension=extension, number=attachment_record.upload)
         elif upload.filename == 'attachment.html' and attachment_record.index < 3:
             email_obj.initializeAttribute('body_html', DAFile, mimetype=mimetype, extension=extension, number=attachment_record.upload)
@@ -28499,6 +29307,7 @@ def get_email_obj(email, short_record, user):
     if not hasattr(email_obj, 'body_html'):
         email_obj.body_html = None
     return email_obj
+
 
 def da_send_fax(fax_number, the_file, config, country=None):
     if clicksend_config is not None and fax_provider == 'clicksend':
@@ -28542,10 +29351,11 @@ def da_send_fax(fax_number, the_file, config, country=None):
     )
     return fax.sid
 
+
 def write_pypirc():
     pypirc_file = daconfig.get('pypirc path', '/var/www/.pypirc')
-    #pypi_username = daconfig.get('pypi username', None)
-    #pypi_password = daconfig.get('pypi password', None)
+    # pypi_username = daconfig.get('pypi username', None)
+    # pypi_password = daconfig.get('pypi password', None)
     pypi_url = daconfig.get('pypi url', 'https://upload.pypi.org/legacy/')
     # if pypi_username is None or pypi_password is None:
     #     return
@@ -28569,10 +29379,12 @@ repository: """ + pypi_url + "\n"
             fp.write(content)
         os.chmod(pypirc_file, stat.S_IRUSR | stat.S_IWUSR)
 
+
 def url_sanitize(url):
     return re.sub(r'\s', ' ', url)
 
-def pypi_status(packagename, limitation=None):
+
+def pypi_status(packagename):
     result = {}
     pypi_url = daconfig.get('pypi url', 'https://pypi.python.org/pypi')
     try:
@@ -28596,12 +29408,14 @@ def pypi_status(packagename, limitation=None):
             result['exists'] = True
     return result
 
+
 def page_after_login():
     if current_user.is_authenticated:
         for role, page in daconfig['page after login']:
             if role == '*' or current_user.has_role(role):
                 return page
     return 'interview_list'
+
 
 def path_from_reference(file_reference):
     if isinstance(file_reference, DAFileCollection):
@@ -28612,7 +29426,6 @@ def path_from_reference(file_reference):
         file_info = get_info_from_file_number_with_uids(file_reference.number)
         if 'fullpath' not in file_info:
             raise Exception("File not found")
-        path = file_info['fullpath']
         friendly_path = os.path.join(tempfile.mkdtemp(prefix='SavedFile'), file_reference.filename)
         try:
             os.symlink(file_info['fullpath'], friendly_path)
@@ -28628,6 +29441,7 @@ def path_from_reference(file_reference):
         raise Exception("File not found")
     return file_info['fullpath']
 
+
 def secure_filename_spaces_ok(filename):
     filename = unicodedata.normalize("NFKD", filename)
     filename = filename.encode("ascii", "ignore").decode("ascii")
@@ -28637,11 +29451,13 @@ def secure_filename_spaces_ok(filename):
     filename = str(re.sub(r'[^A-Za-z0-9\_\.\- ]', '', " ".join(filename.split(' ')))).strip("._ ")
     return filename
 
+
 def secure_filename(filename):
     filename = werkzeug.utils.secure_filename(filename)
-    extension, mimetype = get_ext_and_mimetype(filename)
+    extension, mimetype = get_ext_and_mimetype(filename)  # pylint: disable=unused-variable
     filename = re.sub(r'\.[^\.]+$', '', filename) + '.' + extension
     return filename
+
 
 def sanitize_arguments(*pargs):
     for item in pargs:
@@ -28649,19 +29465,14 @@ def sanitize_arguments(*pargs):
             if item.startswith('/') or item.startswith('.') or re.search(r'\s', item):
                 raise Exception("Invalid parameter " + item)
 
+
 def get_short_code(**pargs):
     key = pargs.get('key', None)
-    index = pargs.get('index', None)
-    if key is None and index is not None:
+    the_index = pargs.get('index', None)
+    if key is None and the_index is not None:
         raise DAError("get_short_code: if you provide an index you must provide a key")
-    if 'i' in pargs:
-        yaml_filename = pargs['i']
-    else:
-        yaml_filename = docassemble.base.functions.this_thread.current_info.get('yaml_filename', None)
-    if 'uid' in pargs:
-        uid = pargs['uid']
-    else:
-        uid = docassemble.base.functions.get_uid()
+    yaml_filename = pargs.get('i', docassemble.base.functions.this_thread.current_info.get('yaml_filename', None))
+    uid = pargs.get('uid', docassemble.base.functions.get_uid())
     if 'user_id' in pargs:
         user_id = pargs['user_id']
         temp_user_id = None
@@ -28675,7 +29486,7 @@ def get_short_code(**pargs):
         user_id = current_user.id
         temp_user_id = None
     short_code = None
-    for record in db.session.execute(select(Shortener.short).filter_by(filename=yaml_filename, uid=uid, user_id=user_id, temp_user_id=temp_user_id, key=key, index=index)):
+    for record in db.session.execute(select(Shortener.short).filter_by(filename=yaml_filename, uid=uid, user_id=user_id, temp_user_id=temp_user_id, key=key, index=the_index)):
         short_code = record.short
     if short_code is not None:
         return short_code
@@ -28687,7 +29498,7 @@ def get_short_code(**pargs):
         for record in db.session.execute(select(Shortener.id).filter_by(short=new_short)):
             existing_id = record.id
         if existing_id is None:
-            new_record = Shortener(filename=yaml_filename, uid=uid, user_id=user_id, temp_user_id=temp_user_id, short=new_short, key=key, index=index)
+            new_record = Shortener(filename=yaml_filename, uid=uid, user_id=user_id, temp_user_id=temp_user_id, short=new_short, key=key, index=the_index)
             db.session.add(new_record)
             db.session.commit()
             break
@@ -28695,6 +29506,7 @@ def get_short_code(**pargs):
     if new_record is None:
         raise SystemError("Failed to generate unique short code")
     return new_short
+
 
 def illegal_variable_name(var):
     if re.search(r'[\n\r]', var):
@@ -28706,6 +29518,7 @@ def illegal_variable_name(var):
     detector = docassemble.base.astparser.detectIllegal()
     detector.visit(t)
     return detector.illegal
+
 
 def illegal_sessions_query(expr):
     if re.search(r'[\n\r]', expr):
@@ -28720,6 +29533,7 @@ def illegal_sessions_query(expr):
 
 emoji_match = re.compile(r':([A-Za-z][A-Za-z0-9\_\-]+):')
 html_match = re.compile(r'(</?[A-Za-z\!][^>]*>|https*://[A-Za-z0-9\-\_:\%\/\@\.\#\&\=\~\?]+|mailto*://[A-Za-z0-9\-\_:\%\/\@\.\#\&\=\~]+\?)')
+
 
 def mako_parts(expression):
     in_percent = False
@@ -28897,6 +29711,7 @@ def mako_parts(expression):
             output.append([current, 0])
     return output
 
+
 def start_of_line(expression, i):
     if i == 0:
         return True
@@ -28910,6 +29725,7 @@ def start_of_line(expression, i):
         return False
     return True
 
+
 def applock(action, application):
     key = 'da:applock:' + application + ':' + hostname
     if action == 'obtain':
@@ -28918,7 +29734,7 @@ def applock(action, application):
         while count > 0:
             record = r.get(key)
             if record:
-                sys.stderr.write("obtain_applock: waiting for " + key + "\n")
+                logmessage("obtain_applock: waiting for " + key)
                 time.sleep(1.0)
             else:
                 found = False
@@ -28926,7 +29742,7 @@ def applock(action, application):
             found = True
             count -= 1
         if found:
-            sys.stderr.write("Request for applock " + key + " deadlocked\n")
+            logmessage("Request for applock " + key + " deadlocked")
             r.delete(key)
         pipe = r.pipeline()
         pipe.set(key, 1)
@@ -28934,6 +29750,7 @@ def applock(action, application):
         pipe.execute()
     elif action == 'release':
         r.delete(key)
+
 
 @app.errorhandler(CSRFError)
 def handle_csrf_error(the_error):
@@ -28950,6 +29767,7 @@ def handle_csrf_error(the_error):
             flash(word("Input not processed because the page expired."), "success")
             return redirect(referer)
     return server_error(the_error)
+
 
 def error_notification(err, message=None, history=None, trace=None, referer=None, the_request=None, the_vars=None):
     recipient_email = daconfig.get('error notification email', None)
@@ -28993,7 +29811,7 @@ def error_notification(err, message=None, history=None, trace=None, referer=None
             with tempfile.NamedTemporaryFile(mode='w', prefix="datemp", suffix='.json', delete=False, encoding='utf-8') as fp:
                 fp.write(json.dumps(the_vars, sort_keys=True, indent=2))
                 json_filename = fp.name
-        except Exception as the_err:
+        except:
             pass
     interview_path = docassemble.base.functions.interview_path()
     try:
@@ -29009,31 +29827,29 @@ def error_notification(err, message=None, history=None, trace=None, referer=None
         pass
     try:
         try:
+            html = "<html>\n  <body>\n    <p>There was an error in the " + app.config['APP_NAME'] + " application.</p>\n    <p>The error message was:</p>\n<pre>" + err.__class__.__name__ + ": " + str(errmess) + "</pre>\n"
             body = "There was an error in the " + app.config['APP_NAME'] + " application.\n\nThe error message was:\n\n" + err.__class__.__name__ + ": " + str(errmess)
             if trace is not None:
                 body += "\n\n" + str(trace)
+                html += "<pre>" + str(trace) + "</pre>"
             if history is not None:
                 body += "\n\n" + BeautifulSoup(history, "html.parser").get_text('\n')
+                html += history
             if referer is not None and referer != 'None':
                 body += "\n\nThe referer URL was " + str(referer)
-            elif interview_path is not None:
-                body += "\n\nThe interview was " + str(interview_path)
-            if email_address is not None:
-                body += "\n\nThe user was " + str(email_address)
-            html = "<html>\n  <body>\n    <p>There was an error in the " + app.config['APP_NAME'] + " application.</p>\n    <p>The error message was:</p>\n<pre>" + err.__class__.__name__ + ": " + str(errmess)
-            if trace is not None:
-                html += "\n\n" + str(trace)
-            html += "</pre>\n"
-            if history is not None:
-                html += str(history)
-            if referer is not None and referer != 'None':
                 html += "<p>The referer URL was " + str(referer) + "</p>"
             elif interview_path is not None:
-                body += "<p>The interview was " + str(interview_path) + "</p>"
+                body += "\n\nThe interview was " + str(interview_path)
+                html += "<p>The interview was " + str(interview_path) + "</p>"
             if email_address is not None:
-                body += "<p>The user was " + str(email_address) + "</p>"
+                body += "\n\nThe user was " + str(email_address)
+                html += "<p>The user was " + str(email_address) + "</p>"
+            if trace is not None:
+                body += "\n\n" + str(trace)
+                html += "<pre>" + str(trace) + "</pre>"
             if 'external hostname' in daconfig and daconfig['external hostname'] is not None:
-                body += "<p>The external hostname was " + str(daconfig['external hostname']) + "</p>"
+                body += "\n\nThe external hostname was " + str(daconfig['external hostname'])
+                html += "<p>The external hostname was " + str(daconfig['external hostname']) + "</p>"
             html += "\n  </body>\n</html>"
             msg = Message(app.config['APP_NAME'] + " error: " + err.__class__.__name__, recipients=email_recipients, body=body, html=html)
             if json_filename:
@@ -29052,6 +29868,7 @@ def error_notification(err, message=None, history=None, trace=None, referer=None
     except:
         pass
 
+
 def stash_data(data, expire):
     while True:
         key = random_alphanumeric(16)
@@ -29064,6 +29881,7 @@ def stash_data(data, expire):
     pipe.expire('da:stash:' + key, expire)
     pipe.execute()
     return (key, secret)
+
 
 def retrieve_stashed_data(key, secret, delete=False, refresh=False):
     packed_data = r.get('da:stash:' + key)
@@ -29079,8 +29897,15 @@ def retrieve_stashed_data(key, secret, delete=False, refresh=False):
         r.expire('da:stash:' + key, refresh)
     return data
 
+
 def make_necessary_dirs():
-    for path in (FULL_PACKAGE_DIRECTORY, UPLOAD_DIRECTORY, LOG_DIRECTORY): #PACKAGE_CACHE
+    paths = []
+    if app.config['ALLOW_UPDATES'] or app.config['ENABLE_PLAYGROUND']:
+        paths.append(FULL_PACKAGE_DIRECTORY)
+    if cloud is None:
+        paths.append(UPLOAD_DIRECTORY)
+    paths.append(LOG_DIRECTORY)
+    for path in paths:
         if not os.path.isdir(path):
             try:
                 os.makedirs(path, exist_ok=True)
@@ -29088,7 +29913,7 @@ def make_necessary_dirs():
                 sys.exit("Could not create path: " + path)
         if not os.access(path, os.W_OK):
             sys.exit("Unable to create files in directory: " + path)
-    if not os.access(WEBAPP_PATH, os.W_OK):
+    if app.config['ALLOW_RESTARTING'] and not os.access(WEBAPP_PATH, os.W_OK):
         sys.exit("Unable to modify the timestamp of the WSGI file: " + WEBAPP_PATH)
 
 make_necessary_dirs()
@@ -29157,11 +29982,11 @@ docassemble.base.functions.update_server(url_finder=get_url_from_file_reference,
                                          get_login_url=get_login_url,
                                          run_action_in_session=run_action_in_session)
 
-#docassemble.base.util.set_user_id_function(user_id_dict)
-#docassemble.base.functions.set_generate_csrf(generate_csrf)
-#docassemble.base.parse.set_url_finder(get_url_from_file_reference)
-#docassemble.base.parse.set_url_for(url_for)
-#APPLICATION_NAME = 'docassemble'
+# docassemble.base.util.set_user_id_function(user_id_dict)
+# docassemble.base.functions.set_generate_csrf(generate_csrf)
+# docassemble.base.parse.set_url_finder(get_url_from_file_reference)
+# docassemble.base.parse.set_url_for(url_for)
+# APPLICATION_NAME = 'docassemble'
 
 base_words = get_base_words()
 title_documentation = get_title_documentation()
@@ -29169,7 +29994,7 @@ DOCUMENTATION_BASE = daconfig.get('documentation base url', 'https://docassemble
 documentation_dict = get_documentation_dict()
 base_name_info = get_name_info()
 
-#docassemble.base.functions.set_chat_partners_available(chat_partners_available)
+# docassemble.base.functions.set_chat_partners_available(chat_partners_available)
 
 password_secret_key = daconfig.get('password secretkey', app.secret_key)
 
@@ -29203,22 +30028,23 @@ if not in_celery:
 def get_base_url():
     return re.sub(r'^(https?://[^/]+).*', r'\1', url_for('rootindex', _external=True))
 
-def null_func(*pargs, **kwargs):
+
+def null_func(*pargs, **kwargs):  # pylint: disable=unused-argument
     logmessage("Null function called")
-    return None
 
 if in_celery:
+
     def illegal_worker_convert(*pargs, **kwargs):
         raise Exception("You cannot access the status of a background task from inside of a background task.")
     docassemble.base.functions.update_server(bg_action=null_func,
-                                             #async_ocr=null_func,
+                                             # async_ocr=null_func,
                                              chord=null_func,
                                              ocr_page=null_func,
                                              ocr_finalize=null_func,
                                              worker_convert=illegal_worker_convert)
 else:
     docassemble.base.functions.update_server(bg_action=docassemble.webapp.worker.background_action,
-                                             #async_ocr=docassemble.webapp.worker.async_ocr,
+                                             # async_ocr=docassemble.webapp.worker.async_ocr,
                                              chord=docassemble.webapp.worker.chord,
                                              ocr_page=docassemble.webapp.worker.ocr_page,
                                              ocr_dummy=docassemble.webapp.worker.ocr_dummy,
@@ -29226,6 +30052,7 @@ else:
                                              worker_convert=docassemble.webapp.worker.convert)
 
 pg_ex = {}
+
 
 def define_examples():
     if 'encoded_example_html' in pg_ex:
@@ -29241,12 +30068,14 @@ def define_examples():
     pg_ex['encoded_data_dict'] = safeid(json.dumps(data_dict))
     pg_ex['encoded_example_html'] = Markup("\n".join(example_html))
 
-if LooseVersion(min_system_version) > LooseVersion(daconfig['system version']):
+if packaging.version.parse(min_system_version) > packaging.version.parse(daconfig['system version']):
     version_warning = word("A new docassemble system version is available.  If you are using Docker, install a new Docker image.")
 else:
     version_warning = None
 
+
 class AdminInterview:
+
     def can_use(self):
         if self.require_login and current_user.is_anonymous:
             return False
@@ -29259,10 +30088,12 @@ class AdminInterview:
         if current_user.has_roles(self.roles):
             return True
         return False
+
     def get_title(self, language):
         if isinstance(self.title, str):
             return word(self.title, language=language)
         return self.title.get(language, word(self.title, language=language))
+
 
 def set_admin_interviews():
     admin_interviews = []
@@ -29274,14 +30105,14 @@ def set_admin_interviews():
                         try:
                             interview = docassemble.base.interview_cache.get_interview(item['interview'])
                         except:
-                            sys.stderr.write("interview " + item['interview'] + " in administrative interviews did not exist" + "\n")
+                            logmessage("interview " + item['interview'] + " in administrative interviews did not exist")
                             continue
                         if 'title' in item:
                             the_title = item['title']
                         else:
                             the_title = interview.consolidated_metadata.get('short title', interview.consolidated_metadata.get('title', None))
                             if the_title is None:
-                                sys.stderr.write("interview in administrative interviews needs to be given a title" + "\n")
+                                logmessage("interview in administrative interviews needs to be given a title")
                                 continue
                         admin_interview = AdminInterview()
                         admin_interview.interview = item['interview']
@@ -29293,11 +30124,11 @@ def set_admin_interviews():
                                         fault = True
                                         break
                                 if fault:
-                                    sys.stderr.write("title of administrative interviews item must be a string or a dictionary with keys and values that are strings" + "\n")
+                                    logmessage("title of administrative interviews item must be a string or a dictionary with keys and values that are strings")
                                     continue
                             admin_interview.title = the_title
                         else:
-                            sys.stderr.write("title of administrative interviews item must be a string or a dictionary" + "\n")
+                            logmessage("title of administrative interviews item must be a string or a dictionary")
                             continue
                         if 'required privileges' not in item:
                             roles = set()
@@ -29332,7 +30163,7 @@ def set_admin_interviews():
                             else:
                                 fault = True
                             if fault:
-                                sys.stderr.write("required privileges in administrative interviews item must be a list of strings" + "\n")
+                                logmessage("required privileges in administrative interviews item must be a list of strings")
                                 admin_interview.roles = None
                             else:
                                 admin_interview.roles = item['required privileges']
@@ -29344,15 +30175,17 @@ def set_admin_interviews():
                                 admin_interview.require_login = bool(metadata['require login'])
                         admin_interviews.append(admin_interview)
                     else:
-                        sys.stderr.write("item in administrative interviews must contain a valid interview name" + "\n")
+                        logmessage("item in administrative interviews must contain a valid interview name")
                 else:
-                    sys.stderr.write("item in administrative interviews is not a dict" + "\n")
+                    logmessage("item in administrative interviews is not a dict")
         else:
-            sys.stderr.write("administrative interviews is not a list" + "\n")
+            logmessage("administrative interviews is not a list")
     return admin_interviews
+
 
 def fix_api_key(match):
     return 'da:apikey:userid:' + match.group(1) + ':key:' + encrypt_api_key(match.group(2), app.secret_key) + ':info'
+
 
 def fix_api_keys():
     to_delete = []
@@ -29374,7 +30207,9 @@ def fix_api_keys():
     for rkey in to_delete:
         r.delete(rkey)
 
+
 class TestContext:
+
     def __init__(self, package):
         self.package = package
 
@@ -29395,6 +30230,7 @@ class TestContext:
         self.test_context.pop()
         self.app_context.pop()
 
+
 def initialize():
     global global_css
     global global_js
@@ -29414,7 +30250,7 @@ def initialize():
                     assert isinstance(app.config['BOOTSTRAP_THEME'], str)
                 except:
                     app.config['BOOTSTRAP_THEME'] = None
-                    sys.stderr.write("error loading bootstrap theme\n")
+                    logmessage("error loading bootstrap theme")
             else:
                 app.config['BOOTSTRAP_THEME'] = None
             if 'global css' in daconfig:
@@ -29424,7 +30260,7 @@ def initialize():
                         assert isinstance(global_css_url, str)
                         global_css += "\n" + '    <link href="' + global_css_url + '" rel="stylesheet">'
                     except:
-                        sys.stderr.write("error loading global css: " + repr(fileref) + "\n")
+                        logmessage("error loading global css: " + repr(fileref))
             if 'global javascript' in daconfig:
                 for fileref in daconfig['global javascript']:
                     try:
@@ -29432,7 +30268,7 @@ def initialize():
                         assert isinstance(global_js_url, str)
                         global_js += "\n" + '    <script src="' + global_js_url + '"></script>'
                     except:
-                        sys.stderr.write("error loading global js: " + repr(fileref) + "\n")
+                        logmessage("error loading global js: " + repr(fileref))
             if 'raw global css' in daconfig and daconfig['raw global css']:
                 global_css += "\n" + str(daconfig['raw global css'])
             if 'raw global javascript' in daconfig and daconfig['raw global javascript']:
@@ -29441,8 +30277,6 @@ def initialize():
             app.config['GLOBAL_JS'] = global_js
             app.config['PARTS'] = page_parts
             app.config['ADMIN_INTERVIEWS'] = set_admin_interviews()
-            app.config['ENABLE_PLAYGROUND'] = daconfig.get('enable playground', True)
-            app.config['ALLOW_UPDATES'] = daconfig.get('allow updates', True)
             try:
                 if 'image' in daconfig['social'] and isinstance(daconfig['social']['image'], str):
                     daconfig['social']['image'] = get_url_from_file_reference(daconfig['social']['image'], _external=True)
@@ -29454,7 +30288,7 @@ def initialize():
                         if daconfig['social'][key][subkey] is None:
                             del daconfig['social'][key][subkey]
             except:
-                sys.stderr.write("Error converting social image references")
+                logmessage("Error converting social image references")
             interviews_to_load = daconfig.get('preloaded interviews', None)
             if isinstance(interviews_to_load, list):
                 for yaml_filename in daconfig['preloaded interviews']:
@@ -29467,18 +30301,18 @@ def initialize():
                 try:
                     copy_playground_modules()
                 except Exception as err:
-                    sys.stderr.write("There was an error copying the playground modules: " + err.__class__.__name__ + "\n")
+                    logmessage("There was an error copying the playground modules: " + err.__class__.__name__)
                 write_pypirc()
                 release_lock('init' + hostname, 'init')
             try:
                 macro_path = daconfig.get('libreoffice macro file', '/var/www/.config/libreoffice/4/user/basic/Standard/Module1.xba')
                 if os.path.isfile(macro_path) and os.path.getsize(macro_path) != 7167:
-                    # sys.stderr.write("Removing " + macro_path + " because it is out of date\n")
+                    # logmessage("Removing " + macro_path + " because it is out of date")
                     os.remove(macro_path)
                 # else:
-                #     sys.stderr.write("File " + macro_path + " is missing or has the correct size\n")
+                #     logmessage("File " + macro_path + " is missing or has the correct size")
             except Exception as err:
-                sys.stderr.write("Error was " + err.__class__.__name__ + ' ' + str(err) + "\n")
+                logmessage("Error was " + err.__class__.__name__ + ' ' + str(err))
             fix_api_keys()
             import_necessary(url, url_root)
 

@@ -1,11 +1,12 @@
 import os
 from setuptools import setup, find_packages
 
+
 def read(fname):
-    return open(os.path.join(os.path.dirname(__file__), fname)).read()
+    return open(os.path.join(os.path.dirname(__file__), fname), encoding='utf-8').read()
 
 setup(name='docassemble',
-      version='1.3.44',
+      version='1.4.9',
       python_requires='>=3.8',
       description=('The namespace package for the docassemble system.'),
       long_description=read("README.md"),
@@ -15,5 +16,5 @@ setup(name='docassemble',
       license='MIT',
       url='https://docassemble.org',
       packages=find_packages(),
-      zip_safe = False,
-     )
+      zip_safe=False
+      )

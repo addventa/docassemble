@@ -71,7 +71,7 @@ body.dacontrolled > div > .navbar-dark {
     margin-top: 15px;
 }
 
-.slider .tooltip-inner {
+.slider .datooltip-inner {
     -webkit-user-select: none;
     -moz-user-select: none;
     -ms-user-select: none;
@@ -301,6 +301,10 @@ i.da-chat-inactive:hover {
     padding: 0;
 }
 
+.dabackicon a.nav-link {
+    padding: 0;
+}
+
 a.dabackbuttoncolor:hover,
 a.dabackbuttoncolor:focus {
     text-decoration: none;
@@ -317,12 +321,6 @@ a.dabackbuttoncolor:focus {
     .file-input-ajax-new .file-preview {
 	display: none;
     }
-}
-
-#daform input[type="text"],
-#daform input[type="email"],
-#daform input[type="date"] {
-	height: 2.375rem;
 }
 
 @media (min-width: 768px) {
@@ -1565,9 +1563,7 @@ div.daconstraintlist div + div {
 
 #dasigcanvas{
     cursor: crosshair;
-    border-style: solid;
-    border-color: black;
-    border-width: 1px;
+    padding: 0;
 }
 .dasignature > div > .navbar {
     display: none;
@@ -1838,4 +1834,7 @@ input[type=number] {
 
 a.dadisabled {
   pointer-events: none;
+}
+
+.danavlinknopad {
 }

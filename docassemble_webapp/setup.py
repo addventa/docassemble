@@ -1,5 +1,7 @@
 import os
+import sys
 from setuptools import setup, find_packages
+
 
 def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname), encoding='utf-8').read()
@@ -8,20 +10,18 @@ setup_requires = [
     'enum34==1.1.10'
     ]
 install_requires = [
-    'docassemble==1.3.44',
-    'docassemble.base==1.3.44',
-    'docassemble.demo==1.3.44',
+    'docassemble==1.4.9',
+    'docassemble.base==1.4.9',
+    'docassemble.demo==1.4.9',
     "3to2==1.1.1",
     "airtable-python-wrapper==0.15.3",
     "alembic==1.7.7",
-    "aloe==0.2.0",
     "amqp==5.1.0",
-    "ansicolors==1.1.8",
     "asn1crypto==1.5.1",
     "astunparse==1.6.3",
     "async-generator==1.10",
     "async-timeout==4.0.2",
-    "atomicwrites==1.4.0",
+    "atomicwrites==1.4.1",
     "attrs==21.4.0",
     "azure-common==1.1.28",
     "azure-core==1.23.1",
@@ -30,8 +30,8 @@ install_requires = [
     "azure-nspkg==3.0.2",
     "azure-storage-blob==12.11.0",
     "Babel==2.9.1",
-    "backports.zoneinfo==0.2.1",
     "bcrypt==3.2.0",
+    "behave==1.2.6",
     "beautifulsoup4==4.11.1",
     "bidict==0.22.0",
     "billiard==3.6.4.0",
@@ -64,14 +64,14 @@ install_requires = [
     "defusedxml==0.7.1",
     "Deprecated==1.2.13",
     "dnspython==2.2.1",
-    "Docassemble-Flask-User==0.6.26",
+    "Docassemble-Flask-User==0.6.27",
     "Docassemble-Pattern==3.6.5",
     "docassemble-textstat==0.7.2",
     "docassemblekvsession==0.7",
     "docopt==0.6.2",
     "docutils==0.18.1",
     "docxcompose==1.3.4",
-    "docxtpl==0.15.2",
+    "docxtpl==0.16.3",
     "email-validator==1.1.3",
     "et-xmlfile==1.1.0",
     "eventlet==0.33.0",
@@ -87,7 +87,6 @@ install_requires = [
     "gcs-oauth2-boto-plugin==3.0",
     "geographiclib==1.52",
     "geopy==2.2.0",
-    "gherkin-official==4.1.3",
     "google-api-core==2.7.2",
     "google-api-python-client==2.44.0",
     "google-auth==2.6.4",
@@ -128,7 +127,7 @@ install_requires = [
     "kombu==5.2.4",
     "libcst==0.4.1",
     "links-from-link-header==0.1.0",
-    "lxml==4.8.0",
+    "lxml==4.9.1",
     "Mako==1.2.0",
     "Markdown==3.3.6",
     "MarkupSafe==2.1.1",
@@ -142,7 +141,6 @@ install_requires = [
     "namedentities==1.5.2",
     "netifaces==0.11.0",
     "nltk==3.7",
-    "nose==1.3.7",
     "num2words==0.5.10",
     "numpy==1.22.3",
     "oauth2client==4.1.3",
@@ -152,11 +150,12 @@ install_requires = [
     "outcome==1.1.0",
     "packaging==21.3",
     "pandas==1.4.2",
+    "parse==1.19.0",
+    "parse-type==0.6.0",
     "passlib==1.7.4",
-    "pathlib==1.0.1",
     "pdfminer.six==20220319",
     "phonenumbers==8.12.46",
-    "Pillow==9.1.0",
+    "Pillow==9.1.1",
     "pkginfo==1.8.2",
     "pluggy==1.0.0",
     "ply==3.11",
@@ -175,7 +174,7 @@ install_requires = [
     "pycryptodomex==3.14.1",
     "pycurl==7.45.1",
     "Pygments==2.11.2",
-    "PyJWT==2.3.0",
+    "PyJWT==2.4.0",
     "PyLaTeX==1.4.1",
     "PyNaCl==1.5.0",
     "pyOpenSSL==22.0.0",
@@ -269,8 +268,13 @@ install_requires = [
     "zipp==3.8.0"
 ]
 
+if sys.version_info < (3, 9):
+    install_requires.append("backports.zoneinfo==0.2.1")
+else:
+    install_requires.append("docassemble-backports==1.0")
+
 setup(name='docassemble.webapp',
-      version='1.3.44',
+      version='1.4.9',
       python_requires='>=3.8',
       description=('The web application components of the docassemble system.'),
       long_description=read("README.md"),
@@ -280,8 +284,8 @@ setup(name='docassemble.webapp',
       license='MIT',
       url='https://docassemble.org',
       packages=find_packages(),
-      namespace_packages = ['docassemble'],
-      install_requires = install_requires,
-      zip_safe = False,
+      namespace_packages=['docassemble'],
+      install_requires=install_requires,
+      zip_safe=False,
       package_data={'docassemble.webapp': ['alembic.ini', os.path.join('alembic', '*'), os.path.join('alembic', 'versions', '*'), os.path.join('data', '*.*'), os.path.join('data', 'static', '*.*'), os.path.join('data', 'static', 'favicon', '*.*'), os.path.join('data', 'questions', '*.*'), os.path.join('templates', 'base_templates', '*.html'), os.path.join('templates', 'flask_user', '*.html'), os.path.join('templates', 'flask_user', 'emails', '*.*'), os.path.join('templates', 'pages', '*.html'), os.path.join('templates', 'pages', '*.xml'), os.path.join('templates', 'pages', '*.js'), os.path.join('templates', 'users', '*.html'), os.path.join('static', 'app', '*.*'), os.path.join('static', 'yamlmixed', '*.*'), os.path.join('static', 'sounds', '*.*'), os.path.join('static', 'examples', '*.*'), os.path.join('static', 'fontawesome', 'js', '*.*'), os.path.join('static', 'office', '*.*'), os.path.join('static', 'bootstrap-fileinput', 'img', '*'), os.path.join('static', 'img', '*'), os.path.join('static', 'bootstrap-fileinput', 'themes', 'fas', '*'), os.path.join('static', 'bootstrap-fileinput', 'js', 'locales', '*'), os.path.join('static', 'bootstrap-fileinput', 'js', 'plugins', '*'), os.path.join('static', 'bootstrap-slider', 'dist', '*.js'), os.path.join('static', 'bootstrap-slider', 'dist', 'css', '*.css'), os.path.join('static', 'bootstrap-fileinput', 'css', '*.css'), os.path.join('static', 'bootstrap-fileinput', 'js', '*.js'), os.path.join('static', 'bootstrap-fileinput', 'themes', 'fa', '*.js'), os.path.join('static', 'bootstrap-fileinput', 'themes', 'fas', '*.js'), os.path.join('static', 'bootstrap-combobox', 'css', '*.css'), os.path.join('static', 'bootstrap-combobox', 'js', '*.js'), os.path.join('static', 'bootstrap-fileinput', '*.md'), os.path.join('static', 'bootstrap', 'js', '*.*'), os.path.join('static', 'bootstrap', 'css', '*.*'), os.path.join('static', 'labelauty', 'source', '*.*'), os.path.join('static', 'codemirror', 'lib', '*.*'), os.path.join('static', 'codemirror', 'addon', 'search', '*.*'), os.path.join('static', 'codemirror', 'addon', 'display', '*.*'), os.path.join('static', 'codemirror', 'addon', 'scroll', '*.*'), os.path.join('static', 'codemirror', 'addon', 'dialog', '*.*'), os.path.join('static', 'codemirror', 'addon', 'edit', '*.*'), os.path.join('static', 'codemirror', 'addon', 'hint', '*.*'), os.path.join('static', 'codemirror', 'mode', 'yaml', '*.*'), os.path.join('static', 'codemirror', 'mode', 'markdown', '*.*'), os.path.join('static', 'codemirror', 'mode', 'javascript', '*.*'), os.path.join('static', 'codemirror', 'mode', 'css', '*.*'), os.path.join('static', 'codemirror', 'mode', 'python', '*.*'), os.path.join('static', 'codemirror', 'mode', 'htmlmixed', '*.*'), os.path.join('static', 'codemirror', 'mode', 'xml', '*.*'), os.path.join('static', 'codemirror', 'keymap', '*.*'), os.path.join('static', 'areyousure', '*.js'), os.path.join('static', 'popper', '*.*'), os.path.join('static', 'popper', 'umd', '*.*'), os.path.join('static', 'popper', 'esm', '*.*'), os.path.join('static', '*.html'), os.path.join('static', 'monitoring', '*.*')]},
-     )
+      )

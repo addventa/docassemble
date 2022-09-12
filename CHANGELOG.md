@@ -1,5 +1,238 @@
 # Change Log
 
+## [1.4.9] - 2022-09-10
+
+### Added
+- The `voices` option of the `voicerss` Configuration.
+- The `voice` keyword parameter of the `set_language()` function.
+- The `auto login` Configuration directive.
+- The `output_to` keyword parameter of the `.convert_to()` method of `DAFile`.
+- The `output_to` keyword parameter of the `.export()` method of
+  `DALazyTableTemplate`.
+- The `output_to` keyword parameter of `pdf_concatenate()`,
+  `docx_concatenate()`, `zip_file()`, `overlay_pdf()`.
+- The `extract_pages()` method of `DAFile`.
+### Changed
+- If an attempt is made to access the contents of a `DAFile` that is
+  not yet initialized, the `.initialized` attribute will be
+  sought. The `.initialize()` method sets `.initialized` to
+  `True`. Thus, if you have a `code` block that calls `.initialize()`
+  on a `DAFile` called `myfile`, you can attach `sets:
+  myfile.initialized` to the `code` block and it will be called upon
+  if the interview logic requires the contents of `myfile`.
+- When an `attachment` that has a `name` creates a `DAFileCollection`
+  object, the `DAFile` attributes will have their `alt_text` set to
+  the `name` followed by the file type in parentheses.
+### Fixed
+- Adjusted the `Dockerfile` so that the server can start up even if
+  the internet is not available.
+
+## [1.4.8] - 2022-08-25
+
+### Fixed
+- Google Analytics JavaScript was being called in a way that used to
+  work but does not work anymore.
+
+## [1.4.7] - 2022-08-24
+
+### Added
+- The `module whitelist` and `module blacklist` Configuration
+  directives.
+- The `user profile fields` Configuration directive.
+### Changed
+- The `SQLObject` methods were changed so that they will raise
+  exceptions if there is an unexpected error.
+- Upgraded jQuery Validation Plugin.
+### Fixed
+- Fixes to multifactor authentication to make configuration easier.
+- JavaScript issues with comboboxes.
+
+## [1.4.6] - 2022-08-13
+
+### Fixed
+- Backwards-compatibility issue involving `backports.zoneinfo`. This
+  is an important fix if you upgraded your system version from 1.3.x
+  to 1.4.x.
+
+## [1.4.5] - 2022-08-11
+
+### Fixed
+- Exception raised due to interaction of `SQLObject` and
+  `create_session()`.
+
+## [1.4.4] - 2022-08-11
+
+### Fixed
+- Bug with default values that evaluate to the empty string.
+
+## [1.4.3] - 2022-08-09
+
+### Fixed
+- Bug in User List interface.
+
+## [1.4.2] - 2022-08-08
+
+### Fixed
+- Unicode characters in the `id` of a `question` were not sent to the
+  browser as Unicode.
+
+## [1.4.1] - 2022-08-05
+
+### Changed
+- Upgraded `docxtpl`.
+### Fixed
+- Problem with restarting the server when using a single-server
+  configuration.
+
+## [1.4.0] - 2022-07-31
+
+### Added
+- The `floating labels` feature and the `floating label` field
+  modifier.
+- The `root owned` Configuration directive.
+- Support in the Kubernetes implementation for using a read-only file
+  system where all Configuration changes and package updates take
+  place using Docker images and the only directories on the server
+  that are writable are directories for storing runtime information
+  (e.g. PID files) or log files.
+- The `ip address ban enabled` Configuration directive.
+- The `old_password` parameter for `set_user_info()` and the API
+  endpoints for changing user information, so that the user's
+  encrypted data can be migrated.
+- The `transform_json_variables()` function.
+- Support for server-side encryption when using S3.
+### Changed
+- In the Docker container, the operating system is upgraded to Ubuntu
+  22.04 LTS and Python is upgraded to 3.10.
+- `aloe` is no longer a required package. It has a dependency, `nose`,
+  that is not compatible with Python 3.10. Instead, `behave` is now a
+  required package.
+- Switched to the Azure CLI for managing files in Azure Blob Storage
+  from shell scripts.
+- A restart (e.g., saving the Configuration, installing a package)
+  will erase any IP address bans caused by failed login attempts.
+- The API endpoints for changing information about existing users now
+  work with `PATCH` as well as `POST`.
+### Fixed
+- Links in dropdown navigation menu for mobile devices were not
+  clickable.
+- The `session` parameter of `/api/resume_url` was not working (it was
+  expecting `session_id`.
+- Optimized `interview_list` for cases where `action='delete_all'` and
+  `query` are used together.
+- Unnecessary transmittal of background task result to web browser
+  when the `refresh` option of `background_action()` is used.
+- Migration of encrypted `DAStore` objects when password is changed.
+- The `set_parts()` function did not support all of the screen parts.
+
+## [1.3.52] - 2022-07-08
+
+### Changed
+- Upgraded `atomicwrites`.
+
+## [1.3.51] - 2022-06-18
+
+### Changed
+- Upgraded jQuery to 3.6.0.
+### Fixed
+- Fixed issue with comboboxes introduced in 1.3.50.
+
+## [1.3.50] - 2022-06-11
+
+### Added
+- The `enable shared playgrounds` Configuration directive.
+### Changed
+- Upgraded to Font Awesome 6.1.1.
+### Fixed
+- In a list of fields in a `review` screen item, the `invalidate`
+  command was not available.
+
+## [1.3.49] - 2022-06-09
+
+### Added
+- Example interviews relating to inserting graphs and cards.
+### Changed
+- Changed the name of the `explanation()` function to
+  `logic_explanation()`. NOTE THAT THIS IS A BREAKING CHANGE. However,
+  you are most likely not using the `explanation()` function, so this
+  probably will not matter.
+### Fixed
+- Cleared spurious syslog-ng error message.
+- Error getting the data format of a question when `debug` is false.
+
+## [1.3.48] - 2022-06-05
+### Fixed
+- Error with user profile screen.
+
+## [1.3.47] - 2022-06-04
+### Fixed
+- Error parsing hostname from Redis URL.
+- Number of items not preserved when pressing Back button and arriving
+  at a `list collect` question.
+
+## [1.3.46] - 2022-06-03
+### Added
+- The `allow log viewing` (`DAALLOWLOGVIEWING`) Configuration
+  directive.
+- The `forget_prior` keyword parameter for `force_ask()` and
+  `force_gather()`.
+- The `_forget_prior` keyword parameter for `url_action()` and
+  `interview_url_action()`.
+- The `forgetPrior` parameter for the JavaScript functions
+  `url_action()`, `action_call()`, and `action_perform()`.
+- The `logoutpage` Configuration directive.
+- The `allow changing password` directive.
+### Changed
+- Upgraded to Bootstrap 5.2.
+- The `interview_url()` and `url_of('interview')` functions now accept
+  unqualified `i` parameters, which will be interpreted as references
+  to interview files in the current package.
+### Fixed
+- The HTML version of the error notification e-mail lacked some of the
+  information in the plain text version.
+- The `next` parameter of `url_of()` was not functional for `leave`,
+  `logout`, `exit`, and `exit_logout`.
+
+## [1.3.45] - 2022-05-27
+### Added
+- The `pip index url` (`PIPINDEXURL`) and `pip extra index urls`
+  (`PIPEXTRAINDEXURLS`) Configuration directives.
+- The `allow configuration editing` (`DAALLOWCONFIGURATIONEDITING`)
+  Configuration directive.
+- Docker environment variables `DADEBUG` (corresponding to `debug`)
+  and `DAENABLEPLAYGROUND` (corresponding to `enable playground`).
+- The `insertion_order` option for `.true_values()` and
+  `.false_values()`.
+### Changed
+- API keys can now be passed in a header using the format
+  `Authorization: Bearer H3PLMKJKIVATLDPWHJH3AGWEJPFU5GRT`.
+- Removed `pathlib` as a dependency.
+- If `allow updates` is set to false, the `/api/package` endpoint
+  cannot be used to install or uninstall packages.
+- If `enable playground` is set to false, the Playground-related APIs
+  are disabled.
+### Fixed
+- When a `yesnoradio` or `yesnomaybe` field is not `required` and is
+  not answered, the variable will now be set to `None` instead of
+  `False`. THIS MAY BE A BREAKING CHANGE FOR YOU if you relied on
+  variables being set to `False` when the user did not provide a value
+  for a `yesnoradio` or `yesnomaybe` field. The documentation for
+  `required` has always stated that the variable will be set to `None`
+  if the user does not provide a value, so this change brings the code
+  into line with the documentation.
+- Error when `target_number` is not an `int` and an `.add_action()` is
+  triggered.
+- `docassemble.base.legal` did not import all of
+  `docassemble.base.util`'s names.
+- `set` and `follow up` were not recognized in all valid `review`
+  block syntax forms.
+- The `to` parameter of `send_email()` and `send_sms()` did not
+  process a `DAList` the same way as a `list`.
+- Under some circumstances, the navigation bar showed already-visited
+  sections as not visited.
+- `error action`s resulted in unnecessary contention for access to the
+  interview answers.
+
 ## [1.3.44] - 2022-05-16
 ### Added
 - The `temp_url` variant of `url_of()`, which functions like the
