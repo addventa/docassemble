@@ -7,7 +7,7 @@ import os
 import pickle
 import platform
 import re
-# import sys
+import sys
 # import time
 import types
 import xml.etree.ElementTree as ET
