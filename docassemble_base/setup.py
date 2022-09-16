@@ -103,7 +103,7 @@ install_requires = [
     "joblib==1.0.1",
     "keyring==23.0.1",
     "lxml==4.6.3",
-    "Mako==1.1.4",
+    "Mako==1.2.2",
     "Marisol==0.3.0",
     "Markdown==3.3.4",
     "MarkupSafe==2.0.0",
