@@ -10,6 +10,7 @@ allow vars route access: {{ALLOWVARSROUTEACCESS}}
 root redirect url: {{ROOTREDIRECTURL}}
 roles map: {{ROLESMAP}}
 default playground yaml: {{DEFAULTPLAYGROUNDYAML}}
+interview delete days: {{INTERVIEWDELETEDAYS}}
 exitpage: https://docassemble.org
 supervisor:
   username: {{DASUPERVISORUSERNAME}}

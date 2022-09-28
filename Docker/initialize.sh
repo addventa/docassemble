@@ -439,6 +439,7 @@ if [ ! -f "$DA_CONFIG_FILE" ]; then
         -e 's@{{ROOTREDIRECTURL}}@'"${ROOTREDIRECTURL:-null}"'@' \
         -e 's/{{ROLESMAP}}/'"${ROLESMAP:-null}"'/' \
         -e 's/{{MAILUSERNAME}}/'"${MAILUSERNAME:-null}"'/' \
+        -e 's/{{INTERVIEWDELETEDAYS}}/'"${INTERVIEWDELETEDAYS:-30}"'/' \
         -e 's/{{MAILPASSWORD}}/'"${MAILPASSWORD:-null}"'/' \
         -e 's/{{MAILSERVER}}/'"${MAILSERVER:-localhost}"'/' \
         -e 's/{{MAILDEFAULTSENDER}}/'"${MAILDEFAULTSENDER:-'"Administrator" <no-reply@example.com>'}"'/' \
