@@ -7,6 +7,7 @@ allow anonymous access: {{ALLOWANONYMOUSACCESS}}
 root redirect url: {{ROOTREDIRECTURL}}
 roles map: {{ROLESMAP}}
 default playground yaml: {{DEFAULTPLAYGROUNDYAML}}
+interview delete days: {{INTERVIEWDELETEDAYS}}
 exitpage: https://docassemble.org
 db:
   prefix: {{DBPREFIX}}
