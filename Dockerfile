@@ -1,4 +1,4 @@
-FROM addventa/docassemble-os:1.0.1
+FROM addventa/docassemble-os:1.1.0
 COPY . /tmp/docassemble/
 RUN DEBIAN_FRONTEND=noninteractive TERM=xterm \
 bash -c \
