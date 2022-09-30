@@ -100,7 +100,7 @@ install_requires = [
     "jeepney==0.6.0",
     "jellyfish==0.6.1",
     "Jinja2==3.0.0",
-    "joblib==1.0.1",
+    "joblib==1.2.0",
     "keyring==23.0.1",
     "lxml==4.6.3",
     "Mako==1.1.4",
