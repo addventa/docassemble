@@ -61,4 +61,43 @@
   <a class="btn {{ config['BUTTON_STYLE'] }}secondary {{ config['BUTTON_CLASS'] }}" href="{{ url_for('user_profile_page') }}">Back to Profile</a>
 </div>
 {%- endif %}
+<div style="margin-top: 2em">
+  <h2>Monitoring</h2>
+  <label style="margin-bottom: 0.5em">Insert your API key here</label>
+  <input id="input-api-key" class="form-control" />
+  <button
+    id="monitoring-button"
+    class="btn btn-primary btn-da"
+    style="margin-top: 0.5em"
+  >
+    Create snapshot
+  </button>
+  <div id="monitoring-log-div" style="margin-top: 0.5em" />
+</div>
+
+<script src="{{ url_for('static', filename='monitoring/jszip.min.js') }}"></script>
+<script src="{{ url_for('static', filename='monitoring/FileSaver.min.js') }}"></script>
+<script type="module">
+  import { launch_monitoring } from "{{ url_for('static', filename='monitoring/monitoring.js') }}";
+
+  const monitoring_button = document.querySelector("#monitoring-button");
+  const input_api_key = document.querySelector("#input-api-key");
+  const log_div = document.querySelector("#monitoring-log-div");
+
+  monitoring_button.addEventListener("click", () => {
+    monitoring_button.style.display = "none";
+    launch_monitoring(
+      input_api_key.value,
+      (message) => (log_div.innerText = message)
+    )
+      .then(() => (log_div.innerText = ""))
+      .catch(
+        (error) =>
+          (log_div.innerText =
+            "An error occured, please check your API key and try again.\n" +
+            error)
+      )
+      .finally(() => (monitoring_button.style.display = "block"));
+  });
+</script>
 {% endblock %}
