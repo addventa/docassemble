@@ -2,21 +2,21 @@ export async function launch_monitoring(api_key, callback) {
   async function get_projects(user_id) {
     let url = `/api/playground/project?key=${api_key}&user_id=${user_id}`;
     const res_projects = await fetch(url);
-    return res_projects.json();
+    return res_projects.ok ? res_projects.json() : [];
   }
 
   async function get_files_list(user_id, folder, project = "default") {
     let url = `/api/playground?key=${api_key}&user_id=${user_id}&folder=${folder}`;
     if (project !== "default") url += `&project=${project}`;
     const res_files_list = await fetch(url);
-    return res_files_list.json();
+    return res_files_list.ok ? res_files_list.json() : [];
   }
 
   async function get_file(user_id, folder, filename, project = "default") {
     let url = `/api/playground?key=${api_key}&user_id=${user_id}&folder=${folder}&filename=${filename}`;
     if (project !== "default") url += `&project=${project}`;
     const res_file = await fetch(url);
-    return res_file.blob();
+    return res_file.ok ? res_file.blob() : null;
   }
 
   async function get_folder_files(user_id, folder, project = "default") {
@@ -54,6 +54,8 @@ export async function launch_monitoring(api_key, callback) {
 
   async function get_installed_projects() {
     const res_packages = await fetch(`/api/package?key=${api_key}`);
+    if (!res_packages.ok) return []
+    
     const packages = await res_packages.json();
     return packages
       .filter((x) => x.type === "zip")
@@ -173,6 +175,8 @@ export async function launch_monitoring(api_key, callback) {
   /* get user list */
   callback("Retrieving user list...");
   const res_user_list = await fetch(`/api/user_list?key=${api_key}`);
+  if (!res_user_list.ok) throw Error("Error while retrieving the user list");
+  
   const user_list = await res_user_list.json();
 
   let designer_index = 0;
@@ -207,12 +211,15 @@ export async function launch_monitoring(api_key, callback) {
   /* await playground promise */
   callback("Extracting data...");
   for (const user of users.filter((x) => "projects" in x)) {
-    user.projects = await Promise.all(user.projects);
+    
     for (const project of user.projects) {
       project.folders = await project.folders;
+      
       for (const folder of project.folders) {
         folder.files = await folder.files;
-        for (const file of folder.files) file.data = await file.data;
+        
+        for (const file of folder.files) 
+          file.data = await file.data;
       }
     }
   }
@@ -221,9 +228,9 @@ export async function launch_monitoring(api_key, callback) {
   callback("Creating the user CSV file...");
   let user_csv = `"email";"role";"projects"\n`;
   for (const user of users) {
-    user_csv += `"${user.user}";"${user.role}";`;
+    user_csv += `"${user?.user}";"${user?.role}";`;
     if ("projects" in user)
-      user_csv += `"${user.projects.map((x) => x.name).join(", ")}"`;
+      user_csv += `"${user?.projects?.map((x) => x?.name).join(", ")}"`;
     user_csv += "\n";
   }
 
@@ -247,7 +254,9 @@ export async function launch_monitoring(api_key, callback) {
   for (const user_id in playgrounds_usage) {
     const user_email = users.filter(
       (user) => user.id.toString() === user_id.toString()
-    )[0].user;
+    )[0]?.user;
+    
+    if (!user_email) continue;
 
     for (const project_name in playgrounds_usage[user_id]) {
       const project = playgrounds_usage[user_id][project_name];
@@ -275,7 +284,7 @@ export async function launch_monitoring(api_key, callback) {
       const project_folder = user_folder.folder(project.name);
       for (const folder of project.folders) {
         const folder_folder = project_folder.folder(folder.name);
-        for (const file of folder.files)
+        for (const file of folder.files.filter(x => x !== null))
           folder_folder.file(file.name, file.data);
       }
     }

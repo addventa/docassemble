@@ -93,7 +93,7 @@
       .then(() => (log_div.innerText = ""))
       .catch(
         (error) =>
-          (log_div.innerText =
+          (log_div.innerText +=
             "An error occured, please check your API key and try again.\n" +
             error)
       )
