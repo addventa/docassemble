@@ -6266,6 +6266,7 @@ def index(action_argument=None, refer=None):
     if user_dict is None:
         sys.stderr.write("index: no user_dict found after fetch_user_dict with %s and %s, so we need to reset\n" % (user_code, yaml_filename))
         release_lock(user_code, yaml_filename)
+        logmessage(str(session_info))
         logmessage("index: dictionary fetch returned no results")
         clear_session(yaml_filename)
         redirect_url = daconfig.get('session error redirect url', None)
@@ -19778,6 +19779,8 @@ def delete_variable_file(current_project):
 @login_required
 @roles_required(['developer', 'admin'])
 def playground_page():
+    import time
+    time.sleep(1)
     if not app.config['ENABLE_PLAYGROUND']:
         return ('File not found', 404)
     setup_translation()
@@ -20414,6 +20417,9 @@ $( document ).ready(function() {
         page_title += " / " + current_project
     response = make_response(render_template('pages/playground.html', projects=get_list_of_projects(current_user.id), current_project=current_project, version_warning=None, bodyclass='daadminbody', use_gd=use_gd, use_od=use_od, userid=current_user.id, page_title=Markup(page_title), tab_title=word("Playground"), extra_css=Markup('\n    <link href="' + url_for('static', filename='app/playgroundbundle.css', v=da_version) + '" rel="stylesheet">'), extra_js=Markup('\n    <script src="' + url_for('static', filename="app/playgroundbundle.js", v=da_version) + '"></script>\n    ' + kbLoad + cm_setup + '<script>\n      var daConsoleMessages = ' + json.dumps(console_messages) + ';\n      $("#daDelete").click(function(event){if(!confirm("' + word("Are you sure that you want to delete this playground file?") + '")){event.preventDefault();}});\n      daTextArea = document.getElementById("playground_content");\n      var daCodeMirror = CodeMirror.fromTextArea(daTextArea, {specialChars: /[\\u00a0\\u0000-\\u001f\\u007f-\\u009f\\u00ad\\u061c\\u200b-\\u200f\\u2028\\u2029\\ufeff]/, mode: "' + ('yamlmixed' if daconfig.get('test yamlmixed mode') else 'yamlmixed') + '", ' + kbOpt + 'tabSize: 2, tabindex: 70, autofocus: false, lineNumbers: true, matchBrackets: true, lineWrapping: ' + ('true' if daconfig.get('wrap lines in playground', True) else 'false') + '});\n      $(window).bind("beforeunload", function(){daCodeMirror.save(); $("#form").trigger("checkform.areYouSure");});\n      $("#form").areYouSure(' + json.dumps({'message': word("There are unsaved changes.  Are you sure you wish to leave this page?")}) + ');\n      $("#form").bind("submit", function(){daCodeMirror.save(); $("#form").trigger("reinitialize.areYouSure"); return true;});\n      daCodeMirror.setSize(null, null);\n      daCodeMirror.setOption("extraKeys", { Tab: function(cm) { var spaces = Array(cm.getOption("indentUnit") + 1).join(" "); cm.replaceSelection(spaces); }, "Ctrl-Space": "autocomplete", "F11": function(cm) { cm.setOption("fullScreen", !cm.getOption("fullScreen")); }, "Esc": function(cm) { if (cm.getOption("fullScreen")) cm.setOption("fullScreen", false); }});\n      daCodeMirror.setOption("coverGutterNextToScrollbar", true);\n' + indent_by(ajax, 6) + '\n      exampleData = JSON.parse(atob("' + pg_ex['encoded_data_dict'] + '"));\n      activateExample("' + str(pg_ex['pg_first_id'][0]) + '", false);\n    $("#my-form").trigger("reinitialize.areYouSure");\n      $("#daVariablesReport").on("shown.bs.modal", function () { daFetchVariableReport(); })\n    </script>'), form=form, fileform=fileform, files=sorted(files, key=lambda y: y['name'].lower()), any_files=any_files, pulldown_files=sorted(pulldown_files, key=lambda y: y.lower()), current_file=the_file, active_file=active_file, content=content, variables_html=Markup(variables_html), example_html=pg_ex['encoded_example_html'], interview_path=interview_path, is_new=str(is_new)), 200)
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
+    
+    
+    time.sleep(1)
     return response
 
 @app.errorhandler(404)

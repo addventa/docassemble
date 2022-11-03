@@ -37,7 +37,7 @@ install_requires = [
     "boto3==1.4.3",
     "botocore==1.4.93",
     "cachetools==4.2.2",
-    "celery==5.0.5",
+    "celery==5.2.2",
     "certifi==2020.12.5",
     "cffi==1.14.5",
     "chardet==4.0.0",
