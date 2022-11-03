@@ -140,7 +140,7 @@ install_requires = [
     "PyJWT==1.7.1",
     "PyLaTeX==1.4.1",
     "pyparsing==2.4.7",
-    "PyPDF2==1.26.0",
+    "PyPDF2==1.27.5",
     "pyPdf==1.13",
     "pypdftk==0.5",
     "pypng==0.0.20",
