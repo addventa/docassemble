@@ -127,7 +127,7 @@ install_requires = [
     "pkginfo==1.7.0",
     "pluggy==0.13.1",
     "ply==3.11",
-    "protobuf==3.16.0",
+    "protobuf==3.18.3",
     "py==1.10.0",
     "pyasn1-modules==0.2.8",
     "pyasn1==0.4.8",
