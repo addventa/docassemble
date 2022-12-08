@@ -62,7 +62,7 @@ install_requires = [
     "bleach==3.3.0",
     "blinker==1.4",
     "cachetools==4.2.2",
-    "certifi==2020.12.5",
+    "certifi==2022.12.7",
     "cffi==1.14.5",
     "chardet==4.0.0",
     "click==7.1.2",
