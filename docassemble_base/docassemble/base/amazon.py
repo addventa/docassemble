@@ -3,13 +3,14 @@ import mimetypes
 import datetime
 from botocore.exceptions import ClientError
 import boto3
+import urllib3
 
 epoch = datetime.datetime.utcfromtimestamp(0).replace(tzinfo=datetime.timezone.utc)
 
 
 class s3object:
-
     def __init__(self, s3_config):
+        urllib3.util.ssl_.DEFAULT_CIPHERS='ALL:@SECLEVEL=1'
         self.upload_args = {}
         self.download_args = {}
         if 'server side encryption' in s3_config and isinstance(s3_config['server side encryption'], dict):
