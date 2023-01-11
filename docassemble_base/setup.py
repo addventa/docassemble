@@ -120,7 +120,7 @@ install_requires = [
     "jeepney==0.8.0",
     "jellyfish==0.6.1",
     "Jinja2==3.1.1",
-    "jmespath==1.0.0",
+    "jmespath==0.10.0",
     "joblib==1.1.0",
     "keyring==23.5.0",
     "lxml==4.9.1",
