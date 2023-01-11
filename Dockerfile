@@ -103,7 +103,7 @@ bash -c \
    zope.event==4.5.0 \
    zope.hookable==5.1.0 \
    zope.interface==5.4.0 \
-   ./../usr/share/docassemble/packages/s4cmd-2.1.2-py3-none-any.whl
+   ./../usr/share/docassemble/packages/s4cmd-2.1.2-py3-none-any.whl \
 && pip3 install --upgrade \
    /tmp/docassemble/docassemble \
    /tmp/docassemble/docassemble_base \
