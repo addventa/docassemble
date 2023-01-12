@@ -65,8 +65,8 @@ install_requires = [
     "bleach==5.0.0",
     "blinker==1.4",
     "boto==2.49.0",
-    "boto3==1.4.3",
-    "botocore==1.4.93",
+    "boto3==1.21.40",
+    "botocore==1.24.40",
     "cachetools==5.0.0",
     "cairocffi==1.3.0",
     "CairoSVG==2.5.2",
@@ -120,7 +120,7 @@ install_requires = [
     "jeepney==0.8.0",
     "jellyfish==0.6.1",
     "Jinja2==3.1.1",
-    "jmespath==0.10.0",
+    "jmespath==1.0.0",
     "joblib==1.1.0",
     "keyring==23.5.0",
     "lxml==4.9.1",
@@ -188,7 +188,7 @@ install_requires = [
     "rsa==4.7.2",
     "ruamel.yaml.clib==0.2.6",
     "ruamel.yaml==0.17.21",
-    "s3transfer==0.1.13",
+    "s3transfer==0.5.2",
     "scipy==1.8.0",
     "SecretStorage==3.3.1",
     "six==1.16.0",
@@ -207,7 +207,7 @@ install_requires = [
     "tzlocal==4.2",
     "ua-parser==0.10.0",
     "uritemplate==4.1.1",
-    "urllib3==1.26.5",
+    "urllib3==1.26.9",
     "us==2.0.2",
     "user-agents==2.2.0",
     "wcwidth==0.2.5",
@@ -217,13 +217,7 @@ install_requires = [
     "xlrd==2.0.1",
     "XlsxWriter==3.0.3",
     "xlwt==1.3.0",
-    "zipp==3.8.0",
-    "zc.lockfile==2.0",
-    "billiard==3.6.4.0",
-    "click-didyoumean==0.3.0",
-    "click-repl==0.2.0",
-    "kombu==5.2.4",
-    "vine==5.0.0"
+    "zipp==3.8.0"
 ]
 
 if sys.version_info < (3, 9):

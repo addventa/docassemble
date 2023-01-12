@@ -1,7 +1,7 @@
 import os
 import mimetypes
 import datetime
-from botocore.exceptions import ClientError
+from botocore.errorfactory import ClientError
 import boto3
 import urllib3
 
