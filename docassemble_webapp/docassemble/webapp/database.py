@@ -68,9 +68,9 @@ if alchemy_connect_string.startswith('postgres'):
 def connection_string():
     return connect_string
 
-
+import urllib.parse
 def alchemy_connection_string():
-    return alchemy_connect_string
+    return urllib.parse.quote_plus(alchemy_connect_string)
 
 
 def connect_args():
