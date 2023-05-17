@@ -60,12 +60,8 @@ bash -c \
 && pip install --upgrade virtualenv \
 && echo \"en_US.UTF-8 UTF-8\" >> /etc/locale.gen \
 && locale-gen \
-&& update-locale"
-
-RUN LC_CTYPE=C.UTF-8 LANG=C.UTF-8 \
-bash -c \
-"cd /tmp \
-&& /usr/bin/python3.10 -m venv --copies /usr/share/docassemble/local3.10 \
+&& update-locale \
+&& /usr/bin/python3 -m venv --copies /usr/share/docassemble/local3.10 \
 && source /usr/share/docassemble/local3.10/bin/activate \
 && pip3 install --upgrade pip==21.1 \
 && pip3 install --upgrade wheel==0.37.1 \
@@ -99,12 +95,13 @@ bash -c \
    requests==2.27.1 \
    six==1.16.0 \
    tqdm==4.64.0 \
+   urllib3==1.26.9 \
    zope.component==5.0.1 \
    zope.event==4.5.0 \
    zope.hookable==5.1.0 \
    zope.interface==5.4.0 \
    ./../usr/share/docassemble/packages/s4cmd-2.1.2-py3-none-any.whl \
-&& pip3 install --upgrade \
+&& pip3 install --use-feature=in-tree-build \
    /tmp/docassemble/docassemble \
    /tmp/docassemble/docassemble_base \
    /tmp/docassemble/docassemble_demo \
@@ -119,20 +116,13 @@ bash -c \
 && ln -s /usr/share/docassemble/syslogng/syslog-ng.conf /etc/syslog-ng/syslog-ng.conf \
 && cp /usr/share/docassemble/local3.10/lib/python3.10/site-packages/mod_wsgi/server/mod_wsgi-py310.cpython-310-x86_64-linux-gnu.so /usr/lib/apache2/modules/mod_wsgi.so-3.10 \
 && pip3 uninstall --yes mysqlclient MySQL-python &> /dev/null \
-&& python3.10 -m nltk.downloader -d /usr/local/share/nltk_data all"
-
-RUN DEBIAN_FRONTEND=noninteractive TERM=xterm \
-bash -c \
-"cp /usr/share/docassemble/local3.10/lib/python3.10/site-packages/s4cmd.py /usr/share/s4cmd/ \
+&& python3.10 -m nltk.downloader -d /usr/local/share/nltk_data all \
+&& cp /usr/share/docassemble/local3.10/lib/python3.10/site-packages/s4cmd.py /usr/share/s4cmd/ \
 && chown -R www-data.www-data \
    /usr/share/docassemble/local3.10 \
    /usr/share/docassemble/log \
    /usr/share/docassemble/files \
-&& usermod --shell /bin/bash www-data"
-
-USER root
-RUN \
-rm -rf /tmp/docassemble \
+&& usermod --shell /bin/bash www-data \
 && rm -f /etc/cron.daily/apt-compat \
 && sed -i -e 's/^\(daemonize\s*\)yes\s*$/\1no/g' -e 's/^bind 127.0.0.1/bind 0.0.0.0/g' /etc/redis/redis.conf \
 && sed -i -e 's/#APACHE_ULIMIT_MAX_FILES/APACHE_ULIMIT_MAX_FILES/' -e 's/ulimit -n 65536/ulimit -n 8192/' /etc/apache2/envvars \
@@ -146,7 +136,15 @@ rm -rf /tmp/docassemble \
 ; a2enmod proxy_wstunnel \
 ; a2enmod headers \
 ; a2enconf docassemble \
-; echo 'export TERM=xterm' >> /etc/bash.bashrc
+; echo 'export TERM=xterm' >> /etc/bash.bashrc"
+
+USER www-data
+RUN bash -c \
+"source /usr/share/docassemble/local3.10/bin/activate \
+&& python /tmp/docassemble/Docker/nltkdownload.py \
+&& cd /var/www/nltk_data/corpora \
+&& unzip wordnet.zip \
+&& unzip omw-1.4.zip"
 
 USER root
 RUN rm -rf /tmp/docassemble
