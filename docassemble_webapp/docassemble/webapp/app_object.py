@@ -18,12 +18,11 @@ def create_app():
     from docassemble.base.config import daconfig  # pylint: disable=import-outside-toplevel
     import docassemble.webapp.database  # pylint: disable=import-outside-toplevel,redefined-outer-name
     import docassemble.webapp.db_object  # pylint: disable=import-outside-toplevel,redefined-outer-name
+    import docassemble.webapp.worker_common  # pylint: disable=import-outside-toplevel
     alchemy_connect_string = docassemble.webapp.database.alchemy_connection_string()
     the_app.config['SQLALCHEMY_DATABASE_URI'] = alchemy_connect_string
     if alchemy_connect_string.startswith('postgres'):
-        the_app.config['SQLALCHEMY_ENGINE_OPTIONS'] = dict(
-            connect_args=docassemble.webapp.database.connect_args()
-        )
+        the_app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'connect_args': docassemble.webapp.database.connect_args()}
     the_app.secret_key = daconfig.get('secretkey', '38ihfiFehfoU34mcq_4clirglw3g4o87')
     the_app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     the_db = docassemble.webapp.db_object.init_flask()
@@ -39,9 +38,10 @@ def create_app():
             the_app.wsgi_app = ProxyFix(the_app.wsgi_app)
     if 'cross site domains' in daconfig:
         CORS(the_app, origins=daconfig['cross site domains'], supports_credentials=True)
-    return the_app, the_csrf, the_babel
+    docassemble.webapp.worker_common.workerapp.set_current()
+    return the_app, the_csrf
 
 if docassemble.base.functions.server_context.context == 'websockets':
     from docassemble.webapp.app_socket import app  # pylint: disable=unused-import
 else:
-    app, csrf, flaskbabel = create_app()
+    app, csrf = create_app()

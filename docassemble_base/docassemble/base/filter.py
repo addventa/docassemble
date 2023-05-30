@@ -4,18 +4,18 @@ import mimetypes
 import codecs
 import json
 from io import BytesIO
-import subprocess
 import tempfile
 import time
 import stat
 import xml.etree.ElementTree as ET
 import qrcode
 import qrcode.image.svg
-import PyPDF2
+from pikepdf import Pdf
 import PIL
 from docassemble.base.logger import logmessage
 from docassemble.base.rtfng.object.picture import Image
 from docassemble.base.functions import server, word
+from docassemble.base.error import DAException
 import docassemble.base.functions
 from docassemble.base import pandoc
 from bs4 import BeautifulSoup
@@ -95,7 +95,7 @@ def get_max_width_points():
 #     return
 
 # def blank_file_finder(*args, **kwargs):
-#     return(dict(filename="invalid"))
+#     return({'filename': "invalid"})
 
 # file_finder = blank_file_finder
 
@@ -244,7 +244,7 @@ def rtf_filter(text, metadata=None, styles=None, question=None):
     formatting_stack = []
     for line in lines:
         if re.search(r'\[SAVE\]', line):
-            formatting_stack.append(dict(spacing_command=spacing_command, after_space=after_space, default_indentation=default_indentation, indentation_command=indentation_command))
+            formatting_stack.append({'spacing_command': spacing_command, 'after_space': after_space, 'default_indentation': default_indentation, 'indentation_command': indentation_command})
         elif re.search(r'\[RESTORE\]', line):
             if len(formatting_stack) > 0:
                 prior_values = formatting_stack.pop()
@@ -662,7 +662,6 @@ def html_filter(text, status=None, question=None, embedder=None, default_image_w
                 text += ' style="' + "".join(map(lambda x: str(x[0]) + ":" + x[1] + ';', styles.items())) + '"'
             text += '></i>'
         text += line + '\n\n'
-    text = re.sub(r'\\_', r'__', text)
     text = re.sub(r'\n+$', r'', text)
     return text
 
@@ -788,21 +787,6 @@ def borderify(string):
     return '\\mdframed ' + str(string) + '\\endmdframed'
 
 
-def safe_pypdf_reader(filename):
-    try:
-        return PyPDF2.PdfFileReader(open(filename, 'rb'), overwriteWarnings=False)
-    except PyPDF2.utils.PdfReadError:
-        with tempfile.NamedTemporaryFile(prefix="datemp", mode="wb", suffix=".pdf", delete=False) as new_filename:
-            qpdf_subprocess_arguments = [QPDF_PATH, filename, new_filename.name]
-            try:
-                result = subprocess.run(qpdf_subprocess_arguments, timeout=60, check=False).returncode
-            except subprocess.TimeoutExpired:
-                result = 1
-            if result != 0:
-                raise Exception("Call to qpdf failed for template " + str(filename) + " where arguments were " + " ".join(qpdf_subprocess_arguments))
-            return PyPDF2.PdfFileReader(open(new_filename.name, 'rb'), overwriteWarnings=False)
-
-
 def image_as_rtf(match, question=None):
     width_supplied = False
     try:
@@ -863,8 +847,8 @@ def image_as_rtf(match, question=None):
                 server.fg_make_pdf_for_word_path(file_info['path'], file_info['extension'])
         if 'pages' not in file_info:
             try:
-                reader = safe_pypdf_reader(file_info['path'] + '.pdf')
-                file_info['pages'] = reader.getNumPages()
+                with Pdf.open(file_info['path'] + '.pdf') as reader:
+                    file_info['pages'] = len(reader.pages)
             except:
                 file_info['pages'] = 1
         max_pages = 1 + int(file_info['pages'])
@@ -1064,8 +1048,8 @@ def image_url(file_reference, alt_text, width, emoji=False, question=None, exter
                     sf.finalize()
             if 'pages' not in file_info:
                 try:
-                    reader = safe_pypdf_reader(file_info['path'] + '.pdf')
-                    file_info['pages'] = reader.getNumPages()
+                    with Pdf.open(file_info['path'] + '.pdf') as reader:
+                        file_info['pages'] = len(reader.pages)
                 except:
                     file_info['pages'] = 1
             the_image_url = server.url_finder(file_reference, size="screen", page=1, _question=question, _external=external)
@@ -1080,10 +1064,10 @@ def image_url(file_reference, alt_text, width, emoji=False, question=None, exter
             else:
                 the_alt_text = alt_text
             try:
-                safe_pdf_reader = safe_pypdf_reader(file_info['path'] + '.pdf')
-                layout_width = str(safe_pdf_reader.getPage(0).mediaBox.getWidth())
-                layout_height = str(safe_pdf_reader.getPage(0).mediaBox.getHeight())
-                output = '<a target="_blank"' + title + ' class="daimageref" href="' + the_url + '"><img ' + the_alt_text + 'class="daicon dapdfscreen' + extra_class + '" width=' + layout_width + ' height=' + layout_height + ' style="' + width_string + '; height: auto;" src="' + the_image_url + '"/></a>'
+                with Pdf.open(file_info['path'] + '.pdf') as reader:
+                    layout_width = str(reader.pages[0].mediabox[2] - reader.pages[0].mediabox[0])
+                    layout_height = str(reader.pages[0].mediabox[3] - reader.pages[0].mediabox[1])
+                    output = '<a target="_blank"' + title + ' class="daimageref" href="' + the_url + '"><img ' + the_alt_text + 'class="daicon dapdfscreen' + extra_class + '" width=' + layout_width + ' height=' + layout_height + ' style="' + width_string + '; height: auto;" src="' + the_image_url + '"/></a>'
             except:
                 output = '<a target="_blank"' + title + ' class="daimageref" href="' + the_url + '"><img ' + the_alt_text + 'class="daicon dapdfscreen' + extra_class + '" style="' + width_string + '; height: auto;" src="' + the_image_url + '"/></a>'
             if 'pages' in file_info and file_info['pages'] > 1:
@@ -1211,7 +1195,7 @@ def image_include_docx(match, question=None):
                 output = '![](' + file_info['path'] + '.pdf){width=' + width + '}'
                 return output
             if file_info['extension'] in ['png', 'jpg', 'gif', 'pdf', 'eps', 'jpe', 'jpeg']:
-                output = '![](' + file_info['path'] + '){width=' + width + '}'
+                output = '![](' + file_info['fullpath'] + '){width=' + width + '}'
                 return output
     return '[invalid graphics reference]'
 
@@ -1285,16 +1269,7 @@ def rtf_two_col(match):
     return table_text + '[MANUALSKIP]'
 
 
-def emoji_html(text, status=None, question=None, images=None):
-    # logmessage("Got to emoji_html")
-    if status is not None and question is None:
-        question = status.question
-    if images is None:
-        images = question.interview.images
-    if text in images:
-        if status is not None and images[text].attribution is not None:
-            status.attributions.add(images[text].attribution)
-        return image_url(images[text].get_reference(), word('icon'), '1em', emoji=True, question=question)
+def get_icon_html(text):
     icons_setting = docassemble.base.functions.get_config('default icons', None)
     if icons_setting == 'font awesome':
         m = re.search(r'^(fa[a-z])-fa-(.*)', text)
@@ -1306,6 +1281,22 @@ def emoji_html(text, status=None, question=None, images=None):
         return '<i class="' + the_prefix + ' fa-' + str(text) + '"></i>'
     if icons_setting == 'material icons':
         return '<i class="da-material-icons">' + str(text) + '</i>'
+    return None
+
+
+def emoji_html(text, status=None, question=None, images=None):
+    # logmessage("Got to emoji_html")
+    if status is not None and question is None:
+        question = status.question
+    if images is None:
+        images = question.interview.images
+    if text in images:
+        if status is not None and images[text].attribution is not None:
+            status.attributions.add(images[text].attribution)
+        return image_url(images[text].get_reference(), word('icon'), '1em', emoji=True, question=question)
+    icon_html = get_icon_html(text)
+    if icon_html:
+        return icon_html
     return ":" + str(text) + ":"
 
 
@@ -1493,6 +1484,8 @@ def markdown_to_html(a, trim=False, pclass=None, status=None, question=None, use
     if escape:
         if escape is True:
             result = noquote_match.sub('&quot;', result)
+        if escape == 'option':
+            result = re.sub(r'\n\r', ' ', BeautifulSoup(result, 'html.parser').get_text()).strip()
         result = lt_match.sub('&lt;', result)
         result = gt_match.sub('&gt;', result)
         if escape is True:
@@ -1901,10 +1894,10 @@ def qr_include_docx_template(match):
 def ensure_valid_filename(filename):
     m = re.search(r'[\\/\&\`:;,~\'\"\*\?\<\>\|]', filename)
     if m:
-        raise Exception("Filename contained invalid character " + repr(m.group(1)))
+        raise DAException("Filename contained invalid character " + repr(m.group(1)))
     for char in filename:
         if ord(char) < 32 or ord(char) >= 127:
-            raise Exception("Filename contained invalid character " + repr(char))
+            raise DAException("Filename contained invalid character " + repr(char))
     return True
 
 

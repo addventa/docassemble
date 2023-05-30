@@ -4,20 +4,13 @@ import importlib
 from docassemble.webapp.app_object import app
 from docassemble.base.config import daconfig
 import docassemble.webapp.database
-da_version = '1.4.9'
+da_version = '1.4.55'
 app.config['DA_VERSION'] = da_version
 app.config['APP_NAME'] = daconfig.get('appname', 'docassemble')
 app.config['BRAND_NAME'] = daconfig.get('brandname', daconfig.get('appname', 'docassemble'))
 app.config['SHOW_PROFILE'] = bool(daconfig.get('show profile link', True))
 app.config['SHOW_MY_INTERVIEWS'] = bool(daconfig.get('show interviews link', True))
 app.config['SHOW_DISPATCH'] = bool(len(daconfig['dispatch']) and daconfig.get('show dispatch link', False) > 0)
-app.config['MAIL_USERNAME'] = daconfig['mail'].get('username', None)
-app.config['MAIL_PASSWORD'] = daconfig['mail'].get('password', None)
-app.config['MAIL_DEFAULT_SENDER'] = daconfig['mail'].get('default sender', None)
-app.config['MAIL_SERVER'] = daconfig['mail'].get('server', 'localhost')
-app.config['MAIL_PORT'] = daconfig['mail'].get('port', 25)
-app.config['MAIL_USE_SSL'] = daconfig['mail'].get('use ssl', False)
-app.config['MAIL_USE_TLS'] = daconfig['mail'].get('use tls', True)
 # app.config['ADMINS'] = [daconfig.get('admin address', None)]
 app.config['APP_SYSTEM_ERROR_SUBJECT_LINE'] = app.config['APP_NAME'] + " system error"
 app.config['APPLICATION_ROOT'] = daconfig.get('root', '/')
@@ -46,12 +39,13 @@ app.config['USER_ENABLE_EMAIL'] = True
 app.config['USER_ENABLE_USERNAME'] = False
 app.config['USER_ENABLE_REGISTRATION'] = True
 app.config['USER_ENABLE_CHANGE_USERNAME'] = False
-app.config['ALLOW_CHANGING_PASSWORD'] = bool(daconfig.get('allow changing password', False))
+app.config['ALLOW_CHANGING_PASSWORD'] = bool(daconfig.get('allow changing password', True))
 app.config['USER_ENABLE_CONFIRM_EMAIL'] = bool(daconfig.get('confirm registration', False))
 app.config['USER_ENABLE_LOGIN_WITHOUT_CONFIRM_EMAIL'] = not bool(daconfig.get('confirm registration', False))
 app.config['USER_AUTO_LOGIN_AFTER_REGISTER'] = not bool(daconfig.get('confirm registration', False))
 app.config['USER_SHOW_USERNAME_EMAIL_DOES_NOT_EXIST'] = not bool(daconfig.get('confirm registration', False))
 app.config['USER_AUTO_LOGIN_AFTER_RESET_PASSWORD'] = False
+app.config['FLASH_LOGIN_MESSAGES'] = not bool(daconfig.get('suppress login alerts', False))
 app.config['USER_AFTER_FORGOT_PASSWORD_ENDPOINT'] = 'user.login'
 app.config['USER_AFTER_CHANGE_PASSWORD_ENDPOINT'] = 'after_reset'
 app.config['USER_AFTER_CHANGE_USERNAME_ENDPOINT'] = 'user.login'
@@ -99,12 +93,6 @@ connect_string = docassemble.webapp.database.connection_string()
 alchemy_connect_string = docassemble.webapp.database.alchemy_connection_string()
 app.config['SQLALCHEMY_DATABASE_URI'] = alchemy_connect_string
 app.secret_key = daconfig.get('secretkey', '38ihfiFehfoU34mcq_4clirglw3g4o87')
-try:
-    app.config['MAILGUN_API_URL'] = daconfig['mail'].get('mailgun api url', 'https://api.mailgun.net/v3/%s/messages.mime') % daconfig['mail'].get('mailgun domain', 'NOT_USING_MAILGUN')
-except:
-    app.config['MAILGUN_API_URL'] = 'https://api.mailgun.net/v3/%s/messages.mime' % (daconfig['mail'].get('mailgun domain', 'NOT_USING_MAILGUN'),)
-app.config['MAILGUN_API_KEY'] = daconfig['mail'].get('mailgun api key', None)
-app.config['SENDGRID_API_KEY'] = daconfig['mail'].get('sendgrid api key', None)
 app.config['JSONIFY_PRETTYPRINT_REGULAR'] = True
 app.config['ENABLE_MANAGE_ACCOUNT'] = daconfig.get('user can delete account', True)
 app.config['ENABLE_REQUEST_DEVELOPER_ACCOUNT'] = daconfig.get('user can request developer account', True)
@@ -124,6 +112,7 @@ app.config['SOCIAL'] = daconfig['social']
 app.config['OG_LOCALE'] = re.sub(r'\..*', '', daconfig.get('locale', 'en_US.utf8'))
 app.config['ENABLE_MONITOR'] = daconfig.get('enable monitor', True)
 app.config['INVERSE_NAVBAR'] = bool(daconfig.get('inverse navbar', True))
+app.config['AUTO_COLOR_SCHEME'] = bool(daconfig.get('auto color scheme', True))
 app.config['ENABLE_PLAYGROUND'] = daconfig.get('enable playground', True)
 app.config['ENABLE_SHARING_PLAYGROUNDS'] = daconfig.get('enable sharing playgrounds', False)
 app.config['ALLOW_LOG_VIEWING'] = daconfig.get('allow log viewing', True)
@@ -131,3 +120,6 @@ app.config['ALLOW_UPDATES'] = daconfig.get('allow updates', True)
 app.config['ALLOW_CONFIGURATION_EDITING'] = daconfig.get('allow configuration editing', True)
 app.config['ALLOW_RESTARTING'] = bool(app.config['ENABLE_PLAYGROUND'] or app.config['ALLOW_UPDATES'] or app.config['ALLOW_CONFIGURATION_EDITING'])
 app.config['USER_PROFILE_FIELDS'] = daconfig.get('user profile fields', [])
+app.config['GRID_CLASSES_USER'] = daconfig['grid classes']['user']
+app.config['GRID_CLASSES_WIDE'] = daconfig['grid classes']['admin wide']
+app.config['GRID_CLASSES_ADMIN'] = daconfig['grid classes']['admin']

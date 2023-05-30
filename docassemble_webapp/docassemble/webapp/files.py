@@ -228,12 +228,12 @@ class SavedFile:
         self.fix()
         cookiefile = tempfile.NamedTemporaryFile(suffix='.txt')
         f = open(os.path.join(self.directory, filename), 'wb')
-        c = pycurl.Curl()
+        c = pycurl.Curl()  # pylint: disable=c-extension-no-member
         c.setopt(c.URL, url)
         c.setopt(c.FOLLOWLOCATION, True)
         c.setopt(c.WRITEDATA, f)
-        c.setopt(pycurl.USERAGENT, 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Googlebot/2.1; +http://www.google.com/bot.html) Safari/537.36')
-        c.setopt(pycurl.COOKIEFILE, cookiefile.name)
+        c.setopt(pycurl.USERAGENT, 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Googlebot/2.1; +http://www.google.com/bot.html) Safari/537.36')  # pylint: disable=c-extension-no-member
+        c.setopt(pycurl.COOKIEFILE, cookiefile.name)  # pylint: disable=c-extension-no-member
         c.perform()
         c.close()
         cookiefile.close()
@@ -242,7 +242,7 @@ class SavedFile:
     def fetch_url_post(self, url, post_args, **kwargs):
         filename = kwargs.get('filename', self.filename)
         self.fix()
-        r = requests.post(url_sanitize(url), data=post_args)
+        r = requests.post(url_sanitize(url), data=post_args, timeout=600)
         if r.status_code != 200:
             raise DAError('fetch_url_post: retrieval from ' + url + 'failed')
         with open(os.path.join(self.directory, filename), 'wb') as fp:
@@ -558,10 +558,7 @@ def make_package_dir(pkgname, info, author_info, directory=None, current_project
         area[sec] = SavedFile(author_info['id'], fix=True, section=sec)
     dependencies = ", ".join(map(lambda x: repr(x + get_version_suffix(x)), sorted(info['dependencies'])))
     initpy = """\
-try:
-    __import__('pkg_resources').declare_namespace(__name__)
-except ImportError:
-    __path__ = __import__('pkgutil').extend_path(__path__, __name__)
+__import__('pkg_resources').declare_namespace(__name__)
 
 """
     licensetext = str(info['license'])
@@ -595,7 +592,7 @@ include README.md
 """
     setupcfg = """\
 [metadata]
-description-file = README.md
+description_file = README.md
 """
     setuppy = """\
 import os

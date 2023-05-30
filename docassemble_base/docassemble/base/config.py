@@ -5,10 +5,10 @@ import socket
 import threading
 import base64
 import json
+import importlib.metadata
 from packaging import version
 import yaml
 import httplib2
-import pkg_resources
 import boto3
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
@@ -303,6 +303,103 @@ def load(**kwargs):
             daconfig[re.sub(r'_', r' ', key)] = val
         else:
             daconfig[key] = val
+    if 'google' in daconfig:
+        if not isinstance(daconfig['google'], dict):
+            daconfig['google'] = {}
+    else:
+        daconfig['google'] = {}
+    if 'analytics id' in daconfig['google']:
+        if isinstance(daconfig['google']['analytics id'], str):
+            daconfig['google']['analytics id'] = [daconfig['google']['analytics id']]
+        if isinstance(daconfig['google']['analytics id'], list):
+            new_list = []
+            for item in daconfig['google']['analytics id']:
+                if isinstance(item, str):
+                    new_list.append(item)
+            if len(new_list) > 0:
+                daconfig['google']['analytics id'] = new_list
+            else:
+                daconfig['google']['analytics id'] = None
+        else:
+            daconfig['google']['analytics id'] = None
+    if 'grid classes' in daconfig:
+        if not isinstance(daconfig['grid classes'], dict):
+            config_error("The Configuration directive grid classes must be a dictionary.")
+            daconfig['grid classes'] = {}
+        has_error = False
+        for key, item in daconfig['grid classes'].items():
+            if key in ('vertical navigation', 'flush left', 'centered'):
+                if isinstance(item, dict):
+                    for subkey, subitem in item.items():
+                        if not isinstance(subitem, str):
+                            config_error("Under the Configuration directive grid classes, " + key + ", " + str(subkey) + " must be a dictionary of string values.")
+                            has_error = True
+                            break
+                else:
+                    config_error("Under the Configuration directive grid classes, " + key + " must be a dictionary.")
+                    has_error = True
+            elif not isinstance(item, str):
+                config_error("The Configuration directive grid classes must only refer to strings.")
+                has_error = True
+                break
+        if has_error:
+            daconfig['grid classes'] = {}
+    else:
+        daconfig['grid classes'] = {}
+    for key in ('vertical navigation', 'flush left', 'centered'):
+        if key not in daconfig['grid classes']:
+            daconfig['grid classes'][key] = {}
+    if not daconfig['grid classes'].get('user', None):
+        daconfig['grid classes']['user'] = 'offset-lg-3 col-lg-6 offset-md-2 col-md-8 offset-sm-1 col-sm-10'
+    if not daconfig['grid classes'].get('admin wide', None):
+        daconfig['grid classes']['admin wide'] = 'col-sm-10'
+    if not daconfig['grid classes'].get('admin', None):
+        daconfig['grid classes']['admin'] = 'col-md-7 col-lg-6'
+    if not daconfig['grid classes'].get('label width', None):
+        daconfig['grid classes']['label width'] = 'md-4'
+    if not daconfig['grid classes'].get('field width', None):
+        daconfig['grid classes']['field width'] = 'md-8'
+    if not daconfig['grid classes']['vertical navigation'].get('bar', None):
+        daconfig['grid classes']['vertical navigation']['bar'] = 'offset-xl-1 col-xl-2 col-lg-3 col-md-3'
+    if not daconfig['grid classes']['vertical navigation'].get('body', None):
+        daconfig['grid classes']['vertical navigation']['body'] = 'col-lg-6 col-md-9'
+    if not daconfig['grid classes']['vertical navigation'].get('right', None):
+        daconfig['grid classes']['vertical navigation']['right'] = 'd-none d-lg-block col-lg-3 col-xl-2'
+    if not daconfig['grid classes']['vertical navigation'].get('right small screen', None):
+        daconfig['grid classes']['vertical navigation']['right small screen'] = 'd-block d-lg-none'
+    if not daconfig['grid classes']['flush left'].get('body', None):
+        daconfig['grid classes']['flush left']['body'] = 'offset-xxl-1 col-xxl-5 col-lg-6 col-md-8'
+    if not daconfig['grid classes']['flush left'].get('right', None):
+        daconfig['grid classes']['flush left']['right'] = 'd-none d-lg-block col-xxl-5 col-lg-6'
+    if not daconfig['grid classes']['flush left'].get('right small screen', None):
+        daconfig['grid classes']['flush left']['right small screen'] = 'd-block d-lg-none'
+    if not daconfig['grid classes']['centered'].get('body', None):
+        daconfig['grid classes']['centered']['body'] = 'offset-lg-3 col-lg-6 offset-md-2 col-md-8'
+    if not daconfig['grid classes']['centered'].get('right', None):
+        daconfig['grid classes']['centered']['right'] = 'd-none d-lg-block col-lg-3'
+    if not daconfig['grid classes']['centered'].get('right small screen', None):
+        daconfig['grid classes']['centered']['right small screen'] = 'd-block d-lg-none'
+    if 'signature pen thickness scaling factor' not in daconfig:
+        daconfig['signature pen thickness scaling factor'] = 1.0
+    if 'celery modules' in daconfig:
+        ok = True
+        if isinstance(daconfig['celery modules'], list):
+            for item in daconfig['celery modules']:
+                if not isinstance(item, str):
+                    ok = False
+                    break
+        else:
+            ok = False
+        if not ok:
+            config_error("celery modules must be a list of strings")
+            daconfig['celery modules'] = []
+    else:
+        daconfig['celery modules'] = []
+    if isinstance(daconfig['signature pen thickness scaling factor'], int):
+        daconfig['signature pen thickness scaling factor'] = float(daconfig['signature pen thickness scaling factor'])
+    if not isinstance(daconfig['signature pen thickness scaling factor'], float):
+        config_error("signature pen thickness scaling factor must be a floating point value")
+        daconfig['signature pen thickness scaling factor'] = 1.0
     if 'avconv' in daconfig:
         config_error("The Configuration directive avconv has been renamed ffmpeg.")
         daconfig['ffmpeg'] = daconfig['avconv']
@@ -310,7 +407,7 @@ def load(**kwargs):
     daconfig['config file'] = filename
     if 'modules' not in daconfig:
         daconfig['modules'] = os.getenv('DA_PYTHON', '/usr/share/docassemble/local' + str(sys.version_info.major) + '.' + str(sys.version_info.minor))
-    daconfig['python version'] = str(pkg_resources.get_distribution("docassemble.base").version)
+    daconfig['python version'] = importlib.metadata.version("docassemble.base")
     version_file = daconfig.get('version file', '/usr/share/docassemble/webapp/VERSION')
     if os.path.isfile(version_file) and os.access(version_file, os.R_OK):
         with open(version_file, 'r', encoding='utf-8') as fp:
@@ -453,7 +550,7 @@ def load(**kwargs):
                 if isinstance(item, str):
                     new_item = cleanup_filename(item)
                     if new_item:
-                        new_admin_interviews.append(dict(interview=new_item))
+                        new_admin_interviews.append({'interview': new_item})
                 elif isinstance(item, dict) and 'interview' in item and isinstance(item['interview'], str):
                     item['interview'] = cleanup_filename(item['interview'])
                     if item['interview'] is not None:
@@ -519,7 +616,7 @@ def load(**kwargs):
         if daconfig['vim'] and 'keymap' not in daconfig:
             daconfig['keymap'] = 'vim'
     if 'db' not in daconfig:
-        daconfig['db'] = dict(name="docassemble", user="docassemble", password="abc123")
+        daconfig['db'] = {'name': "docassemble", 'user': "docassemble", 'password': "abc123"}
     dbtableprefix = daconfig['db'].get('table prefix', None)
     if not dbtableprefix:
         dbtableprefix = ''
@@ -675,12 +772,12 @@ def load(**kwargs):
     daconfig['authorized registration domains'] = authorized_domains
     if 'two factor authentication' in daconfig:
         if isinstance(daconfig['two factor authentication'], bool):
-            daconfig['two factor authentication'] = dict(enable=daconfig['two factor authentication'])
+            daconfig['two factor authentication'] = {'enable': daconfig['two factor authentication']}
         if not isinstance(daconfig['two factor authentication'], dict):
             config_error('two factor authentication must be boolean or a dict')
             daconfig['two factor authentication'] = {}
     else:
-        daconfig['two factor authentication'] = dict(enable=False)
+        daconfig['two factor authentication'] = {'enable': False}
     if 'allowed for' in daconfig['two factor authentication']:
         if not isinstance(daconfig['two factor authentication']['allowed for'], list):
             config_error("two factor authentication allowed for must be in the form of a list")
@@ -739,8 +836,25 @@ def load(**kwargs):
         except:
             config_error("websockets port must be an integer")
             del daconfig['websockets port']
-    if 'mail' not in daconfig:
-        daconfig['mail'] = {}
+    if 'mail' in daconfig:
+        if isinstance(daconfig['mail'], dict):
+            if not daconfig['mail'].get('name', None):
+                daconfig['mail']['name'] = 'default'
+            daconfig['mail'] = [daconfig['mail']]
+        elif isinstance(daconfig['mail'], list):
+            ok = True
+            for item in daconfig['mail']:
+                if not isinstance(item, dict):
+                    config_error("mail must be a dictionary or a list of dictionaries")
+                    ok = False
+                    break
+            if not ok:
+                daconfig['mail'] = []
+        else:
+            config_error("mail must be a dictionary or a list of dictionaries")
+            daconfig['mail'] = []
+    else:
+        daconfig['mail'] = []
     if 'dispatch' not in daconfig:
         daconfig['dispatch'] = {}
     if not isinstance(daconfig['dispatch'], dict):

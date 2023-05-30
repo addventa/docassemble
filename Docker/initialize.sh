@@ -19,7 +19,7 @@ echo "initialize: config.yml is at" $DA_CONFIG_FILE >&2
 echo "initialize: initialize starting" >&2
 
 echo "--------------------------" >&2
-echo "Docassemble V1.4.9-7" >&2
+echo "Docassemble V1.4.55-1" >&2
 echo "--------------------------" >&2
 
 RESTOREFROMBACKUP=true
@@ -236,11 +236,11 @@ if [ "${RESTOREFROMBACKUP}" == "true" ]; then
 	    if [[ $CONTAINERROLE =~ .*:(all):.* ]]; then
 		if [[ $(s4cmd ls "s3://${S3BUCKET}/backup") ]]; then
 		    echo "initialize: Restoring backup information from S3" >&2
-		    s4cmd dsync "s3://${S3BUCKET}/backup" "${DA_ROOT}"
+		    s4cmd dsync "s3://${S3BUCKET}/backup" "${DA_ROOT}/backup"
 		fi
 	    elif [[ $(s4cmd ls "s3://${S3BUCKET}/backup/${LOCAL_HOSTNAME}") ]]; then
 		echo "initialize: Restoring backup information from S3" >&2
-		s4cmd dsync "s3://${S3BUCKET}/backup/${LOCAL_HOSTNAME}" "${DA_ROOT}/backup"
+		s4cmd dsync "s3://${S3BUCKET}/backup/${LOCAL_HOSTNAME}" "${DA_ROOT}/backup/${LOCAL_HOSTNAME}"
 	    fi
 	fi
 	if [[ $CONTAINERROLE =~ .*:(all|web|log):.* ]] && [[ $(s4cmd ls "s3://${S3BUCKET}/apache") ]]; then
@@ -251,31 +251,31 @@ if [ "${RESTOREFROMBACKUP}" == "true" ]; then
 	    if [[ $(s4cmd ls "s3://${S3BUCKET}/apachelogs") ]]; then
 		echo "initialize: Restoring apache logs from S3" >&2
 		s4cmd dsync "s3://${S3BUCKET}/apachelogs" /var/log/apache2
-		chown root.adm /var/log/apache2/*
+		chown root:adm /var/log/apache2/*
 		chmod 640 /var/log/apache2/*
 	    fi
 	    if [[ $(s4cmd ls "s3://${S3BUCKET}/nginxlogs") ]]; then
 		echo "initialize: Restoring NGINX logs from S3" >&2
 		s4cmd dsync "s3://${S3BUCKET}/nginxlogs" /var/log/nginx
-		chown www-data.adm /var/log/nginx/*
+		chown www-data:adm /var/log/nginx/*
 		chmod 640 /var/log/nginx/*
 	    fi
 	fi
 	if [[ $CONTAINERROLE =~ .*:(all|log):.* ]] && [[ $(s4cmd ls "s3://${S3BUCKET}/log") ]]; then
 	    echo "initialize: Restoring logs from S3" >&2
 	    s4cmd dsync "s3://${S3BUCKET}/log" "${LOGDIRECTORY:-${DA_ROOT}/log}"
-	    chown -R www-data.www-data "${LOGDIRECTORY:-${DA_ROOT}/log}"
+	    chown -R www-data:www-data "${LOGDIRECTORY:-${DA_ROOT}/log}"
 	fi
 #	if [[ $(s4cmd ls "s3://${S3BUCKET}/config.yml") ]]; then
 #	    echo "initialize: Restoring configuration from S3" >&2
 #	    rm -f "$DA_CONFIG_FILE"
 #	    s4cmd get "s3://${S3BUCKET}/config.yml" "$DA_CONFIG_FILE"
-#	    chown www-data.www-data "$DA_CONFIG_FILE"
+#	    chown www-data:www-data "$DA_CONFIG_FILE"
 #	fi
 	if [[ $CONTAINERROLE =~ .*:(all|redis):.* ]] && [[ $(s4cmd ls "s3://${S3BUCKET}/redis.rdb") ]] && [ "$REDISRUNNING" == "false" ]; then
 	    echo "initialize: Restoring Redis from S3" >&2
 	    s4cmd -f get "s3://${S3BUCKET}/redis.rdb" "/var/lib/redis/dump.rdb"
-	    chown redis.redis "/var/lib/redis/dump.rdb"
+	    chown redis:redis "/var/lib/redis/dump.rdb"
 	fi
     elif [ "${AZUREENABLE:-false}" == "true" ]; then
         echo "initialize: Restoring from Azure" >&2
@@ -341,7 +341,7 @@ if [ "${RESTOREFROMBACKUP}" == "true" ]; then
 			az storage blob download --no-progress --only-show-errors --output none --container-name "${AZURECONTAINER}" -n "apachelogs/${the_file}" -f "/var/log/apache2/${the_file}"
 		    fi
 		done
-		chown root.adm /var/log/apache2/*
+		chown root:adm /var/log/apache2/*
 		chmod 640 /var/log/apache2/*
 	    fi
 	    if [[ $(python -m docassemble.webapp.list-cloud nginxlogs/) ]]; then
@@ -351,7 +351,7 @@ if [ "${RESTOREFROMBACKUP}" == "true" ]; then
 			az storage blob download --no-progress --only-show-errors --output none --container-name "${AZURECONTAINER}" -n "nginxlogs/${the_file}" -f "/var/log/nginx/${the_file}"
 		    fi
 		done
-		chown www-data.adm /var/log/nginx/*
+		chown www-data:adm /var/log/nginx/*
 		chmod 640 /var/log/nginx/*
 	    fi
 	fi
@@ -362,19 +362,19 @@ if [ "${RESTOREFROMBACKUP}" == "true" ]; then
 		    az storage blob download --no-progress --only-show-errors --output none --container-name "${AZURECONTAINER}" -n "log/${the_file}" -f "${LOGDIRECTORY:-${DA_ROOT}/log}/${the_file}"
 		fi
 	    done
-	    chown -R www-data.www-data "${LOGDIRECTORY:-${DA_ROOT}/log}"
+	    chown -R www-data:www-data "${LOGDIRECTORY:-${DA_ROOT}/log}"
 	fi
 	if [[ $(python -m docassemble.webapp.list-cloud config.yml) ]]; then
 	    echo "initialize: Restoring configuration from Azure Blob Storage" >&2
 	    rm -f "$DA_CONFIG_FILE"
 	    echo "initialize: Copying config.yml" >&2
 	    az storage blob download --no-progress --only-show-errors --output none --container-name "${AZURECONTAINER}" -n "config.yml" -f "${DA_CONFIG_FILE}"
-	    chown www-data.www-data "${DA_CONFIG_FILE}"
+	    chown www-data:www-data "${DA_CONFIG_FILE}"
 	fi
 	if [[ $CONTAINERROLE =~ .*:(all|redis):.* ]] && [[ $(python -m docassemble.webapp.list-cloud redis.rdb) ]] && [ "$REDISRUNNING" == "false" ]; then
 	    echo "initialize: Restoring Redis from Azure Blob Storage" >&2
 	    az storage blob download --no-progress --only-show-errors --output none --container-name "${AZURECONTAINER}" -n "redis.rdb" -f "/var/lib/redis/dump.rdb"
-	    chown redis.redis "/var/lib/redis/dump.rdb"
+	    chown redis:redis "/var/lib/redis/dump.rdb"
 	fi
     else
 	if [[ $CONTAINERROLE =~ .*:(all):.* ]] && [ -f "${DA_ROOT}/backup/letsencrypt.tar.gz" ]; then
@@ -389,34 +389,34 @@ if [ "${RESTOREFROMBACKUP}" == "true" ]; then
 	if [[ $CONTAINERROLE =~ .*:(all):.* ]] && [ -d "${DA_ROOT}/backup/apachelogs" ]; then
 	    echo "initialize: Restoring Apache logs from backup" >&2
 	    rsync -auq "${DA_ROOT}/backup/apachelogs/" /var/log/apache2/
-	    chown root.adm /var/log/apache2/*
+	    chown root:adm /var/log/apache2/*
 	    chmod 640 /var/log/apache2/*
 	fi
 	if [[ $CONTAINERROLE =~ .*:(all):.* ]] && [ -d "${DA_ROOT}/backup/nginxlogs" ]; then
 	    echo "initialize: Restoring NGINX logs from backup" >&2
 	    rsync -auq "${DA_ROOT}/backup/nginxlogs/" /var/log/nginx/
-	    chown www-data.adm /var/log/nginx/*
+	    chown www-data:adm /var/log/nginx/*
 	    chmod 640 /var/log/nginx/*
 	fi
 	if [[ $CONTAINERROLE =~ .*:(all|log):.* ]] && [ -d "${DA_ROOT}/backup/log" ]; then
 	    echo "initialize: Restoring logs from backup" >&2
 	    rsync -auq "${DA_ROOT}/backup/log/" "${LOGDIRECTORY:-${DA_ROOT}/log}/"
-	    chown -R www-data.www-data "${LOGDIRECTORY:-${DA_ROOT}/log}"
+	    chown -R www-data:www-data "${LOGDIRECTORY:-${DA_ROOT}/log}"
 	fi
 	if [ -f "${DA_ROOT}/backup/config.yml" ]; then
 	    echo "initialize: Restoring Configuration from backup" >&2
 	    cp "${DA_ROOT}/backup/config.yml" "${DA_CONFIG_FILE}"
-	    chown www-data.www-data "${DA_CONFIG_FILE}"
+	    chown www-data:www-data "${DA_CONFIG_FILE}"
 	fi
 	if [ -d "${DA_ROOT}/backup/files" ]; then
 	    echo "initialize: Restoring files from backup" >&2
 	    rsync -auq "${DA_ROOT}/backup/files" "${DA_ROOT}/"
-	    chown -R www-data.www-data "${DA_ROOT}/files"
+	    chown -R www-data:www-data "${DA_ROOT}/files"
 	fi
 	if [[ $CONTAINERROLE =~ .*:(all|redis):.* ]] && [ -f "${DA_ROOT}/backup/redis.rdb" ] && [ "$REDISRUNNING" == "false" ]; then
 	    echo "initialize: Restoring Redis from backup" >&2
 	    cp "${DA_ROOT}/backup/redis.rdb" /var/lib/redis/dump.rdb
-	    chown redis.redis "/var/lib/redis/dump.rdb"
+	    chown redis:redis "/var/lib/redis/dump.rdb"
 	fi
     fi
 fi
@@ -516,7 +516,8 @@ if [ ! -f "$DA_CONFIG_FILE" ]; then
         "$DA_CONFIG_FILE_DIST" > "$DA_CONFIG_FILE" || exit 1
 fi
 if [ "${DAROOTOWNED:-false}" == "false" ] && [ "${DAREADONLYFILESYSTEM:-false}" == "false" ]; then
-    chown www-data.www-data "$DA_CONFIG_FILE"
+    chown www-data:www-data "$DA_CONFIG_FILE"
+    chsh -s /bin/bash www-data
 fi
 
 echo "initialize: Defining environment variables from Configuration" >&2
@@ -537,35 +538,35 @@ fi
 if [ "${DAREADONLYFILESYSTEM:-false}" == "false" ]; then
     if [ ! -f /etc/hasbeeninitialized ]; then
 	echo "initialize: This is the first time the server was initialized" >&2
-	touch /etc/hasbeeninitialized
 	if [ "${DAROOTOWNED:-false}" == "true" ]; then
 	    if [ "${DAALLOWUPDATES:-true}" == "true" ] \
 		   || [ "${DAENABLEPLAYGROUND:-true}" == "true" ]; then
-		chown -R www-data.www-data /usr/share/docassemble/local3.10
+		chown -R www-data:www-data /usr/share/docassemble/local3.10
 		DAINSTALLASROOT=false
 	    else
 		echo "initialize: Python virtual environment is read-only" >&2
 	    fi
 	    if [ "${DAALLOWCONFIGURATIONEDITING:-true}" == "true" ]; then
-		chown -R www-data.www-data /usr/share/docassemble/config
+		chown -R www-data:www-data /usr/share/docassemble/config
 	    else
 		echo "initialize: The config.yml file is read-only" >&2
 	    fi
 	    if [ "${DAALLOWUPDATES:-true}" == "true" ] \
 		   || [ "${DAENABLEPLAYGROUND:-true}" == "true" ] \
 		   || [ "${DAALLOWCONFIGURATIONEDITING:-true}" == "true" ]; then
-		chown www-data.www-data /usr/share/docassemble/webapp/docassemble.wsgi
+		chown www-data:www-data /usr/share/docassemble/webapp/docassemble.wsgi
 	    else
 		echo "initialize: The WSGI file is read-only" >&2
 	    fi
 	else
 	    echo "initialize: No root ownership" >&2
 	    chsh -s /bin/bash www-data
-	    chown -R www-data.www-data /usr/share/docassemble/local3.10
-	    chown -R www-data.www-data /usr/share/docassemble/config \
+	    chown -R www-data:www-data /usr/share/docassemble/local3.10
+	    chown -R www-data:www-data /usr/share/docassemble/config \
 		  /usr/share/docassemble/webapp/docassemble.wsgi
 	    DAINSTALLASROOT=false
 	fi
+	touch /etc/hasbeeninitialized
     else
 	echo "initialize: This is not the first time the server was initialized" >&2
     fi
@@ -587,7 +588,7 @@ if [ "${DAWEBSERVER:-nginx}" = "nginx" ]; then
 	    "${DA_ROOT}/config/docassemblelog.ini.dist" > "${DA_ROOT}/config/docassemblelog.ini"
     fi
     mkdir -p /var/run/uwsgi
-    chown www-data.www-data /var/run/uwsgi
+    chown www-data:www-data /var/run/uwsgi
 fi
 
 if [ "${DAREADONLYFILESYSTEM:-false}" == "false" ]; then
@@ -1012,7 +1013,7 @@ if [[ $CONTAINERROLE =~ .*:(all|sql):.* ]] && [ "$PGRUNNING" == "false" ] && [ "
 	fi
 	if [ -d "${PGBACKUPDIR}" ]; then
 	    cd "$PGBACKUPDIR"
-	    chown -R postgres.postgres "$PGBACKUPDIR"
+	    chown -R postgres:postgres "$PGBACKUPDIR"
 	    for db in $( find . -maxdepth 1 -type f ! -iname ".*" ); do
 		echo "initialize: Restoring postgres database $db" >&2
 		pg_restore -f - -F c -C -c $db | su -c psql postgres
@@ -1105,7 +1106,7 @@ fi
 
 if [ "${DAREADONLYFILESYSTEM:-false}" == "false" ]; then
     if [ "$OTHERLOGSERVER" == "false" ] && [ -f "${LOGDIRECTORY}/docassemble.log" ]; then
-	chown www-data.www-data "${LOGDIRECTORY}/docassemble.log"
+	chown www-data:www-data "${LOGDIRECTORY}/docassemble.log"
     fi
 fi
 
@@ -1173,11 +1174,11 @@ touch /usr/share/docassemble/log/worker.log \
     && touch /usr/share/docassemble/log/single_worker.log \
     && touch /usr/share/docassemble/log/uwsgi.log \
     && touch /usr/share/docassemble/log/websockets.log \
-    && chown -R www-data.www-data /usr/share/docassemble/log
+    && chown -R www-data:www-data /usr/share/docassemble/log
 
 if [ "${DAWEBSERVER:-nginx}" = "none" ]; then
     mkdir -p /var/run/uwsgi
-    chown www-data.www-data /var/run/uwsgi
+    chown www-data:www-data /var/run/uwsgi
     echo "initialize: Stopping the nascent web server so that uwsgi can run" >&2
     ${SUPERVISORCMD} stop nascent &> /dev/null
     NASCENTRUNNING=false;
@@ -1495,6 +1496,14 @@ fi
 if [ "$EXIM4RUNNING" == "false" ] && [[ $CONTAINERROLE =~ .*:(all|mail):.* && ($DBTYPE = "postgresql" || $DBTYPE = "mysql") ]]; then
     echo "initialize: Starting exim4" >&2
     if [ "${DAREADONLYFILESYSTEM:-false}" == "false" ]; then
+	if [ -f /usr/share/docassemble/config/exim4-update ] && [ "${DAHOSTNAME}" != "localhost" ]; then
+	    sed "s/dc_other_hostnames='\**'/dc_other_hostnames='${DAHOSTNAME}'/" /usr/share/docassemble/config/exim4-update > /tmp/temp-exim4-update
+	    if [ ! -f /etc/exim4/update-exim4.conf.conf ] || ! cmp -s /tmp/temp-exim4-update /etc/exim4/update-exim4.conf.conf; then
+		cp /tmp/temp-exim4-update /etc/exim4/update-exim4.conf.conf
+		update-exim4.conf
+	    fi
+	    rm -f /tmp/temp-exim4-update
+	fi
 	rm -f /etc/cron.daily/exim4-base
 	ln -s /usr/share/docassemble/cron/exim4-base /etc/cron.daily/exim4-base
 	if [ "${DBTYPE}" = "postgresql" ]; then
@@ -1530,16 +1539,16 @@ if [ "$EXIM4RUNNING" == "false" ] && [[ $CONTAINERROLE =~ .*:(all|mail):.* && ($
 	if [ -f /etc/ssl/docassemble/exim.crt ] && [ -f /etc/ssl/docassemble/exim.key ]; then
 	    cp /etc/ssl/docassemble/exim.crt /etc/exim4/exim.crt
 	    cp /etc/ssl/docassemble/exim.key /etc/exim4/exim.key
-	    chown root.Debian-exim /etc/exim4/exim.crt
-	    chown root.Debian-exim /etc/exim4/exim.key
+	    chown root:Debian-exim /etc/exim4/exim.crt
+	    chown root:Debian-exim /etc/exim4/exim.key
 	    chmod 640 /etc/exim4/exim.crt
 	    chmod 640 /etc/exim4/exim.key
 	    echo 'MAIN_TLS_ENABLE = yes' >> /etc/exim4/dbinfo
 	elif [[ $CONTAINERROLE =~ .*:(all|web):.* ]] && [ "${USELETSENCRYPT:-false}" == "true" ] && [ -f "/etc/letsencrypt/live/${DAHOSTNAME}/cert.pem" ] && [ -f "/etc/letsencrypt/live/${DAHOSTNAME}/privkey.pem" ]; then
 	    cp "/etc/letsencrypt/live/${DAHOSTNAME}/fullchain.pem" /etc/exim4/exim.crt
 	    cp "/etc/letsencrypt/live/${DAHOSTNAME}/privkey.pem" /etc/exim4/exim.key
-	    chown root.Debian-exim /etc/exim4/exim.crt
-	    chown root.Debian-exim /etc/exim4/exim.key
+	    chown root:Debian-exim /etc/exim4/exim.crt
+	    chown root:Debian-exim /etc/exim4/exim.key
 	    chmod 640 /etc/exim4/exim.crt
 	    chmod 640 /etc/exim4/exim.key
 	    echo 'MAIN_TLS_ENABLE = yes' >> /etc/exim4/dbinfo
@@ -1583,9 +1592,9 @@ chmod -R ogu+rwx /tmp/Crashpad
 mkdir -p /var/www/.cache
 mkdir -p /var/www/.config
 mkdir -p /var/www/.texlive2021
-chown -R www-data.www-data /var/www/.cache
-chown -R www-data.www-data /var/www/.config
-chown -R www-data.www-data /var/www/.texlive2021
+chown -R www-data:www-data /var/www/.cache
+chown -R www-data:www-data /var/www/.config
+chown -R www-data:www-data /var/www/.texlive2021
 
 function stopfunc {
     rm -f "/var/run/docassemble/ready"

@@ -6,14 +6,14 @@ import stat
 import mimetypes
 import tempfile
 import string
-import subprocess
 from collections import deque
 from copy import deepcopy
 from xml.sax.saxutils import escape as html_escape
 from docxtpl import InlineImage, RichText
 from docx.shared import Mm, Inches, Pt, Cm, Twips
 import docx.opc.constants
-from docx.oxml.section import CT_SectPr  # For figuring out if an element is a section or not
+from docx.oxml.section import CT_SectPr
+from docx.oxml.table import CT_Tbl
 import docx
 from docxcompose.composer import Composer  # For fixing up images, etc when including docx files within templates
 from docassemble.base.functions import server, this_thread, package_template_filename, get_config, roman
@@ -22,7 +22,7 @@ import docassemble.base.filter
 import docassemble.base.pandoc
 from docassemble.base.logger import logmessage
 from bs4 import BeautifulSoup, NavigableString, Tag
-import PyPDF2
+from pikepdf import Pdf
 
 zerowidth = '\u200B'
 
@@ -36,7 +36,7 @@ list_types = ['1', 'A', 'a', 'I', 'i']
 
 def image_for_docx(fileref, question, tpl, width=None):
     if fileref.__class__.__name__ in ('DAFile', 'DAFileList', 'DAFileCollection', 'DALocalFile', 'DAStaticFile'):
-        file_info = dict(fullpath=fileref.path())
+        file_info = {'fullpath': fileref.path()}
     else:
         file_info = server.file_finder(fileref, question=question)
     if 'path' in file_info and 'extension' in file_info:
@@ -109,7 +109,7 @@ def fix_subdoc(masterdoc, subdoc_info):
             continue
         composer.add_referenced_parts(subdoc.part, masterdoc.part, element)
         composer.add_styles(subdoc, element)
-        if change_numbering:
+        if change_numbering and not isinstance(element, CT_Tbl):
             try:
                 composer.add_numberings(subdoc, element)
                 composer.restart_first_numbering(subdoc, element)
@@ -128,7 +128,7 @@ def fix_subdoc(masterdoc, subdoc_info):
 
 def include_docx_template(template_file, **kwargs):
     """Include the contents of one docx file inside another docx file."""
-    use_jinja = kwargs.get('_use_jinja2', True)
+    use_jinja = kwargs.pop('_use_jinja2', True)
     if this_thread.evaluation_context is None:
         return 'ERROR: not in a docx file'
     if template_file.__class__.__name__ in ('DAFile', 'DAFileList', 'DAFileCollection', 'DALocalFile', 'DAStaticFile'):
@@ -144,11 +144,7 @@ def include_docx_template(template_file, **kwargs):
         del kwargs['_inline']
     else:
         single_paragraph = False
-    if 'change_numbering' in kwargs:
-        change_numbering = bool(kwargs['change_numbering'])
-        del kwargs['change_numbering']
-    else:
-        change_numbering = True
+    change_numbering = bool(kwargs.pop('change_numbering', True))
 
     # We need to keep a copy of the subdocs so we can fix up the master template in the end (in parse.py)
     # Given we're half way through processing the template, we can't fix the master template here
@@ -234,7 +230,7 @@ def roman_numeral(number):
 class SoupParser:
 
     def __init__(self, tpl):
-        self.paragraphs = [dict(params=dict(style='p', indentation=0, list_number=1), runs=[RichText('')])]
+        self.paragraphs = [{'params': {'style': 'p', 'indentation': 0, 'list_number': 1}, 'runs': [RichText('')]}]
         self.current_paragraph = self.paragraphs[-1]
         self.run = self.current_paragraph['runs'][-1]
         self.bold = False
@@ -261,7 +257,7 @@ class SoupParser:
             self.list_number += 1
             return
         # logmessage("new_paragraph where style is " + self.style + " and indentation is " + str(self.indentation))
-        self.current_paragraph = dict(params=dict(style=self.style, indentation=self.indentation, list_number=self.list_number), runs=[RichText('')])
+        self.current_paragraph = {'params': {'style': self.style, 'indentation': self.indentation, 'list_number': self.list_number}, 'runs': [RichText('')]}
         self.set_attribs(classes, styles)
         self.list_number += 1
         self.paragraphs.append(self.current_paragraph)
@@ -685,21 +681,6 @@ def markdown_to_docx(text, question, tpl):
     return inline_markdown_to_docx(text, question, tpl)
 
 
-def safe_pypdf_reader(filename):
-    try:
-        return PyPDF2.PdfFileReader(open(filename, 'rb'), overwriteWarnings=False)
-    except PyPDF2.utils.PdfReadError:
-        new_filename = tempfile.NamedTemporaryFile(prefix="datemp", mode="wb", suffix=".pdf", delete=False)
-        qpdf_subprocess_arguments = [QPDF_PATH, filename, new_filename.name]
-        try:
-            result = subprocess.run(qpdf_subprocess_arguments, timeout=60, check=False).returncode
-        except subprocess.TimeoutExpired:
-            result = 1
-        if result != 0:
-            raise Exception("Call to qpdf failed for template " + str(filename) + " where arguments were " + " ".join(qpdf_subprocess_arguments))
-        return PyPDF2.PdfFileReader(open(new_filename.name, 'rb'), overwriteWarnings=False)
-
-
 def pdf_pages(file_info, width):
     output = ''
     if width is None:
@@ -709,8 +690,8 @@ def pdf_pages(file_info, width):
             server.fg_make_pdf_for_word_path(file_info['path'], file_info['extension'])
     if 'pages' not in file_info:
         try:
-            reader = safe_pypdf_reader(file_info['path'] + '.pdf')
-            file_info['pages'] = reader.getNumPages()
+            with Pdf.open(file_info['path'] + '.pdf') as reader:
+                file_info['pages'] = len(reader.pages)
         except:
             file_info['pages'] = 1
     max_pages = 1 + int(file_info['pages'])

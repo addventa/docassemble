@@ -29,6 +29,7 @@
 "Åland Islands": Null
 "Albania": Null
 "Algeria": Null
+"All of the above": Null
 "Allowed sites": Null
 "All Playgrounds": Null
 "Already registered?": Null
@@ -344,6 +345,7 @@
 "French Polynesia": Null
 "French Southern Territories": Null
 "from": Null
+"From": Null
 "Functions": Null
 "Gabon": Null
 "Gambia": Null
@@ -590,7 +592,6 @@
 "Name of new privilege is required": Null
 "Name of new privilege": Null
 "Names and questions": Null
-"Names from": Null
 "Namibia": Null
 "n/a": Null
 "Nauru": Null
@@ -880,6 +881,7 @@
 "Serbia": Null
 "Server did not respond to request for update.": Null
 "Sessions": Null
+"Setup key": Null
 "Seychelles": Null
 "Share": Null
 "she": Null
@@ -1057,6 +1059,7 @@
 "Timor-Leste": Null
 "Title": Null
 "t": Null
+"Toggle": Null
 "Togo": Null
 "Tokelau": Null
 "Token": Null
@@ -1187,6 +1190,7 @@
 "Verify your phone": Null
 "Version ": Null
 "Version": Null
+"Version number does not conform to PEP 440": Null
 "Viet Nam": Null
 "View documentation": Null
 "Virgin Islands, British": Null
@@ -1253,12 +1257,18 @@
 "You must type at least %s characters.": Null
 "You need to be logged in to access this interview.": Null
 "You need to enter a complete e-mail address.": Null
+"You need to enter a date and time between %s and %s.": Null
+"You need to enter a date and time on or after %s.": Null
+"You need to enter a date and time on or before %s.": Null
 "You need to enter a date between %s and %s.": Null
 "You need to enter a date on or after %s.": Null
 "You need to enter a date on or before %s.": Null
 "You need to enter a number.": Null
 "You need to enter a number that is at least %s.": Null
 "You need to enter a number that is at most %s.": Null
+"You need to enter a time at or after %s.": Null
+"You need to enter a time at or before %s.": Null
+"You need to enter a time between %s and %s.": Null
 "You need to enter a valid date and time.": Null
 "You need to enter a valid date.": Null
 "You need to enter a valid number.": Null

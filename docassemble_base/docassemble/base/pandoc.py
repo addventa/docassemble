@@ -15,10 +15,11 @@ import docassemble.base.functions
 from docassemble.base.config import daconfig
 from docassemble.base.logger import logmessage
 from docassemble.base.pdfa import pdf_to_pdfa
-from docassemble.base.pdftk import pdf_encrypt, PDFTK_PATH, replicate_js_and_calculations
-from docassemble.base.error import DAError
+from docassemble.base.pdftk import pdf_encrypt
+from docassemble.base.error import DAError, DAException
 import convertapi
 import requests
+from pikepdf import Pdf
 
 style_find = re.compile(r'{\s*(\\s([1-9])[^\}]+)\\sbasedon[^\}]+heading ([0-9])', flags=re.DOTALL)
 PANDOC_PATH = daconfig.get('pandoc', 'pandoc')
@@ -60,23 +61,23 @@ def cloudconvert_to_pdf(in_format, from_file, to_file, pdfa, password):
     }
     if password:
         data['tasks']['task-1']['password'] = password
-    r = requests.post("https://api.cloudconvert.com/v2/jobs", json=data, headers=headers)
+    r = requests.post("https://api.cloudconvert.com/v2/jobs", json=data, headers=headers, timeout=6000)
     resp = r.json()
     if 'data' not in resp:
         logmessage("cloudconvert_to_pdf: create job returned " + repr(r.text))
-        raise Exception("cloudconvert_to_pdf: failed to create job")
+        raise DAException("cloudconvert_to_pdf: failed to create job")
     uploaded = False
     for task in resp['data']['tasks']:
         if task['name'] == 'import-1':
-            r = requests.post(task['result']['form']['url'], data=task['result']['form']['parameters'], files={'file': open(from_file, 'rb')})
+            r = requests.post(task['result']['form']['url'], data=task['result']['form']['parameters'], files={'file': open(from_file, 'rb')}, timeout=6000)
             uploaded = True
     if not uploaded:
-        raise Exception("cloudconvert_to_pdf: failed to upload")
-    r = requests.get("https://api.cloudconvert.com/v2/jobs/%s/wait" % (resp['data']['id'],), headers=headers, timeout=60)
+        raise DAException("cloudconvert_to_pdf: failed to upload")
+    r = requests.get("https://sync.api.cloudconvert.com/v2/jobs/%s" % (resp['data']['id'],), headers=headers, timeout=60)
     wait_resp = r.json()
     if 'data' not in wait_resp:
         logmessage("cloudconvert_to_pdf: wait returned " + repr(r.text))
-        raise Exception("Failed to wait on job")
+        raise DAException("Failed to wait on job")
     ok = False
     for task in wait_resp['data']['tasks']:
         if task['operation'] == "export/url":
@@ -84,7 +85,7 @@ def cloudconvert_to_pdf(in_format, from_file, to_file, pdfa, password):
                 urllib.request.urlretrieve(file_result['url'], to_file)
                 ok = True
     if not ok:
-        raise Exception("cloudconvert failed")
+        raise DAException("cloudconvert failed")
 
 
 def convertapi_to_pdf(from_file, to_file):
@@ -227,7 +228,7 @@ class MyPandoc:
         if not os.path.isdir(latex_conversion_directory):
             os.makedirs(latex_conversion_directory)
         if not os.path.isdir(latex_conversion_directory):
-            raise Exception("Could not create latex conversion directory")
+            raise DAException("Could not create latex conversion directory")
         icc_profile_in_temp = os.path.join(tempfile.gettempdir(), 'sRGB_IEC61966-2-1_black_scaled.icc')
         if not os.path.isfile(icc_profile_in_temp):
             shutil.copyfile(docassemble.base.functions.standard_template_filename('sRGB_IEC61966-2-1_black_scaled.icc'), icc_profile_in_temp)
@@ -253,7 +254,7 @@ class MyPandoc:
         try:
             msg = subprocess.check_output(subprocess_arguments, cwd=tempfile.gettempdir(), stderr=subprocess.STDOUT).decode('utf-8', 'ignore')
         except subprocess.CalledProcessError as err:
-            raise Exception("Failed to assemble file: " + err.output.decode())
+            raise DAException("Failed to assemble file: " + err.output.decode())
         if msg:
             self.pandoc_message = msg
         os.remove(temp_file.name)
@@ -270,7 +271,7 @@ class MyPandoc:
                     docx_outfile = tempfile.NamedTemporaryFile(prefix="datemp", mode="wb", suffix=".docx", delete=False)
                     success = rtf_to_docx(temp_outfile.name, docx_outfile.name)
                     if not success:
-                        raise Exception("Could not convert RTF to DOCX.")
+                        raise DAException("Could not convert RTF to DOCX.")
                     temp_outfile = docx_outfile
             if self.output_filename is not None:
                 shutil.copyfile(temp_outfile.name, self.output_filename)
@@ -285,9 +286,12 @@ class MyPandoc:
     def convert(self, question):
         latex_conversion_directory = os.path.join(tempfile.gettempdir(), 'conv')
         if not os.path.isdir(latex_conversion_directory):
-            os.makedirs(latex_conversion_directory)
+            try:
+                os.makedirs(latex_conversion_directory)
+            except:
+                pass
         if not os.path.isdir(latex_conversion_directory):
-            raise Exception("Could not create latex conversion directory")
+            raise DAException("Could not create latex conversion directory")
         if self.output_format in ("pdf", "tex", "rtf", "rtf to docx", "epub", "docx"):
             self.convert_to_file(question)
         else:
@@ -399,17 +403,19 @@ def word_to_pdf(in_file, in_format, out_file, pdfa=False, password=None, update_
         if use_libreoffice:
             start_time = time.time()
             if UNOCONV_AVAILABLE:
-                # logmessage("Trying unoconv with " + repr(subprocess_arguments))
+                docassemble.base.functions.server.applock('obtain', 'unoconv', maxtime=6)
+                logmessage("Trying unoconv with " + repr(subprocess_arguments))
                 try:
                     result = subprocess.run(subprocess_arguments, cwd=tempdir, timeout=120, check=False).returncode
                 except subprocess.TimeoutExpired:
                     logmessage("word_to_pdf: unoconv took too long")
                     result = 1
                     tries = 5
+                docassemble.base.functions.server.applock('release', 'unoconv', maxtime=6)
                 logmessage("Finished unoconv after {:.4f} seconds.".format(time.time() - start_time))
             else:
                 initialize_libreoffice()
-                # logmessage("Trying libreoffice with " + repr(subprocess_arguments))
+                logmessage("Trying libreoffice with " + repr(subprocess_arguments))
                 docassemble.base.functions.server.applock('obtain', 'libreoffice')
                 logmessage("Obtained libreoffice lock after {:.4f} seconds.".format(time.time() - start_time))
                 try:
@@ -420,21 +426,23 @@ def word_to_pdf(in_file, in_format, out_file, pdfa=False, password=None, update_
                     tries = 5
                 logmessage("Finished libreoffice after {:.4f} seconds.".format(time.time() - start_time))
                 docassemble.base.functions.server.applock('release', 'libreoffice')
-        if os.path.isfile(to_file):
-            break
-        time.sleep(0.1)
-        if os.path.isfile(to_file):
-            break
-        time.sleep(0.1)
-        if os.path.isfile(to_file):
-            break
-        time.sleep(0.1)
-        if os.path.isfile(to_file):
-            break
-        time.sleep(0.1)
-        if os.path.isfile(to_file):
-            break
-        result = 1
+        if result == 0:
+            time.sleep(0.1)
+            if os.path.isfile(to_file) and os.path.getsize(to_file) > 0:
+                break
+            time.sleep(0.1)
+            if os.path.isfile(to_file) and os.path.getsize(to_file) > 0:
+                break
+            time.sleep(0.1)
+            if os.path.isfile(to_file) and os.path.getsize(to_file) > 0:
+                break
+            time.sleep(0.1)
+            if os.path.isfile(to_file) and os.path.getsize(to_file) > 0:
+                break
+            time.sleep(0.1)
+            if os.path.isfile(to_file) and os.path.getsize(to_file) > 0:
+                break
+            result = 1
         tries += 1
         if tries < num_tries:
             if use_libreoffice:
@@ -447,6 +455,8 @@ def word_to_pdf(in_file, in_format, out_file, pdfa=False, password=None, update_
             else:
                 logmessage("Retrying cloudconvert")
             time.sleep(tries*random.random())
+    if os.path.isfile(to_file) and os.path.getsize(to_file) == 0:
+        result = 1
     if result == 0:
         if password:
             pdf_encrypt(to_file, password)
@@ -711,7 +721,6 @@ def initialize_libreoffice():
 
 def concatenate_files(path_list, pdfa=False, password=None):
     pdf_file = tempfile.NamedTemporaryFile(prefix="datemp", mode="wb", suffix=".pdf", delete=False)
-    subprocess_arguments = [PDFTK_PATH]
     new_path_list = []
     for path in path_list:
         mimetype, encoding = mimetypes.guess_type(path)  # pylint: disable=unused-variable
@@ -737,24 +746,23 @@ def concatenate_files(path_list, pdfa=False, password=None):
                 ext = 'doc'
             elif mimetype == 'application/vnd.oasis.opendocument.text':
                 ext = 'odt'
-            word_to_pdf(path, ext, new_pdf_file.name, pdfa=False)
+            if not word_to_pdf(path, ext, new_pdf_file.name, pdfa=False):
+                raise DAException('Failure to convert DOCX to PDF')
             new_path_list.append(new_pdf_file.name)
         elif mimetype == 'application/pdf':
             new_path_list.append(path)
     if len(new_path_list) == 0:
         raise DAError("concatenate_files: no valid files to concatenate")
-    subprocess_arguments.extend(new_path_list)
-    subprocess_arguments.extend(['cat', 'output', pdf_file.name])
-    # logmessage("Arguments are " + str(subprocess_arguments))
-    try:
-        result = subprocess.run(subprocess_arguments, timeout=60, check=False).returncode
-    except subprocess.TimeoutExpired:
-        result = 1
-        logmessage("concatenate_files: call to cat took too long")
-    if result != 0:
-        logmessage("Failed to concatenate PDF files")
-        raise DAError("Call to pdftk failed for concatenation where arguments were " + " ".join(subprocess_arguments))
+    if len(new_path_list) == 1:
+        shutil.copyfile(new_path_list[0], pdf_file.name)
+    else:
+        with Pdf.open(new_path_list[0]) as original:
+            for additional_file in new_path_list[1:]:
+                with Pdf.open(additional_file) as additional_pdf:
+                    original.pages.extend(additional_pdf.pages)
+            original.save(pdf_file.name)
     if pdfa:
         pdf_to_pdfa(pdf_file.name)
-    replicate_js_and_calculations(new_path_list[0], pdf_file.name, password)
+    if password:
+        pdf_encrypt(pdf_file.name, password)
     return pdf_file.name

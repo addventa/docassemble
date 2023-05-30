@@ -24,7 +24,7 @@ import zipfile
 import pycurl  # pylint: disable=import-error
 import requests
 import yaml
-from requests.auth import HTTPDigestAuth, HTTPBasicAuth
+from requests.auth import HTTPDigestAuth, HTTPBasicAuth, AuthBase
 from requests.exceptions import RequestException
 import httplib2
 import oauth2client.client
@@ -53,6 +53,7 @@ import docassemble.base.pandoc
 import docassemble.base.parse
 import docassemble.base.pdftk
 from docassemble.base import DA
+from docassemble.webapp.da_flask_mail import Message
 import dateutil
 import dateutil.parser
 import babel.dates
@@ -60,13 +61,12 @@ import babel.dates
 import phonenumbers
 from bs4 import BeautifulSoup
 import i18naddress
-from flask_mail import Message
 from pyzbar.pyzbar import decode
 from docxtpl import InlineImage, Subdoc, DocxTemplate
 # import tablib
 import pandas
-import PyPDF2
 from docx import Document
+from pikepdf import Pdf
 import google.cloud
 
 capitalize_func = capitalize
@@ -799,7 +799,7 @@ class DAObject:
             query_params = copy.copy(rel_filter_by)
         else:
             raise DAError("get_peer_relation: rel_filter_by must be a dictionary.")
-        query_params.update(dict(involves=self, relationship_type=relationship_type))
+        query_params.update({'involves': self, 'relationship_type': relationship_type})
         for item in tree.query_peer(tree._and(*query_params)):
             for subitem in item.peers:
                 if subitem is not self:
@@ -964,7 +964,7 @@ class DAObject:
         Individual with instanceName "client.mother"."""
         pargs = list(pargs)
         if len(pargs) < 2:
-            raise Exception("initializeAttribute requires an attribute name and an object type")
+            raise DAError("initializeAttribute requires an attribute name and an object type")
         name = pargs.pop(0)
         object_type = pargs.pop(0)
         new_object_parameters = {}
@@ -1034,7 +1034,7 @@ class DAObject:
     def alternative(self, *pargs, **kwargs):
         """Returns a particular value depending on the value of a given attribute"""
         if len(pargs) == 0:
-            raise Exception("alternative: attribute must be provided")
+            raise DAError("alternative: attribute must be provided")
         attribute = pargs[0]
         the_value = getattr(self, attribute)
         if the_value in kwargs:
@@ -1094,6 +1094,8 @@ class DACatchAll(DAObject):
             return 'float'
         if self.context == 'complex':
             return 'complex'
+        if self.context == 'callable':
+            return 'callable'
         if self.context in ('add', 'radd', 'sub', 'rsub', 'mul', 'rmul', 'div', 'rdiv', 'truediv', 'rtruediv', 'floordiv', 'rfloordiv', 'mod', 'rmod', 'divmod', 'rdivmod', 'pow', 'rpow', 'lt', 'eq', 'gt', 'ne', 'ge', 'le'):
             if isinstance(self.operand, bool):
                 return 'bool'
@@ -1355,6 +1357,10 @@ class DACatchAll(DAObject):
         self.context = 'bool'
         return bool(self.value)
 
+    def __call__(self, *args, **kwargs):
+        self.context = 'callable'
+        return self.value(*args, **kwargs)
+
 
 class RelationshipDir(DAObject):
     """A data structure representing a relationships among people."""
@@ -1524,9 +1530,12 @@ class DAList(DAObject):
 
     def init(self, *pargs, **kwargs):
         self.elements = []
-        self.auto_gather = True
-        self.ask_number = False
-        self.minimum_number = None
+        if 'auto_gather' not in kwargs:
+            self.auto_gather = True
+        if 'ask_number' not in kwargs:
+            self.ask_number = False
+        if 'minimum_number' not in kwargs:
+            self.minimum_number = None
         if 'set_instance_name' in kwargs:
             set_instance_name = kwargs['set_instance_name']
             del kwargs['set_instance_name']
@@ -1561,8 +1570,9 @@ class DAList(DAObject):
             del kwargs['complete_attribute']
         if not hasattr(self, 'complete_attribute'):
             self.complete_attribute = None
-        if 'ask_object_type' in kwargs:
+        if 'ask_object_type' in kwargs and kwargs['ask_object_type']:
             self.ask_object_type = True
+            del kwargs['ask_object_type']
         if not hasattr(self, 'ask_object_type'):
             self.ask_object_type = False
         super().init(*pargs, **kwargs)
@@ -2093,7 +2103,7 @@ class DAList(DAObject):
                         object_type_to_use = self.new_object_type
                         parameters_to_use = {}
                     else:
-                        raise Exception("new_object_type must be an object type")
+                        raise DAError("new_object_type must be an object type")
                     self.elements[indexno] = object_type_to_use(self.instanceName + '[' + str(indexno) + ']', **parameters_to_use)
                 if complete_attribute is not None:
                     for attrib in self._complete_attributes(complete_attribute):
@@ -2248,11 +2258,11 @@ class DAList(DAObject):
 
     def _fill_up_to(self, index):
         if isinstance(index, str):
-            raise Exception("Attempt to fill up " + self.instanceName + " with index " + index)
+            raise DAError("Attempt to fill up " + self.instanceName + " with index " + index)
         if index < 0 and len(self.elements) + index < 0:
             num_to_add = (-1 * index) - len(self.elements)
             if num_to_add > 10:
-                raise Exception("Attempt to fill up more than 10 items")
+                raise DAError("Attempt to fill up more than 10 items")
             for i in range(0, num_to_add):  # pylint: disable=unused-variable
                 if self.object_type is None:
                     self.elements.append(None)
@@ -2261,7 +2271,7 @@ class DAList(DAObject):
         elif len(self.elements) <= index:
             num_to_add = 1 + index - len(self.elements)
             if num_to_add > 10:
-                raise Exception("Attempt to fill up more than 10 items")
+                raise DAError("Attempt to fill up more than 10 items")
             for i in range(0, num_to_add):
                 if self.object_type is None:
                     self.elements.append(None)
@@ -2424,15 +2434,15 @@ class DAList(DAObject):
         if use_edit:
             items = []
             # if self.complete_attribute == 'complete':
-            #    items += [dict(action='_da_undefine', arguments=dict(variables=[item.instanceName + '.' + self.complete_attribute]))]
+            #    items += [{'action': '_da_undefine', 'arguments': {'variables': [item.instanceName + '.' + self.complete_attribute]}})]
             if len(the_args) > 0:
                 items += [{'follow up': [item.instanceName + ('' if y.startswith('[') else '.') + y for y in the_args]}]
             else:
                 items += [{'follow up': [self.instanceName + '[' + repr(index) + ']']}]
             if self.complete_attribute is not None and self.complete_attribute != 'complete':
-                items += [dict(action='_da_define', arguments=dict(variables=[item.instanceName + '.' + attrib for attrib in self._complete_attributes()]))]
+                items += [{'action': '_da_define', 'arguments': {'variables': [item.instanceName + '.' + attrib for attrib in self._complete_attributes()]}}]
             if ensure_complete:
-                items += [dict(action='_da_list_ensure_complete', arguments=dict(group=self.instanceName))]
+                items += [{'action': '_da_list_ensure_complete', 'arguments': {'group': self.instanceName}}]
             output += '<a href="' + docassemble.base.functions.url_action('_da_list_edit', items=items) + '" role="button" class="btn btn-sm ' + server.button_class_prefix + server.daconfig['button colors'].get('edit', 'secondary') + ' btn-darevisit"><span class="text-nowrap"><i class="fas fa-pencil-alt"></i> ' + word('Edit') + '</span></a> '
         if use_delete and can_delete:
             if kwargs.get('confirm', False):
@@ -2450,7 +2460,7 @@ class DAList(DAObject):
         """Returns HTML for adding an item to a list"""
         if color is None:
             color = server.daconfig['button colors'].get('add', 'secondary')
-        if color not in ('primary', 'secondary', 'success', 'danger', 'warning', 'info', 'light', 'dark'):
+        if color not in ('primary', 'secondary', 'tertiary', 'success', 'danger', 'warning', 'info', 'light', 'dark'):
             color = 'success'
         if size not in ('sm', 'md', 'lg'):
             size = 'sm'
@@ -2991,7 +3001,7 @@ class DADict(DAObject):
                         object_type_to_use = self.new_object_type
                         parameters_to_use = {}
                     else:
-                        raise Exception("new_object_type must be an object type")
+                        raise DAError("new_object_type must be an object type")
                     self.elements[key] = object_type_to_use(self.instanceName + '[' + repr(key) + ']', **parameters_to_use)
             if hasattr(self, 'new_object_type'):
                 delattr(self, 'new_object_type')
@@ -3379,15 +3389,15 @@ class DADict(DAObject):
         if use_edit:
             items = []
             if self.complete_attribute == 'complete':
-                items += [dict(action='_da_undefine', arguments=dict(variables=[item.instanceName + '.complete']))]
+                items += [{'action': '_da_undefine', 'arguments': {'variables': [item.instanceName + '.complete']}}]
             if len(the_args) > 0:
                 items += [{'follow up': [item.instanceName + ('' if y.startswith('[') else '.') + y for y in the_args]}]
             else:
                 items += [{'follow up': [self.instanceName + '[' + repr(index) + ']']}]
             if self.complete_attribute is not None and self.complete_attribute != 'complete':
-                items += [dict(action='_da_define', arguments=dict(variables=[item.instanceName + '.' + attrib for attrib in self._complete_attributes()]))]
+                items += [{'action': '_da_define', 'arguments': {'variables': [item.instanceName + '.' + attrib for attrib in self._complete_attributes()]}}]
             if ensure_complete:
-                items += [dict(action='_da_dict_ensure_complete', arguments=dict(group=self.instanceName))]
+                items += [{'action': '_da_dict_ensure_complete', 'arguments': {'group': self.instanceName}}]
             output += '<a href="' + docassemble.base.functions.url_action('_da_dict_edit', items=items) + '" role="button" class="btn btn-sm ' + server.button_class_prefix + server.daconfig['button colors'].get('edit', 'secondary') + ' btn-darevisit"><i class="fas fa-pencil-alt"></i> ' + word('Edit') + '</a> '
         if use_delete and can_delete:
             if kwargs.get('confirm', False):
@@ -3405,7 +3415,7 @@ class DADict(DAObject):
         """Returns HTML for adding an item to a dict"""
         if color is None:
             color = server.daconfig['button colors'].get('add', 'secondary')
-        if color not in ('primary', 'secondary', 'success', 'danger', 'warning', 'info', 'light', 'dark'):
+        if color not in ('primary', 'secondary', 'tertiary', 'success', 'danger', 'warning', 'info', 'light', 'dark'):
             color = 'success'
         if size not in ('sm', 'md', 'lg'):
             size = 'sm'
@@ -4039,14 +4049,14 @@ class DAFile(DAObject):
         elif isinstance(output_to, DAFileList):
             output_to = output_to.elements[0]
         if not isinstance(output_to, DAFile):
-            raise Exception("convert_to: output_to must be a DAFile")
+            raise DAError("convert_to: output_to must be a DAFile")
         self.retrieve()
         if hasattr(self, 'extension'):
             input_extension = self.extension
         elif hasattr(self, 'filename'):
             input_extension, input_mimetype = server.get_ext_and_mimetype(self.filename)  # pylint: disable=assignment-from-none,unpacking-non-sequence,unused-variable
         else:
-            raise Exception("DAFile.convert: could not identify file type")
+            raise DAError("DAFile.convert: could not identify file type")
         output_extension = output_extension.strip().lower()
         if output_to is self and output_extension == input_extension:
             return
@@ -4080,7 +4090,7 @@ class DAFile(DAObject):
             else:
                 the_image.save(output_to.path())
         else:
-            raise Exception("DAFile.convert: could not identify file type")
+            raise DAError("DAFile.convert: could not identify file type")
         output_to.commit()
         output_to.retrieve()
 
@@ -4198,7 +4208,7 @@ class DAFile(DAObject):
         if not self.ok:
             self.initialize()
         if not hasattr(self, 'number'):
-            raise Exception("Cannot retrieve a file without a file number.")
+            raise DAError("Cannot retrieve a file without a file number.")
         docassemble.base.functions.this_thread.open_files.add(self)
         # logmessage("Retrieve: calling file finder")
         if self.has_specific_filename:
@@ -4206,9 +4216,9 @@ class DAFile(DAObject):
         else:
             self.file_info = server.file_number_finder(self.number)
         if self.file_info is None:
-            raise Exception("Could not retrieve file " + str(self.number))
+            raise DAError("Could not retrieve file " + str(self.number))
         if 'path' not in self.file_info:
-            raise Exception("Could not retrieve file: " + repr(self.file_info))
+            raise DAError("Could not retrieve file: " + repr(self.file_info))
         self.extension = self.file_info.get('extension', None)
         self.mimetype = self.file_info.get('mimetype', None)
         self.persistent = self.file_info['persistent']
@@ -4225,7 +4235,7 @@ class DAFile(DAObject):
         self.retrieve()
         the_path = self.path()
         if not os.path.isfile(the_path):
-            raise Exception("File " + str(the_path) + " does not exist yet.")
+            raise DAError("File " + str(the_path) + " does not exist yet.")
         if auto_decode and hasattr(self, 'mimetype') and (self.mimetype.startswith('text') or self.mimetype in ('application/json', 'application/javascript')):
             with open(the_path, 'r', encoding='utf-8') as f:
                 return f.read()
@@ -4238,7 +4248,7 @@ class DAFile(DAObject):
         self.retrieve()
         the_path = self.path()
         if not os.path.isfile(the_path):
-            raise Exception("File does not exist yet.")
+            raise DAError("File does not exist yet.")
         with open(the_path, 'r', encoding='utf-8') as f:
             return f.readlines()
 
@@ -4268,15 +4278,15 @@ class DAFile(DAObject):
         if first is None:
             first = 1
         elif not isinstance(first, int):
-            raise Exception("extract_pages: first must be an integer")
+            raise DAError("extract_pages: first must be an integer")
         if first < 1:
-            raise Exception("extract_pages: first must be 1 or greater")
+            raise DAError("extract_pages: first must be 1 or greater")
         if last is None:
             last = ''
         elif not isinstance(last, int):
-            raise Exception("extract_pages: last must be an integer")
+            raise DAError("extract_pages: last must be an integer")
         elif last < first:
-            raise Exception("extract_pages: last must greater than or equal to first")
+            raise DAError("extract_pages: last must greater than or equal to first")
         self.retrieve()
         if output_to is None:
             output_to = DAFile()
@@ -4284,7 +4294,7 @@ class DAFile(DAObject):
         elif isinstance(output_to, DAFileList):
             output_to = output_to.elements[0]
         else:
-            raise Exception("extract_pages: output_to must be a DAFile")
+            raise DAError("extract_pages: output_to must be a DAFile")
         input_filename = self.filename
         input_path = self.path()
         if output_to is self:
@@ -4295,7 +4305,7 @@ class DAFile(DAObject):
         try:
             docassemble.base.pdftk.extract_pages(input_path, output_to.path(), first, last)
         except Exception as err:
-            raise Exception("extract_pages: " + str(err))
+            raise DAError("extract_pages: " + str(err))
         output_to.retrieve()
         output_to.commit()
         return output_to
@@ -4373,7 +4383,7 @@ class DAFile(DAObject):
     def make_ocr_pdf_in_background(self, *pargs, **kwargs):
         """In the background, makes the contents of the file an OCRed PDF of the file or, if provided, another file."""
         lang = get_ocr_language(kwargs.get('language', None))
-        args = dict(yaml_filename=docassemble.base.functions.this_thread.current_info['yaml_filename'], user=docassemble.base.functions.this_thread.current_info['user'], user_code=docassemble.base.functions.this_thread.current_info['session'], secret=docassemble.base.functions.this_thread.current_info['secret'], url=docassemble.base.functions.this_thread.current_info['url'], url_root=docassemble.base.functions.this_thread.current_info['url_root'], language=lang, psm=kwargs.get('psm', None), x=None, y=None, W=None, H=None, extra=None, message=None, pdf=True, preserve_color=kwargs.get('preserve_color', False), target=self, dafilelist=kwargs.get('dafilelist', None), filename=kwargs.get('filename', None))
+        args = {'yaml_filename': docassemble.base.functions.this_thread.current_info['yaml_filename'], 'user': docassemble.base.functions.this_thread.current_info['user'], 'user_code': docassemble.base.functions.this_thread.current_info['session'], 'secret': docassemble.base.functions.this_thread.current_info['secret'], 'url': docassemble.base.functions.this_thread.current_info['url'], 'url_root': docassemble.base.functions.this_thread.current_info['url_root'], 'language': lang, 'psm': kwargs.get('psm', None), 'x': None, 'y': None, 'W': None, 'H': None, 'extra': None, 'message': None, 'pdf': True, 'preserve_color': kwargs.get('preserve_color', False), 'target': self, 'dafilelist': kwargs.get('dafilelist', None), 'filename': kwargs.get('filename', None)}
         collector = server.ocr_finalize.s(**args)
         docs = []
         for parg in pargs:
@@ -4439,18 +4449,18 @@ class DAFile(DAObject):
         self.retrieve()
         cookiefile = tempfile.NamedTemporaryFile(suffix='.txt')
         the_path = self.file_info['path']
-        f = open(the_path, 'wb')
-        c = pycurl.Curl()
-        c.setopt(c.URL, url)
-        c.setopt(c.FOLLOWLOCATION, True)
-        c.setopt(c.WRITEDATA, f)
-        c.setopt(pycurl.USERAGENT, server.daconfig.get('user agent', 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Googlebot/2.1; +http://www.google.com/bot.html) Safari/537.36'))
-        c.setopt(pycurl.COOKIEFILE, cookiefile.name)
-        c.perform()
-        status_code = c.getinfo(pycurl.HTTP_CODE)
-        c.close()
+        with open(the_path, 'wb') as f:
+            c = pycurl.Curl()  # pylint: disable=c-extension-no-member
+            c.setopt(c.URL, url)
+            c.setopt(c.FOLLOWLOCATION, True)
+            c.setopt(c.WRITEDATA, f)
+            c.setopt(pycurl.USERAGENT, server.daconfig.get('user agent', 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Googlebot/2.1; +http://www.google.com/bot.html) Safari/537.36'))  # pylint: disable=c-extension-no-member
+            c.setopt(pycurl.COOKIEFILE, cookiefile.name)  # pylint: disable=c-extension-no-member
+            c.perform()
+            status_code = c.getinfo(pycurl.HTTP_CODE)  # pylint: disable=c-extension-no-member
+            c.close()
         if status_code >= 400:
-            raise Exception("from_url: Error %s" % (status_code,))
+            raise DAError("from_url: Error %s" % (status_code,))
         self.retrieve()
 
     def uses_acroform(self):
@@ -4535,7 +4545,7 @@ class DAFile(DAObject):
         if not self.ok:
             self.initialized  # pylint: disable=pointless-statement
         if not hasattr(self, 'number'):
-            raise Exception("Cannot get pages in file without a file number.")
+            raise DAError("Cannot get pages in file without a file number.")
         if not hasattr(self, 'file_info'):
             self.retrieve()
         if hasattr(self, 'mimetype'):
@@ -4550,10 +4560,10 @@ class DAFile(DAObject):
         if not self.ok:
             self.initialized  # pylint: disable=pointless-statement
         if not hasattr(self, 'number'):
-            raise Exception("Cannot get path of file without a file number.")
+            raise DAError("Cannot get path of file without a file number.")
         self.retrieve()
         if 'fullpath' not in self.file_info:
-            raise Exception("fullpath not found.")
+            raise DAError("fullpath not found.")
         return self.file_info['path'] + 'page' + str(page) + '.pdf'
 
     def _path_ready(self, the_path):
@@ -4568,12 +4578,12 @@ class DAFile(DAObject):
         if not self.ok:
             self.initialized  # pylint: disable=pointless-statement
         if not hasattr(self, 'number'):
-            raise Exception("Cannot get path of file without a file number.")
+            raise DAError("Cannot get path of file without a file number.")
         self.retrieve()
         if 'fullpath' not in self.file_info:
-            raise Exception("fullpath not found.")
+            raise DAError("fullpath not found.")
         if 'pages' not in self.file_info:
-            raise Exception("number of pages not found. " + repr(self.file_info))
+            raise DAError("number of pages not found. " + repr(self.file_info))
         max_pages = 1 + int(self.file_info['pages'])
         formatter = '%0' + str(len(str(max_pages))) + 'd'
         the_path = self.file_info['path'] + prefix + '-' + (formatter % int(page)) + '.png'
@@ -4627,7 +4637,7 @@ class DAFile(DAObject):
         if not self.ok and not hasattr(self, 'content'):
             self.initialized  # pylint: disable=pointless-statement
         if not hasattr(self, 'number'):
-            raise Exception("Cannot get the cloud path of file without a file number.")
+            raise DAError("Cannot get the cloud path of file without a file number.")
         return server.SavedFile(self.number, fix=False).cloud_path(filename)
 
     def path(self):
@@ -4636,11 +4646,11 @@ class DAFile(DAObject):
         if not self.ok and not hasattr(self, 'content'):
             self.initialized  # pylint: disable=pointless-statement
         if not hasattr(self, 'number'):
-            raise Exception("Cannot get path of file without a file number.")
+            raise DAError("Cannot get path of file without a file number.")
         # if not hasattr(self, 'file_info'):
         self.retrieve()
         if 'fullpath' not in self.file_info:
-            raise Exception("fullpath not found.")
+            raise DAError("fullpath not found.")
         return self.file_info['fullpath']
 
     def commit(self):
@@ -4869,7 +4879,7 @@ class DAFileCollection(DAObject):
         for ext in self._extension_list():
             if hasattr(self, ext):
                 return getattr(self, ext).url_for(**kwargs)
-        raise Exception("Could not find a file within a DACollection.")
+        raise DAError("Could not find a file within a DACollection.")
 
     def set_attributes(self, **kwargs):
         """Sets attributes of the file(s) stored on the server.  Takes optional keyword arguments private and persistent, which must be boolean values."""
@@ -5101,6 +5111,10 @@ class DAStaticFile(DAObject):
         self.package = docassemble.base.functions.this_thread.current_question.package
         super().init(*pargs, **kwargs)
 
+    def _populate(self):
+        if not hasattr(self, 'extension') or not hasattr(self, 'mimetype'):
+            self.extension, self.mimetype = server.get_ext_and_mimetype(self.filename)  # pylint: disable=assignment-from-none,unpacking-non-sequence
+
     def get_alt_text(self):
         """Returns the alt text for the file.  If no alt text is defined, None
         is returned.
@@ -5115,6 +5129,7 @@ class DAStaticFile(DAObject):
         self.alt_text = alt_text
 
     def _get_unqualified_reference(self):
+        self._populate()
         if ':' not in self.filename and hasattr(self, 'package'):
             file_reference = self.package + ':'
             if '/' not in str(self.filename):
@@ -5128,6 +5143,7 @@ class DAStaticFile(DAObject):
         arguments width and alt_text.
 
         """
+        self._populate()
         if docassemble.base.functions.this_thread.evaluation_context == 'docx':
             if self.mimetype == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
                 return docassemble.base.file_docx.include_docx_template(self)
@@ -5175,7 +5191,7 @@ class DAStaticFile(DAObject):
         """Returns the contents of the file."""
         the_path = self.path()
         if not os.path.isfile(the_path):
-            raise Exception("File " + str(the_path) + " does not exist.")
+            raise DAError("File " + str(the_path) + " does not exist.")
         if auto_decode and hasattr(self, 'mimetype') and (self.mimetype.startswith('text') or self.mimetype in ('application/json', 'application/javascript')):
             with open(the_path, 'r', encoding='utf-8') as f:
                 return f.read()
@@ -5570,7 +5586,7 @@ class DALazyTableTemplate(DALazyTemplate):
             else:
                 file_format = 'xlsx'
         if file_format not in ('json', 'xlsx', 'csv'):
-            raise Exception("export: unsupported file format")
+            raise DAError("export: unsupported file format")
         header_output, contents = self.header_and_contents()
         df = pandas.DataFrame.from_records(contents, columns=header_output)
         if output_to is None:
@@ -5579,7 +5595,7 @@ class DALazyTableTemplate(DALazyTemplate):
         elif isinstance(output_to, DAFileList):
             output_to = output_to.elements[0]
         if not isinstance(output_to, DAFile):
-            raise Exception("export: output_to must be a DAFile")
+            raise DAError("export: output_to must be a DAFile")
         if filename is not None:
             output_to.initialize(filename=filename, extension=file_format, reinitialize=output_to.ok)
         else:
@@ -5735,6 +5751,44 @@ def setify(item, output=None):
     return output
 
 
+def objects_from_data(data, recursive=True, gathered=True, name=None, package=None):
+    if name is None:
+        frame = inspect.stack()[1][0]
+        # logmessage("co_name is " + str(frame.f_code.co_names))
+        the_names = frame.f_code.co_names
+        if len(the_names) == 2:
+            thename = the_names[1]
+        else:
+            thename = None
+        del frame
+    else:
+        thename = name
+    if package is None and docassemble.base.functions.this_thread.current_question is not None:
+        package = docassemble.base.functions.this_thread.current_question.package
+    if thename is None:
+        objects = DAList('objects')
+        objects.set_random_instance_name()
+    else:
+        objects = DAList(thename)
+    new_objects = recurse_obj(data, recursive=recursive, use_objects=True)
+    objects.gathered = True
+    objects.revisit = True
+    is_singular = True
+    if isinstance(new_objects, list):
+        is_singular = False
+        for obj in new_objects:
+            objects.append(obj)
+    else:
+        objects.append(new_objects)
+    if is_singular and len(objects.elements) == 1:
+        objects = objects.elements[0]
+    if thename is not None and isinstance(objects, DAObject):
+        objects._set_instance_name_recursively(thename)
+    if isinstance(objects, (DAList, DADict, DASet)) and not gathered:
+        objects._reset_gathered_recursively()
+    return objects
+
+
 def objects_from_file(file_ref, recursive=True, gathered=True, name=None, use_objects=False, package=None):
     """A utility function for initializing a group of objects from a YAML file written in a certain format."""
     if isinstance(file_ref, DAFileCollection):
@@ -5742,7 +5796,7 @@ def objects_from_file(file_ref, recursive=True, gathered=True, name=None, use_ob
     if isinstance(file_ref, DAFileList) and len(file_ref.elements):
         file_ref = file_ref.elements[0]
     if file_ref is None:
-        raise Exception("objects_from_file: no file referenced")
+        raise DAError("objects_from_file: no file referenced")
     if isinstance(file_ref, DAFile):
         file_ref = file_ref.number
     if name is None:
@@ -5763,7 +5817,8 @@ def objects_from_file(file_ref, recursive=True, gathered=True, name=None, use_ob
     if file_info is None or 'path' not in file_info:
         raise SystemError('objects_from_file: file reference ' + str(file_ref) + ' not found')
     if thename is None:
-        objects = DAList()
+        objects = DAList('objects')
+        objects.set_random_instance_name()
     else:
         objects = DAList(thename)
     objects.gathered = True
@@ -5932,9 +5987,13 @@ class DAContext(DADict):
         return hash((self.instanceName,))
 
 
-def objects_from_structure(target, root=None):
+da_context_keys = set(['question', 'document', 'docx', 'pdf', 'pandoc'])
+
+
+def objects_from_structure(target, root=None, gathered=True):
     if isinstance(target, dict):
-        if len(target.keys()) > 0 and len(set(target.keys()).difference(set(['question', 'document', 'docx', 'pdf', 'pandoc']))) == 0:
+        target_keys = set(target.keys())
+        if len(target_keys) > 0 and len(target_keys.intersection(da_context_keys)) >= 2 and len(target_keys.difference(da_context_keys)) == 0:
             new_context = DAContext('abc_context', **target)
             if root:
                 new_context._set_instance_name_recursively(root)
@@ -5942,16 +6001,18 @@ def objects_from_structure(target, root=None):
             return new_context
         new_dict = DADict('abc_dict')
         for key, val in target.items():
-            new_dict[key] = objects_from_structure(val)
-        new_dict.gathered = True
+            new_dict[key] = objects_from_structure(val, gathered=gathered)
+        if gathered:
+            new_dict.gathered = True
         if root:
             new_dict._set_instance_name_recursively(root)
         return new_dict
     if isinstance(target, list):
         new_list = DAList('abc_list')
         for val in target.__iter__():  # pylint: disable=unnecessary-dunder-call
-            new_list.append(objects_from_structure(val))
-        new_list.gathered = True
+            new_list.append(objects_from_structure(val), gathered=gathered)
+        if gathered:
+            new_list.gathered = True
         if root:
             new_list._set_instance_name_recursively(root)
         return new_list
@@ -6070,7 +6131,7 @@ class DAGlobal(DAObject):
         else:
             globalkey = 'da:daglobal:userid:' + str(this_thread.current_info['user']['the_user_id']) + ':' + self.key
         server.server_sql_delete(globalkey)
-        self.__dict__ = dict(instanceName=self.instanceName, attrList=[], has_nonrandom_instance_name=self.has_nonrandom_instance_name)
+        self.__dict__ = {'instanceName': self.instanceName, 'attrList': [], 'has_nonrandom_instance_name': self.has_nonrandom_instance_name}
 
 
 class DAStore(DAObject):
@@ -6130,6 +6191,16 @@ class DAStore(DAObject):
         return server.server_sql_keys(self._get_base_key() + ':')
 
 
+class BearerAuth(AuthBase):
+    def __init__(self, token):
+        self.token = token
+
+    def __call__(self, r):
+        if "Authorization" not in r.headers:
+            r.headers["Authorization"] = "Bearer " + str(self.token)
+        return r
+
+
 class DAWeb(DAObject):
     """A class used to call external APIs"""
 
@@ -6137,7 +6208,7 @@ class DAWeb(DAObject):
         if hasattr(self, 'base_url'):
             base_url = self.base_url
             if not isinstance(self.base_url, str):
-                raise Exception("DAWeb.call: the base url must be a string")
+                raise DAError("DAWeb.call: the base url must be a string")
             if not base_url.endswith('/'):
                 base_url += '/'
             return base_url
@@ -6164,7 +6235,7 @@ class DAWeb(DAObject):
         if task is None:
             return None
         if not isinstance(task, str):
-            raise Exception("DAWeb.call: task must be a string")
+            raise DAError("DAWeb.call: task must be a string")
         return task
 
     def _get_task_persistent(self, task_persistent):
@@ -6173,7 +6244,7 @@ class DAWeb(DAObject):
         if task_persistent is None:
             return False
         if not isinstance(task_persistent, (bool, str)):
-            raise Exception("DAWeb.call: task_persistent must be boolean or string")
+            raise DAError("DAWeb.call: task_persistent must be boolean or string")
         return task_persistent
 
     def _get_auth(self, auth):
@@ -6184,6 +6255,8 @@ class DAWeb(DAObject):
                 return HTTPBasicAuth(auth['username'], auth['password'])
             if auth['type'] == 'digest':
                 return HTTPDigestAuth(auth['username'], auth['password'])
+            if auth['type'] == 'bearer':
+                return BearerAuth(auth['token'])
         return auth
 
     def _get_headers(self, new_headers):
@@ -6192,7 +6265,7 @@ class DAWeb(DAObject):
             if isinstance(headers, DADict):
                 headers = headers.elements
             if not isinstance(headers, dict):
-                raise Exception("DAWeb.call: the headers must be a dictionary")
+                raise DAError("DAWeb.call: the headers must be a dictionary")
             headers.update(new_headers)
             return headers
         return new_headers
@@ -6203,7 +6276,7 @@ class DAWeb(DAObject):
             if isinstance(cookies, DADict):
                 cookies = cookies.elements
             if not isinstance(cookies, dict):
-                raise Exception("DAWeb.call: the cookies must be a dictionary")
+                raise DAError("DAWeb.call: the cookies must be a dictionary")
             cookies.update(new_cookies)
             return cookies
         return new_cookies
@@ -6229,22 +6302,22 @@ class DAWeb(DAObject):
             new_success_code = []
             for code in success_code:
                 if not isinstance(code, int):
-                    raise Exception("DAWeb.call: success codes must be integers")
+                    raise DAError("DAWeb.call: success codes must be integers")
                 new_success_code.append(code)
             success_code = new_success_code
         elif isinstance(success_code, int):
             success_code = [success_code]
         elif success_code is not None:
-            raise Exception("DAWeb.call: success_code must be an integer or a list of integers")
+            raise DAError("DAWeb.call: success_code must be an integer or a list of integers")
         if method is None:
             method = 'GET'
         if not isinstance(method, str):
-            raise Exception("DAWeb.call: the method must be a string")
+            raise DAError("DAWeb.call: the method must be a string")
         method = method.upper().strip()
         if method not in ('POST', 'GET', 'PATCH', 'PUT', 'HEAD', 'DELETE', 'OPTIONS'):
-            raise Exception("DAWeb.call: invalid method")
+            raise DAError("DAWeb.call: invalid method")
         if not isinstance(url, str):
-            raise Exception("DAWeb.call: the url must be a string")
+            raise DAError("DAWeb.call: the url must be a string")
         if not re.search(r'^https?://', url):
             url = self._get_base_url() + re.sub(r'^/*', '', url)
         if data is None:
@@ -6252,19 +6325,19 @@ class DAWeb(DAObject):
         if isinstance(data, DADict):
             data = data.elements
         if json_body is False and not isinstance(data, dict):
-            raise Exception("DAWeb.call: data must be a dictionary")
+            raise DAError("DAWeb.call: data must be a dictionary")
         if params is None:
             params = {}
         if isinstance(params, DADict):
             params = params.elements
         if not isinstance(params, dict):
-            raise Exception("DAWeb.call: params must be a dictionary")
+            raise DAError("DAWeb.call: params must be a dictionary")
         if headers is None:
             headers = {}
         if isinstance(headers, DADict):
             headers = headers.elements
         if not isinstance(headers, dict):
-            raise Exception("DAWeb.call: the headers must be a dictionary")
+            raise DAError("DAWeb.call: the headers must be a dictionary")
         headers = self._get_headers(headers)
         if len(headers) == 0:
             headers = None
@@ -6273,7 +6346,7 @@ class DAWeb(DAObject):
         if isinstance(cookies, DADict):
             cookies = cookies.elements
         if not isinstance(cookies, dict):
-            raise Exception("DAWeb.call: the cookies must be a dictionary")
+            raise DAError("DAWeb.call: the cookies must be a dictionary")
         cookies = self._get_cookies(cookies)
         if len(cookies) == 0:
             cookies = None
@@ -6281,17 +6354,17 @@ class DAWeb(DAObject):
             data = None
         if files is not None:
             if not isinstance(files, dict):
-                raise Exception("DAWeb.call: files must be a dictionary")
+                raise DAError("DAWeb.call: files must be a dictionary")
             new_files = {}
             for key, val in files.items():
                 if not isinstance(key, str):
-                    raise Exception("DAWeb.call: files must be a dictionary of string keys")
+                    raise DAError("DAWeb.call: files must be a dictionary of string keys")
                 try:
                     path = server.path_from_reference(val)
                     logmessage("path is " + str(path))
                     assert path is not None
                 except:
-                    raise Exception("DAWeb.call: could not load the file")
+                    raise DAError("DAWeb.call: could not load the file")
                 new_files[key] = open(path, 'rb')
             files = new_files
             if len(files):
@@ -6299,39 +6372,39 @@ class DAWeb(DAObject):
         try:
             if method == 'POST':
                 if json_body:
-                    r = requests.post(url, json=data, params=params, headers=headers, auth=auth, cookies=cookies, files=files)
+                    r = requests.post(url, json=data, params=params, headers=headers, auth=auth, cookies=cookies, files=files, timeout=600)
                 else:
-                    r = requests.post(url, data=data, params=params, headers=headers, auth=auth, cookies=cookies, files=files)
+                    r = requests.post(url, data=data, params=params, headers=headers, auth=auth, cookies=cookies, files=files, timeout=600)
             elif method == 'PUT':
                 if json_body:
-                    r = requests.put(url, json=data, params=params, headers=headers, auth=auth, cookies=cookies, files=files)
+                    r = requests.put(url, json=data, params=params, headers=headers, auth=auth, cookies=cookies, files=files, timeout=600)
                 else:
-                    r = requests.put(url, data=data, params=params, headers=headers, auth=auth, cookies=cookies, files=files)
+                    r = requests.put(url, data=data, params=params, headers=headers, auth=auth, cookies=cookies, files=files, timeout=600)
             elif method == 'PATCH':
                 if json_body:
-                    r = requests.patch(url, json=data, params=params, headers=headers, auth=auth, cookies=cookies, files=files)
+                    r = requests.patch(url, json=data, params=params, headers=headers, auth=auth, cookies=cookies, files=files, timeout=600)
                 else:
-                    r = requests.patch(url, data=data, params=params, headers=headers, auth=auth, cookies=cookies, files=files)
+                    r = requests.patch(url, data=data, params=params, headers=headers, auth=auth, cookies=cookies, files=files, timeout=600)
             elif method == 'GET':
                 if len(params) == 0:
                     params = data
                     data = None
-                r = requests.get(url, params=params, headers=headers, auth=auth, cookies=cookies)
+                r = requests.get(url, params=params, headers=headers, auth=auth, cookies=cookies, timeout=600)
             elif method == 'DELETE':
                 if len(params) == 0:
                     params = data
                     data = None
-                r = requests.delete(url, params=params, headers=headers, auth=auth, cookies=cookies)
+                r = requests.delete(url, params=params, headers=headers, auth=auth, cookies=cookies, timeout=600)
             elif method == 'OPTIONS':
                 if len(params) == 0:
                     params = data
                     data = None
-                r = requests.options(url, params=params, headers=headers, auth=auth, cookies=cookies)
+                r = requests.options(url, params=params, headers=headers, auth=auth, cookies=cookies, timeout=600)
             elif method == 'HEAD':
                 if len(params) == 0:
                     params = data
                     data = None
-                r = requests.head(url, params=params, headers=headers, auth=auth, cookies=cookies)
+                r = requests.head(url, params=params, headers=headers, auth=auth, cookies=cookies, timeout=600)
         except RequestException as err:
             if on_failure == 'raise':
                 raise DAWebError(url=url, method=method, params=params, headers=headers, data=data, task=task, task_persistent=task_persistent, status_code=-1, response_text='', response_json=None, response_headers={}, exception_type=err.__class__.__name__, exception_text=str(err), cookies_before=cookies, cookies_after=None)
@@ -6500,6 +6573,10 @@ class DAGoogleAPI(DAObject):
         """Returns a Google Drive service object using google-api-python-client."""
         return apiclient.discovery.build('drive', 'v3', http=self.http('https://www.googleapis.com/auth/drive'))
 
+    def sheets_service(self):
+        """Returns a Google Sheets service object using google-api-python-client."""
+        return apiclient.discovery.build('sheets', 'v4', http=self.http('https://www.googleapis.com/auth/spreadsheets.readonly'))
+
     def cloud_credentials(self, scope):
         """Returns a google.oauth2.service_account credentials object for the given scope."""
         return server.google_api.google_cloud_credentials(scope)
@@ -6513,7 +6590,7 @@ class DAGoogleAPI(DAObject):
         return server.google_api.google_cloud_storage_client()
 
     def google_cloud_vision_client(self):
-        """Returns an google.cloud.vision.ImageAnnotatorClient object."""
+        """Returns a google.cloud.vision.ImageAnnotatorClient object."""
         return server.google_api.google_cloud_vision_client()
 
 
@@ -7107,6 +7184,7 @@ class RoleChangeTracker(DAObject):
         for key, val in kwargs.items():  # pylint: disable=unused-variable
             if 'to' in val:
                 need(val['to'].email)
+        config = kwargs.get('config', None)
         for role_needed in roles_needed:
             # logmessage("One role needed is " + str(role_needed))
             if role_needed == self.last_role:
@@ -7118,7 +7196,7 @@ class RoleChangeTracker(DAObject):
                 if 'to' in email_info and 'email' in email_info:
                     # logmessage("I have email info on " + str(role_needed))
                     try:
-                        result = send_email(to=email_info['to'], html=email_info['email'].content, subject=email_info['email'].subject)
+                        result = send_email(to=email_info['to'], html=email_info['email'].content, subject=email_info['email'].subject, config=config)
                     except DAError:
                         result = False
                     if result:
@@ -8385,10 +8463,10 @@ class FaxStatus:
 
     def info(self):
         if self.sid is None:
-            return dict(FaxStatus='not-configured')
+            return {'FaxStatus': 'not-configured'}
         the_json = server.server_redis.get('da:faxcallback:sid:' + self.sid)
         if the_json is None:
-            return dict(FaxStatus='no-information')
+            return {'FaxStatus': 'no-information'}
         info_dict = json.loads(the_json)
         return info_dict
 
@@ -8406,7 +8484,7 @@ def send_fax(fax_number, file_object, config='default', country=None):
         file_object = file_object._first_file()
     if isinstance(file_object, DAFileList):
         if len(file_object.elements) == 0:
-            raise Exception("send_fax: if passing a DAFileList, the DAFileList must have at least one element")
+            raise DAError("send_fax: if passing a DAFileList, the DAFileList must have at least one element")
         if len(file_object.elements) == 1:
             file_object = file_object.elements[0]
         else:
@@ -8414,8 +8492,12 @@ def send_fax(fax_number, file_object, config='default', country=None):
     return FaxStatus(server.send_fax(fax_string(fax_number, country=country), file_object, config, country=country))
 
 
-def send_email(to=None, sender=None, reply_to=None, cc=None, bcc=None, body=None, html=None, subject="", template=None, task=None, task_persistent=False, attachments=None, mailgun_variables=None, dry_run=False):
+def send_email(to=None, sender=None, reply_to=None, cc=None, bcc=None, body=None, html=None, subject="", template=None, task=None, task_persistent=False, attachments=None, mailgun_variables=None, dry_run=False, config=None):
     """Sends an e-mail and returns whether sending the e-mail was successful."""
+    if config is None:
+        config = docassemble.base.functions.this_thread.interview.consolidated_metadata.get('email config', None)
+    if not config:
+        config = 'default'
     if attachments is None:
         attachments = []
     if (not isinstance(attachments, (DAList, DASet, abc.Iterable))) or isinstance(attachments, str):
@@ -8442,7 +8524,7 @@ def send_email(to=None, sender=None, reply_to=None, cc=None, bcc=None, body=None
     to_string = email_stringer(to, include_name=None)
     cc_string = email_stringer(cc, include_name=None)
     bcc_string = email_stringer(bcc, include_name=None)
-    # logmessage("Sending mail to: " + repr(dict(subject=subject, recipients=to_string, sender=sender_string, cc=cc_string, bcc=bcc_string, body=body, html=html)))
+    # logmessage("Sending mail to: " + repr({'subject': subject, 'recipients': to_string, 'sender': sender_string, 'cc': cc_string, 'bcc': bcc_string, 'body': body, 'html': html}))
     msg = Message(subject, sender=sender_string, reply_to=reply_to_string, recipients=to_string, cc=cc_string, bcc=bcc_string, body=body, html=html)
     if mailgun_variables is not None:
         if isinstance(mailgun_variables, dict):
@@ -8515,7 +8597,7 @@ def send_email(to=None, sender=None, reply_to=None, cc=None, bcc=None, body=None
     if success:
         try:
             logmessage("send_email: starting to send")
-            server.send_mail(msg)
+            server.send_mail(msg, config=config)
             logmessage("send_email: finished sending")
         except Exception as errmess:
             logmessage("send_email: sending mail failed with error of " + " type " + str(errmess.__class__.__name__) + ": " + str(errmess))
@@ -8601,7 +8683,7 @@ def ocr_file_in_background(*pargs, **kwargs):
         arg_W = int_or_none(kwargs.get('W', None))
         arg_H = int_or_none(kwargs.get('H', None))
         the_message = kwargs.get('message', None)
-        args = dict(yaml_filename=this_thread.current_info['yaml_filename'], user=this_thread.current_info['user'], user_code=this_thread.current_info['session'], secret=this_thread.current_info['secret'], url=this_thread.current_info['url'], url_root=this_thread.current_info['url_root'], language=language, f=arg_f, l=arg_l, psm=arg_psm, x=arg_x, y=arg_y, W=arg_W, H=arg_H, extra=ui_notification, message=the_message, pdf=False, preserve_color=False)
+        args = {'yaml_filename': this_thread.current_info['yaml_filename'], 'user': this_thread.current_info['user'], 'user_code': this_thread.current_info['session'], 'secret': this_thread.current_info['secret'], 'url': this_thread.current_info['url'], 'url_root': this_thread.current_info['url_root'], 'language': language, 'f': arg_f, 'l': arg_l, 'psm': arg_psm, 'x': arg_x, 'y': arg_y, 'W': arg_W, 'H': arg_H, 'extra': ui_notification, 'message': the_message, 'pdf': False, 'preserve_color': False}
         collector = server.ocr_finalize.s(**args)
         todo = []
         indexno = 0
@@ -8624,9 +8706,9 @@ def ocr_file_in_background(*pargs, **kwargs):
 
 
 def get_work_bucket():
-    bucket_name = server.daconfig.get('google', {}).get('work bucket', None)
+    bucket_name = server.daconfig['google'].get('work bucket', None)
     if bucket_name is None:
-        raise Exception("Cannot use Google Storage unless there is a work bucket configured in the google configuration")
+        raise DAError("Cannot use Google Storage unless there is a work bucket configured in the google configuration")
     api = DAGoogleAPI()
     client = api.google_cloud_storage_client()
     try:
@@ -8635,7 +8717,7 @@ def get_work_bucket():
         try:
             bucket = client.create_bucket(bucket_name)
         except Exception as err:
-            raise Exception("failed to create bucket named " + bucket_name + ": " + str(err))
+            raise DAError("failed to create bucket named " + bucket_name + ": " + str(err))
     return bucket
 
 
@@ -8709,7 +8791,7 @@ def google_ocr_file(image_file, raw_result=False):
                 image = google.cloud.vision.Image(content=content)
                 the_response = client.text_detection(image=image)
                 if the_response.error.message:
-                    raise Exception("Failed to OCR file with Google Cloud Vision: " + the_response.error.message)
+                    raise DAError("Failed to OCR file with Google Cloud Vision: " + the_response.error.message)
                 if raw_result:
                     output.append(json.loads(google.cloud.vision.AnnotateImageResponse.to_json(the_response)))
                 else:
@@ -8788,7 +8870,7 @@ def ocr_file(image_file, language=None, psm=6, f=None, l=None, x=None, y=None, W
         try:
             text = subprocess.check_output(['tesseract', 'stdin', 'stdout', '-l', str(lang), '--psm', str(psm)], stdin=file_to_read).decode('utf-8', 'ignore')
         except subprocess.CalledProcessError as err:
-            raise Exception("ocr_file: failed to list available languages: " + str(err) + " " + str(err.output.decode()))
+            raise DAError("ocr_file: failed to list available languages: " + str(err) + " " + str(err.output.decode()))
         page_text.append(text)
     for directory in temp_directory_list:
         shutil.rmtree(directory)
@@ -8973,7 +9055,7 @@ def docx_concatenate(*pargs, **kwargs):
     elif isinstance(docx_file, DAFileList):
         docx_file = docx_file.elements[0]
     if not isinstance(docx_file, DAFile):
-        raise Exception("docx_concatenate: output_to must be a DAFile")
+        raise DAError("docx_concatenate: output_to must be a DAFile")
     docx_file.initialize(filename=kwargs.get('filename', 'file.docx'), reinitialize=docx_file.ok)
     docx_file.copy_into(docx_path)
     docx_file.retrieve()
@@ -9010,7 +9092,7 @@ def pdf_concatenate(*pargs, **kwargs):
     elif isinstance(pdf_file, DAFileList):
         pdf_file = pdf_file.elements[0]
     if not isinstance(pdf_file, DAFile):
-        raise Exception("pdf_concatenate: output_to must be a DAFile")
+        raise DAError("pdf_concatenate: output_to must be a DAFile")
     pdf_file.initialize(filename=kwargs.get('filename', 'file.pdf'), reinitialize=pdf_file.ok)
     pdf_file.copy_into(pdf_path)
     pdf_file.retrieve()
@@ -9067,7 +9149,7 @@ def zip_file(*pargs, **kwargs):
     elif isinstance(the_zip_file, DAFileList):
         the_zip_file = the_zip_file.elements[0]
     if not isinstance(the_zip_file, DAFile):
-        raise Exception("zip_file: output_to must be a DAFile")
+        raise DAError("zip_file: output_to must be a DAFile")
     the_zip_file.initialize(filename=kwargs.get('filename', 'file.zip'), reinitialize=the_zip_file.ok)
     zf = zipfile.ZipFile(the_zip_file.path(), mode='w')
     seen = {}
@@ -9150,7 +9232,7 @@ def url_ask(data):
                         if contains_volatile.search(the_var_stripped):
                             raise DAError("url_ask cannot be used with a generic object or a variable iterator")
                         clean_list.append([the_var_stripped, the_val])
-                variables.append(dict(action='_da_set', arguments=dict(variables=clean_list)))
+                variables.append({'action': '_da_set', 'arguments': {'variables': clean_list}})
             if 'follow up' in the_saveas:
                 if not isinstance(the_saveas['follow up'], list):
                     raise DAError("url_ask: the follow up statement must refer to a list.  " + repr(data))
@@ -9162,7 +9244,7 @@ def url_ask(data):
                         raise DAError("url_ask: missing or invalid variable name " + repr(var_saveas) + " .  " + repr(data))
                     if contains_volatile.search(var):
                         raise DAError("url_ask cannot be used with a generic object or a variable iterator")
-                    variables.append(dict(action=var, arguments={}))
+                    variables.append({'action': var, 'arguments': {}})
             for the_command in ('undefine', 'invalidate', 'recompute'):
                 if the_command not in the_saveas:
                     continue
@@ -9179,18 +9261,18 @@ def url_ask(data):
                         raise DAError("url_ask cannot be used with a generic object or a variable iterator")
                     clean_list.append(undef_saveas)
                 if the_command == 'invalidate':
-                    variables.append(dict(action='_da_invalidate', arguments=dict(variables=clean_list)))
+                    variables.append({'action': '_da_invalidate', 'arguments': {'variables': clean_list}})
                 else:
-                    variables.append(dict(action='_da_undefine', arguments=dict(variables=clean_list)))
+                    variables.append({'action': '_da_undefine', 'arguments': {'variables': clean_list}})
                 if the_command == 'recompute':
-                    variables.append(dict(action='_da_compute', arguments=dict(variables=clean_list)))
+                    variables.append({'action': '_da_compute', 'arguments': {'variables': clean_list}})
             continue
         if isinstance(the_saveas, dict) and len(the_saveas) == 2 and 'action' in the_saveas and 'arguments' in the_saveas:
             if not isinstance(the_saveas['arguments'], dict):
                 raise DAError("url_ask: an arguments directive must refer to a dictionary.  " + repr(data))
             if contains_volatile.search(the_saveas['action']):
                 raise DAError("url_ask cannot be used with a generic object or a variable iterator")
-            variables.append(dict(action=the_saveas['action'], arguments=the_saveas['arguments']))
+            variables.append({'action': the_saveas['action'], 'arguments': the_saveas['arguments']})
             continue
         if not isinstance(the_saveas, str):
             raise DAError("url_ask: invalid variable name " + repr(the_saveas) + ".  " + repr(data))
@@ -9208,7 +9290,7 @@ def action_button_html(url, icon=None, color='success', size='sm', block=False, 
     """Returns HTML for a button that visits a particular URL."""
     if not isinstance(label, str):
         label = 'Edit'
-    if color not in ('primary', 'secondary', 'success', 'danger', 'warning', 'info', 'light', 'dark', 'link'):
+    if color not in ('primary', 'secondary', 'tertiary', 'success', 'danger', 'warning', 'info', 'light', 'dark', 'link'):
         color = 'dark'
     if size not in ('sm', 'md', 'lg'):
         size = 'sm'
@@ -9255,7 +9337,7 @@ def overlay_pdf(main_pdf, logo_pdf, first_page=None, last_page=None, logo_page=N
     elif isinstance(main_pdf, str):
         main_file = main_pdf
     else:
-        raise Exception("overlay_pdf: bad main filename")
+        raise DAError("overlay_pdf: bad main filename")
     if isinstance(logo_pdf, DAFileCollection):
         logo_file = logo_pdf.pdf.path()
     elif isinstance(logo_pdf, (DAFile, DAStaticFile, DAFileList)):
@@ -9263,15 +9345,15 @@ def overlay_pdf(main_pdf, logo_pdf, first_page=None, last_page=None, logo_page=N
     elif isinstance(logo_pdf, str):
         logo_file = logo_pdf
     else:
-        raise Exception("overlay_pdf: bad logo filename")
-    outfile = kwargs.get('output_to', None)
+        raise DAError("overlay_pdf: bad logo filename")
+    outfile = output_to
     if outfile is None:
         outfile = DAFile()
         outfile.set_random_instance_name()
     elif isinstance(outfile, DAFileList):
         outfile = outfile.elements[0]
     if not isinstance(outfile, DAFile):
-        raise Exception("overlay_pdf: output_to must be a DAFile")
+        raise DAError("overlay_pdf: output_to must be a DAFile")
     if filename is None:
         filename = 'file.pdf'
     outfile.initialize(extension='pdf', filename=filename, reinitialize=outfile.ok)
@@ -9333,12 +9415,12 @@ def prevent_dependency_satisfaction(f):
         try:
             return f(*args, **kwargs)
         except (NameError, AttributeError, DAIndexError, UndefinedError):
-            raise Exception("Reference to undefined variable in context where dependency satisfaction not allowed")
+            raise DAError("Reference to undefined variable in context where dependency satisfaction not allowed")
         # Python 3 version:
         # try:
         #     return f(*args, **kwargs)
         # except (NameError, AttributeError, DAIndexError, UndefinedError) as err:
-        #     raise Exception("Reference to undefined variable in context where dependency satisfaction not allowed") from err
+        #     raise DAError("Reference to undefined variable in context where dependency satisfaction not allowed") from err
     return wrapper
 
 
@@ -9580,7 +9662,7 @@ class DAOAuth(DAObject):
 
     def init(self, *pargs, **kwargs):
         if 'url_args' not in kwargs:
-            raise Exception("DAOAuth: you must pass the url_args as a keyword parameter")
+            raise DAError("DAOAuth: you must pass the url_args as a keyword parameter")
         self.url_args = kwargs['url_args']
         del kwargs['url_args']
         super().init(*pargs, **kwargs)
@@ -9590,7 +9672,7 @@ class DAOAuth(DAObject):
         client_id = app_credentials.get('id', None)
         client_secret = app_credentials.get('secret', None)
         if client_id is None or client_secret is None:
-            raise Exception('The application ' + self.appname + " is not configured in the Configuration")
+            raise DAError('The application ' + self.appname + " is not configured in the Configuration")
         flow = oauth2client.client.OAuth2WebServerFlow(
             client_id=client_id,
             client_secret=client_secret,
@@ -9640,7 +9722,7 @@ class DAOAuth(DAObject):
                 r.expire('da:' + self.appname + ':status:uniqueid:' + key, 300)
                 return key
             tries -= 1
-        raise Exception("DAOAuth: unable to set a random unique id")
+        raise DAError("DAOAuth: unable to set a random unique id")
 
     def get_credentials(self):
         """Returns the stored credentials."""
@@ -9654,7 +9736,7 @@ class DAOAuth(DAObject):
             if 'code' in self.url_args and 'state' in self.url_args:
                 r.delete(r_key)
                 if self.url_args['state'] != stored_state.decode():
-                    raise Exception("State did not match.  " + repr(self.url_args['state']) + " vs " + repr(stored_state.decode()) + " where r_key is " + repr(r_key))
+                    raise DAError("State did not match.  " + repr(self.url_args['state']) + " vs " + repr(stored_state.decode()) + " where r_key is " + repr(r_key))
                 flow = self._get_flow()
                 credentials = flow.step2_exchange(self.url_args['code'])
                 storage = self._get_redis_cred_storage()
@@ -9767,21 +9849,6 @@ class RedisCredStorage(oauth2client.client.Storage):
         self.r.delete(self.key)
 
 
-def safe_pypdf_reader(filename):
-    try:
-        return PyPDF2.PdfFileReader(open(filename, 'rb'), overwriteWarnings=False)
-    except PyPDF2.utils.PdfReadError:
-        new_filename = tempfile.NamedTemporaryFile(prefix="datemp", mode="wb", suffix=".pdf", delete=False)
-        qpdf_subprocess_arguments = [QPDF_PATH, filename, new_filename.name]
-        try:
-            result = subprocess.run(qpdf_subprocess_arguments, timeout=60, check=False).returncode
-        except subprocess.TimeoutExpired:
-            result = 1
-        if result != 0:
-            raise Exception("Call to qpdf failed for template " + str(filename) + " where arguments were " + " ".join(qpdf_subprocess_arguments))
-        return PyPDF2.PdfFileReader(open(new_filename.name, 'rb'), overwriteWarnings=False)
-
-
 def ocr_finalize(*pargs, **kwargs):
     # logmessage("ocr_finalize started")
     if kwargs.get('pdf', False):
@@ -9855,13 +9922,13 @@ def get_ocr_language(language):
                         lang = 'eng'
                     else:
                         lang = langs[0]
-                    raise Exception("could not get OCR language for language " + str(language) + "; using language " + str(lang))
+                    raise DAError("could not get OCR language for language " + str(language) + "; using language " + str(lang))
             except Exception as the_error:
                 if 'eng' in langs:
                     lang = 'eng'
                 else:
                     lang = langs[0]
-                raise Exception("could not get OCR language for language " + str(language) + "; using language " + str(lang) + "; error was " + str(the_error))
+                raise DAError("could not get OCR language for language " + str(language) + "; using language " + str(lang) + "; error was " + str(the_error))
     return lang
 
 
@@ -9869,11 +9936,10 @@ def get_available_languages():
     try:
         output = subprocess.check_output(['tesseract', '--list-langs'], stderr=subprocess.STDOUT).decode()
     except subprocess.CalledProcessError as err:
-        raise Exception("get_available_languages: failed to list available languages: " + str(err))
-    else:
-        result = output.splitlines()
-        result.pop(0)
-        return result
+        raise DAError("get_available_languages: failed to list available languages: " + str(err))
+    result = output.splitlines()
+    result.pop(0)
+    return result
 
 
 def ocr_page_tasks(image_file, language=None, psm=6, f=None, l=None, x=None, y=None, W=None, H=None, user_code=None, user=None, pdf=False, preserve_color=False, **kwargs):  # noqa: E741 # pylint: disable=unused-argument
@@ -9923,25 +9989,29 @@ def ocr_page_tasks(image_file, language=None, psm=6, f=None, l=None, x=None, y=N
     for doc in image_file:
         if hasattr(doc, 'extension'):
             if doc.extension not in ['pdf', 'png', 'jpg', 'gif', 'docx', 'doc', 'odt', 'rtf']:
-                raise Exception("document with extension " + doc.extension + " is not a readable image file")
+                raise DAError("document with extension " + doc.extension + " is not a readable image file")
             if doc.extension == 'pdf':
                 # doc.page_path(1, 'page')
-                for i in range(safe_pypdf_reader(doc.path()).getNumPages()):
+                with Pdf.open(doc.path()) as tmp_pdf:
+                    page_count = len(tmp_pdf.pages)
+                for i in range(page_count):
                     if f is not None and i + 1 < f:
                         continue
                     if l is not None and i + 1 > l:
                         continue
-                    todo.append(dict(doc=doc, page=i+1, lang=lang, ocr_resolution=ocr_resolution, psm=psm, x=x, y=y, W=W, H=H, pdf_to_ppm=pdf_to_ppm, user_code=user_code, user=user, pdf=pdf, preserve_color=preserve_color))
+                    todo.append({'doc': doc, 'page': i+1, 'lang': lang, 'ocr_resolution': ocr_resolution, 'psm': psm, 'x': x, 'y': y, 'W': W, 'H': H, 'pdf_to_ppm': pdf_to_ppm, 'user_code': user_code, 'user': user, 'pdf': pdf, 'preserve_color': preserve_color})
             elif doc.extension in ("docx", "doc", "odt", "rtf"):
                 doc_conv = pdf_concatenate(doc)
-                for i in range(safe_pypdf_reader(doc_conv.path()).getNumPages()):
+                with Pdf.open(doc_conv.path()) as tmp_pdf:
+                    page_count = len(tmp_pdf.pages)
+                for i in range(page_count):
                     if f is not None and i + 1 < f:
                         continue
                     if l is not None and i + 1 > l:
                         continue
-                    todo.append(dict(doc=doc_conv, page=i+1, lang=lang, ocr_resolution=ocr_resolution, psm=psm, x=x, y=y, W=W, H=H, pdf_to_ppm=pdf_to_ppm, user_code=user_code, user=user, pdf=pdf, preserve_color=preserve_color))
+                    todo.append({'doc': doc_conv, 'page': i+1, 'lang': lang, 'ocr_resolution': ocr_resolution, 'psm': psm, 'x': x, 'y': y, 'W': W, 'H': H, 'pdf_to_ppm': pdf_to_ppm, 'user_code': user_code, 'user': user, 'pdf': pdf, 'preserve_color': preserve_color})
             else:
-                todo.append(dict(doc=doc, page=None, lang=lang, ocr_resolution=ocr_resolution, psm=psm, x=x, y=y, W=W, H=H, pdf_to_ppm=pdf_to_ppm, user_code=user_code, user=user, pdf=pdf, preserve_color=preserve_color))
+                todo.append({'doc': doc, 'page': None, 'lang': lang, 'ocr_resolution': ocr_resolution, 'psm': psm, 'x': x, 'y': y, 'W': W, 'H': H, 'pdf_to_ppm': pdf_to_ppm, 'user_code': user_code, 'user': user, 'pdf': pdf, 'preserve_color': preserve_color})
     # logmessage("ocr_page_tasks finished")
     return todo
 
@@ -9970,7 +10040,7 @@ def make_png_for_pdf_path(path, prefix, resolution, pdf_to_ppm, page=None):
     if os.path.isfile(test_path):
         os.remove(test_path)
     if result > 0:
-        raise Exception("Unable to extract images from PDF file")
+        raise DAError("Unable to extract images from PDF file")
 
 
 def ocr_pdf(*pargs, target=None, filename=None, lang=None, psm=6, dafilelist=None, preserve_color=False):  # pylint: disable=unused-argument
@@ -10030,7 +10100,7 @@ def ocr_pdf(*pargs, target=None, filename=None, lang=None, psm=6, dafilelist=Non
                 result = 1
                 logmessage("ocr_pdf: call to gs took too long")
             if result != 0:
-                raise Exception("ocr_pdf: failed to run gs with command " + " ".join(params))
+                raise DAError("ocr_pdf: failed to run gs with command " + " ".join(params))
             params = ['tesseract', tiff_file.name, pdf_file.name, '-l', str(lang), '--psm', str(psm), '--dpi', '600', 'pdf']
             try:
                 result = subprocess.run(params, timeout=60*60, check=False).returncode
@@ -10038,7 +10108,7 @@ def ocr_pdf(*pargs, target=None, filename=None, lang=None, psm=6, dafilelist=Non
                 result = 1
                 logmessage("ocr_pdf: call to tesseract took too long")
             if result != 0:
-                raise Exception("ocr_pdf: failed to run tesseract with command " + " ".join(params))
+                raise DAError("ocr_pdf: failed to run tesseract with command " + " ".join(params))
         else:
             params = ['tesseract', path, pdf_file.name, '-l', str(lang), '--psm', str(psm), '--dpi', '300', 'pdf']
             try:
@@ -10047,7 +10117,7 @@ def ocr_pdf(*pargs, target=None, filename=None, lang=None, psm=6, dafilelist=Non
                 result = 1
                 logmessage("ocr_pdf: call to tesseract took too long")
             if result != 0:
-                raise Exception("ocr_pdf: failed to run tesseract with command " + " ".join(params))
+                raise DAError("ocr_pdf: failed to run tesseract with command " + " ".join(params))
         output.append(pdf_file.name + '.pdf')
     if len(output) == 0:
         return None
@@ -10081,7 +10151,7 @@ def ocr_page(indexno, doc=None, lang=None, pdf_to_ppm='pdf_to_ppm', ocr_resoluti
         return None
     # logmessage("ocr_page running with extension " + str(doc.extension))
     if doc.extension not in ['pdf', 'png', 'jpg', 'gif']:
-        raise Exception("Not a readable image file")
+        raise DAError("Not a readable image file")
     # logmessage("ocr_page calling doc.path()")
     path = doc.path()
     if doc.extension == 'pdf':
@@ -10130,18 +10200,18 @@ def ocr_page(indexno, doc=None, lang=None, pdf_to_ppm='pdf_to_ppm', ocr_resoluti
         try:
             text = subprocess.check_output(params, stdin=file_to_read).decode()
         except subprocess.CalledProcessError as err:
-            raise Exception("ocr_page: failed to run tesseract with command " + " ".join(params) + ": " + str(err) + " " + str(err.output.decode()))
+            raise DAError("ocr_page: failed to run tesseract with command " + " ".join(params) + ": " + str(err) + " " + str(err.output.decode()))
         logmessage("ocr_page finished with pdf page " + str(page))
         doc.commit()
-        return dict(indexno=indexno, page=page, doc=doc)
+        return {'indexno': indexno, 'page': page, 'doc': doc}
     params = ['tesseract', 'stdin', 'stdout', '-l', str(lang), '--psm', str(psm), '--dpi', str(ocr_resolution)]
     logmessage("ocr_page: piping to command " + " ".join(params))
     try:
         text = subprocess.check_output(params, stdin=file_to_read).decode()
     except subprocess.CalledProcessError as err:
-        raise Exception("ocr_page: failed to run tesseract with command " + " ".join(params) + ": " + str(err) + " " + str(err.output.decode()))
+        raise DAError("ocr_page: failed to run tesseract with command " + " ".join(params) + ": " + str(err) + " " + str(err.output.decode()))
     logmessage("ocr_page finished with page " + str(page))
-    return dict(indexno=indexno, page=page, text=text)
+    return {'indexno': indexno, 'page': page, 'text': text}
 
 
 def complex_getattr(obj, attr):
