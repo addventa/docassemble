@@ -2,8 +2,7 @@ FROM addventa/docassemble-os:1.1.0
 COPY . /tmp/docassemble/
 RUN DEBIAN_FRONTEND=noninteractive TERM=xterm \
 bash -c \
-"apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 4EB27DB2A3B88B8B \
-&& apt-get -y update \
+"apt-get -y update \
 && chsh -s /bin/bash www-data \
 && ln -s /var/mail/mail /var/mail/root \
 && cp /tmp/docassemble/docassemble_webapp/docassemble.wsgi /usr/share/docassemble/webapp/ \
