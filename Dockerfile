@@ -1,4 +1,4 @@
-FROM addventa/docassemble-os:1.1.0
+FROM jhpyle/docassemble-os
 COPY . /tmp/docassemble/
 RUN DEBIAN_FRONTEND=noninteractive TERM=xterm LC_CTYPE=C.UTF-8 LANG=C.UTF-8 \
 bash -c \
