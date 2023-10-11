@@ -10,7 +10,7 @@ source "${DA_ACTIVATE}"
 export CONTAINERROLE=":${CONTAINERROLE:-all}:"
 export HOME=/var/www
 
-source /dev/stdin < <(python -m docassemble.base.read_config "$DA_CONFIG_FILE")
+source /dev/stdin < <(python -m docassemble.base.read_config "$DA_CONFIG_FILE" | tee /dev/tty | tee -a "/usr/share/docassemble/log/config.log")
 
 if [ "${DAREADONLYFILESYSTEM:-false}" == "true" ]; then
     echo "Will not reset because read-only file system" >&2
