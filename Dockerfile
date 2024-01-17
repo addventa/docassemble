@@ -49,8 +49,8 @@ bash -c \
 && chown -R www-data.www-data \
    /tmp/docassemble \
    /usr/share/docassemble/local3.10 \
-   /usr/share/docassemble/log \
-   /usr/share/docassemble/files \
+   /data/share/docassemble/log \
+   /data/share/docassemble/files \
 && chmod ogu+r /usr/share/docassemble/config/config.yml.dist \
 && chmod 755 /etc/ssl/docassemble \
 && cd /tmp \
@@ -120,8 +120,8 @@ bash -c \
 && cp /usr/share/docassemble/local3.10/lib/python3.10/site-packages/s4cmd.py /usr/share/s4cmd/ \
 && chown -R www-data.www-data \
    /usr/share/docassemble/local3.10 \
-   /usr/share/docassemble/log \
-   /usr/share/docassemble/files \
+   /data/share/docassemble/log \
+   /data/share/docassemble/files \
 && usermod --shell /bin/bash www-data \
 && rm -f /etc/cron.daily/apt-compat \
 && sed -i -e 's/^\(daemonize\s*\)yes\s*$/\1no/g' -e 's/^bind 127.0.0.1/bind 0.0.0.0/g' /etc/redis/redis.conf \

@@ -27,7 +27,7 @@ import docassemble.webapp.cloud
 
 cloud = docassemble.webapp.cloud.get_cloud()
 
-UPLOAD_DIRECTORY = daconfig.get('uploads', '/usr/share/docassemble/files')
+UPLOAD_DIRECTORY = daconfig.get('uploads', '/data/share/docassemble/files')
 
 
 def listfiles(directory):

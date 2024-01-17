@@ -1169,11 +1169,11 @@ if [ "${DAWEBSERVER:-nginx}" != "none" ] && [ "${USEHTTPS:-false}" == "true" ] &
     NASCENTRUNNING=false;
 fi
 
-touch /usr/share/docassemble/log/worker.log \
-    && touch /usr/share/docassemble/log/single_worker.log \
-    && touch /usr/share/docassemble/log/uwsgi.log \
-    && touch /usr/share/docassemble/log/websockets.log \
-    && chown -R www-data.www-data /usr/share/docassemble/log
+touch /data/share/docassemble/log/worker.log \
+    && touch /data/share/docassemble/log/single_worker.log \
+    && touch /data/share/docassemble/log/uwsgi.log \
+    && touch /data/share/docassemble/log/websockets.log \
+    && chown -R www-data.www-data /data/share/docassemble/log
 
 if [ "${DAWEBSERVER:-nginx}" = "none" ]; then
     mkdir -p /var/run/uwsgi

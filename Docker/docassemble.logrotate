@@ -1,12 +1,12 @@
-/usr/share/docassemble/log/docassemble.log
-/usr/share/docassemble/log/apache_access.log
-/usr/share/docassemble/log/apache_error.log
-/usr/share/docassemble/log/nginx_access.log
-/usr/share/docassemble/log/nginx_error.log
-/usr/share/docassemble/log/uwsgi.log
-/usr/share/docassemble/log/websockets.log
-/usr/share/docassemble/log/worker.log
-/usr/share/docassemble/log/single_worker.log
+/data/share/docassemble/log/docassemble.log
+/data/share/docassemble/log/apache_access.log
+/data/share/docassemble/log/apache_error.log
+/data/share/docassemble/log/nginx_access.log
+/data/share/docassemble/log/nginx_error.log
+/data/share/docassemble/log/uwsgi.log
+/data/share/docassemble/log/websockets.log
+/data/share/docassemble/log/worker.log
+/data/share/docassemble/log/single_worker.log
 {
         su www-data www-data
 	create 600 www-data www-data
