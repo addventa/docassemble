@@ -46,6 +46,8 @@ bash -c \
 && chown www-data.www-data \
    /usr/share/docassemble/config/config.yml.dist \
    /usr/share/docassemble/webapp/docassemble.wsgi \
+&& mkdir -p /data/share/docassemble/log \
+&& mkdir -p /data/share/docassemble/files \
 && chown -R www-data.www-data \
    /tmp/docassemble \
    /usr/share/docassemble/local3.10 \
