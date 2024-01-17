@@ -7,6 +7,9 @@ bash -c \
 && ln -s /var/mail/mail /var/mail/root \
 && mkdir -p /data/share/docassemble/webapp \
 && mkdir -p /data/share/docassemble/cron \
+&& mkdir -p /data/share/docassemble/local3.10 \
+&& mkdir -p /data/share/docassemble/config \
+&& mkdir -p /data/share/docassemble/certs \
 && cp /tmp/docassemble/docassemble_webapp/docassemble.wsgi /data/share/docassemble/webapp/ \
 && cp /tmp/docassemble/Docker/*.sh /data/share/docassemble/webapp/ \
 && cp /tmp/docassemble/Docker/VERSION /data/share/docassemble/webapp/ \
