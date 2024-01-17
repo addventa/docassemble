@@ -1,7 +1,7 @@
 #! /bin/bash
 
 export HOME=/root
-export DA_ROOT="${DA_ROOT:-/usr/share/docassemble}"
+export DA_ROOT="${DA_ROOT:-/data/share/docassemble}"
 export DA_DEFAULT_LOCAL="local3.10"
 
 export DA_ACTIVATE="${DA_PYTHON:-${DA_ROOT}/${DA_DEFAULT_LOCAL}}/bin/activate"
@@ -541,29 +541,29 @@ if [ "${DAREADONLYFILESYSTEM:-false}" == "false" ]; then
 	if [ "${DAROOTOWNED:-false}" == "true" ]; then
 	    if [ "${DAALLOWUPDATES:-true}" == "true" ] \
 		   || [ "${DAENABLEPLAYGROUND:-true}" == "true" ]; then
-		chown -R www-data.www-data /usr/share/docassemble/local3.10
+		chown -R www-data.www-data /data/share/docassemble/local3.10
 		DAINSTALLASROOT=false
 	    else
 		echo "initialize: Python virtual environment is read-only" >&2
 	    fi
 	    if [ "${DAALLOWCONFIGURATIONEDITING:-true}" == "true" ]; then
-		chown -R www-data.www-data /usr/share/docassemble/config
+		chown -R www-data.www-data /data/share/docassemble/config
 	    else
 		echo "initialize: The config.yml file is read-only" >&2
 	    fi
 	    if [ "${DAALLOWUPDATES:-true}" == "true" ] \
 		   || [ "${DAENABLEPLAYGROUND:-true}" == "true" ] \
 		   || [ "${DAALLOWCONFIGURATIONEDITING:-true}" == "true" ]; then
-		chown www-data.www-data /usr/share/docassemble/webapp/docassemble.wsgi
+		chown www-data.www-data /data/share/docassemble/webapp/docassemble.wsgi
 	    else
 		echo "initialize: The WSGI file is read-only" >&2
 	    fi
 	else
 	    echo "initialize: No root ownership" >&2
 	    chsh -s /bin/bash www-data
-	    chown -R www-data.www-data /usr/share/docassemble/local3.10
-	    chown -R www-data.www-data /usr/share/docassemble/config \
-		  /usr/share/docassemble/webapp/docassemble.wsgi
+	    chown -R www-data.www-data /data/share/docassemble/local3.10
+	    chown -R www-data.www-data /data/share/docassemble/config \
+		  /data/share/docassemble/webapp/docassemble.wsgi
 	    DAINSTALLASROOT=false
 	fi
     else
@@ -668,7 +668,7 @@ fi
 
 if [ "${DAWEBSERVER:-nginx}" = "apache" ] && [ "${DAREADONLYFILESYSTEM:-false}" == "false" ]; then
     rm -f /etc/cron.daily/apache2
-    ln -s /usr/share/docassemble/cron/apache2 /etc/cron.daily/apache2
+    ln -s /data/share/docassemble/cron/apache2 /etc/cron.daily/apache2
     if [[ $CONTAINERROLE =~ .*:(all|web|log):.* ]]; then
 	echo "initialize: Setting up Apache" >&2
         a2dissite -q 000-default &> /dev/null
@@ -703,7 +703,7 @@ if [ "${DAWEBSERVER:-nginx}" = "apache" ] && [ "${DAREADONLYFILESYSTEM:-false}" 
 elif [ "${DAREADONLYFILESYSTEM:-false}" == "false" ]; then
     echo "initialize: Disabling apache2 cron" >&2
     rm -f /etc/cron.daily/apache2
-    ln -s /usr/share/docassemble/cron/donothing /etc/cron.daily/apache2
+    ln -s /data/share/docassemble/cron/donothing /etc/cron.daily/apache2
 fi
 
 if [ "${DAWEBSERVER:-nginx}" = "nginx" ] && [ "${DAREADONLYFILESYSTEM:-false}" == "false" ]; then
@@ -1496,7 +1496,7 @@ if [ "$EXIM4RUNNING" == "false" ] && [[ $CONTAINERROLE =~ .*:(all|mail):.* && ($
     echo "initialize: Starting exim4" >&2
     if [ "${DAREADONLYFILESYSTEM:-false}" == "false" ]; then
 	rm -f /etc/cron.daily/exim4-base
-	ln -s /usr/share/docassemble/cron/exim4-base /etc/cron.daily/exim4-base
+	ln -s /data/share/docassemble/cron/exim4-base /etc/cron.daily/exim4-base
 	if [ "${DBTYPE}" = "postgresql" ]; then
 	    cp "${DA_ROOT}/config/exim4-router-postgresql" /etc/exim4/dbrouter
 	    if [ "${DBHOST:-null}" != "null" ]; then
@@ -1552,7 +1552,7 @@ if [ "$EXIM4RUNNING" == "false" ] && [[ $CONTAINERROLE =~ .*:(all|mail):.* && ($
 elif [ "${DAREADONLYFILESYSTEM:-false}" == "false" ]; then
     echo "initialize: Disabling exim4 cron" >&2
     rm -f /etc/cron.daily/exim4-base
-    ln -s /usr/share/docassemble/cron/donothing /etc/cron.daily/exim4-base
+    ln -s /data/share/docassemble/cron/donothing /etc/cron.daily/exim4-base
 fi
 
 if [[ $CONTAINERROLE =~ .*:(log):.* ]] || [ "$OTHERLOGSERVER" == "true" ]; then

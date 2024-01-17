@@ -62,8 +62,8 @@ def main():
         if success:
             return
     if certs_location is None:
-        if os.path.isdir('/usr/share/docassemble/certs'):
-            certs_location = '/usr/share/docassemble/certs'
+        if os.path.isdir('/data/share/docassemble/certs'):
+            certs_location = '/data/share/docassemble/certs'
         else:
             return
     if not os.path.isdir(certs_location):

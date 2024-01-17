@@ -267,7 +267,7 @@ def load(**kwargs):
             if os.path.isfile(arg):
                 filename = arg
     if filename is None:
-        filename = kwargs.get('filename', os.getenv('DA_CONFIG_FILE', '/usr/share/docassemble/config/config.yml'))
+        filename = kwargs.get('filename', os.getenv('DA_CONFIG_FILE', '/data/share/docassemble/config/config.yml'))
     if 'in_celery' in kwargs and kwargs['in_celery']:
         in_celery = True
     if 'in_cron' in kwargs and kwargs['in_cron']:
@@ -281,7 +281,7 @@ def load(**kwargs):
             sys.stderr.write("Wrote configuration file to " + str(filename) + "\n")
     if not os.path.isfile(filename):
         sys.stderr.write("Configuration file " + str(filename) + " does not exist.  Trying default instead.\n")
-        filename = '/usr/share/docassemble/config/config.yml'
+        filename = '/data/share/docassemble/config/config.yml'
     if not os.path.isfile(filename):
         sys.stderr.write("Configuration file " + str(filename) + " does not exist.\n")
         sys.exit(1)
@@ -309,9 +309,9 @@ def load(**kwargs):
         del daconfig['avconv']
     daconfig['config file'] = filename
     if 'modules' not in daconfig:
-        daconfig['modules'] = os.getenv('DA_PYTHON', '/usr/share/docassemble/local' + str(sys.version_info.major) + '.' + str(sys.version_info.minor))
+        daconfig['modules'] = os.getenv('DA_PYTHON', '/data/share/docassemble/local' + str(sys.version_info.major) + '.' + str(sys.version_info.minor))
     daconfig['python version'] = str(pkg_resources.get_distribution("docassemble.base").version)
-    version_file = daconfig.get('version file', '/usr/share/docassemble/webapp/VERSION')
+    version_file = daconfig.get('version file', '/data/share/docassemble/webapp/VERSION')
     if os.path.isfile(version_file) and os.access(version_file, os.R_OK):
         with open(version_file, 'r', encoding='utf-8') as fp:
             daconfig['system version'] = fp.read().strip()

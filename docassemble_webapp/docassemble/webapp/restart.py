@@ -38,7 +38,7 @@ def main():
         if ':cron:' in container_role:
             r.delete('da:cron_restart')
 
-    webapp_path = daconfig.get('webapp', '/usr/share/docassemble/webapp/docassemble.wsgi')
+    webapp_path = daconfig.get('webapp', '/data/share/docassemble/webapp/docassemble.wsgi')
     cloud = get_cloud()
     if cloud is not None:
         key = cloud.get_key('config.yml')

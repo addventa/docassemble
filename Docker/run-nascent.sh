@@ -1,7 +1,7 @@
 #!/bin/bash
 
 export CONTAINERROLE=":${CONTAINERROLE:-all}:"
-export DA_ROOT="${DA_ROOT:-/usr/share/docassemble}"
+export DA_ROOT="${DA_ROOT:-/data/share/docassemble}"
 
 set -- $LOCALE
 export LANG=$1

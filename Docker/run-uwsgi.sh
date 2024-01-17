@@ -1,7 +1,7 @@
 #!/bin/bash
 
 export DEBIAN_FRONTEND=noninteractive
-export DA_ROOT="${DA_ROOT:-/usr/share/docassemble}"
+export DA_ROOT="${DA_ROOT:-/data/share/docassemble}"
 export DA_CONFIG_FILE="${DA_CONFIG:-${DA_ROOT}/config/config.yml}"
 export DA_DEFAULT_LOCAL="local3.10"
 

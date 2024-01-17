@@ -403,7 +403,7 @@ def update_versions(start_time=None):
 
 
 def get_home_page_dict():
-    PACKAGE_DIRECTORY = daconfig.get('packages', '/usr/share/docassemble/local' + str(sys.version_info.major) + '.' + str(sys.version_info.minor))
+    PACKAGE_DIRECTORY = daconfig.get('packages', '/data/share/docassemble/local' + str(sys.version_info.major) + '.' + str(sys.version_info.minor))
     FULL_PACKAGE_DIRECTORY = os.path.join(PACKAGE_DIRECTORY, 'lib', 'python' + str(sys.version_info.major) + '.' + str(sys.version_info.minor), 'site-packages')
     home_page = {}
     for d in os.listdir(FULL_PACKAGE_DIRECTORY):
@@ -512,7 +512,7 @@ def install_package(package, start_time=None):
     if package.type == 'zip' and package.upload is None:
         return 0, ''
     from docassemble.webapp.files import SavedFile  # pylint: disable=import-outside-toplevel
-    PACKAGE_DIRECTORY = daconfig.get('packages', '/usr/share/docassemble/local' + str(sys.version_info.major) + '.' + str(sys.version_info.minor))
+    PACKAGE_DIRECTORY = daconfig.get('packages', '/data/share/docassemble/local' + str(sys.version_info.major) + '.' + str(sys.version_info.minor))
     logfilecontents = ''
     pip_log = tempfile.NamedTemporaryFile()
     temp_dir = tempfile.mkdtemp(prefix='SavedFile')
@@ -719,7 +719,7 @@ def main():
                     logmessage("update: not sending reset signal because not web or celery after " + str(time.time() - start_time) + " seconds")
             else:
                 logmessage("update: touched wsgi file after " + str(time.time() - start_time) + " seconds")
-                wsgi_file = daconfig.get('webapp', '/usr/share/docassemble/webapp/docassemble.wsgi')
+                wsgi_file = daconfig.get('webapp', '/data/share/docassemble/webapp/docassemble.wsgi')
                 if os.path.isfile(wsgi_file):
                     with open(wsgi_file, 'a', encoding='utf-8'):
                         os.utime(wsgi_file, None)

@@ -514,14 +514,14 @@ if daconfig['supervisor'].get('username', None):
     SUPERVISORCTL.extend(['--username', daconfig['supervisor']['username'], '--password', daconfig['supervisor']['password']])
 
 # PACKAGE_CACHE = daconfig.get('packagecache', '/var/www/.cache')
-WEBAPP_PATH = daconfig.get('webapp', '/usr/share/docassemble/webapp/docassemble.wsgi')
+WEBAPP_PATH = daconfig.get('webapp', '/data/share/docassemble/webapp/docassemble.wsgi')
 if packaging.version.parse(daconfig.get('system version', '0.1.12')) < packaging.version.parse('1.4.0'):
-    READY_FILE = daconfig.get('ready file', '/usr/share/docassemble/webapp/ready')
+    READY_FILE = daconfig.get('ready file', '/data/share/docassemble/webapp/ready')
 else:
     READY_FILE = daconfig.get('ready file', '/var/run/docassemble/ready')
 
 UPLOAD_DIRECTORY = daconfig.get('uploads', '/data/share/docassemble/files')
-PACKAGE_DIRECTORY = daconfig.get('packages', '/usr/share/docassemble/local' + str(sys.version_info.major) + '.' + str(sys.version_info.minor))
+PACKAGE_DIRECTORY = daconfig.get('packages', '/data/share/docassemble/local' + str(sys.version_info.major) + '.' + str(sys.version_info.minor))
 FULL_PACKAGE_DIRECTORY = os.path.join(PACKAGE_DIRECTORY, 'lib', 'python' + str(sys.version_info.major) + '.' + str(sys.version_info.minor), 'site-packages')
 LOG_DIRECTORY = daconfig.get('log', '/data/share/docassemble/log')
 

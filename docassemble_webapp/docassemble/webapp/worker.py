@@ -28,7 +28,7 @@ from celery.result import result_from_tuple
 
 USING_SUPERVISOR = bool(os.environ.get('SUPERVISOR_SERVER_URL', None))
 
-WEBAPP_PATH = daconfig.get('webapp', '/usr/share/docassemble/webapp/docassemble.wsgi')
+WEBAPP_PATH = daconfig.get('webapp', '/data/share/docassemble/webapp/docassemble.wsgi')
 CONTAINER_ROLE = ':' + os.environ.get('CONTAINERROLE', '') + ':'
 
 ONEDRIVE_CHUNK_SIZE = 2000000

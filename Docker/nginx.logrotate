@@ -14,7 +14,7 @@
         endscript
         postrotate
 	        if /etc/init.d/nginx status > /dev/null ; then \
-                        /usr/share/docassemble/webapp/restart-nginx.sh ; \
+                        /data/share/docassemble/webapp/restart-nginx.sh ; \
                 fi
         endscript
 }

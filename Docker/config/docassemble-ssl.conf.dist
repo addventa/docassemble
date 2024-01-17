@@ -17,8 +17,8 @@
         ProxyPass        ${DAPOSTURLROOT}ws/ http://${DAWEBSOCKETSIP}:${DAWEBSOCKETSPORT}/
         ProxyPassReverse ${DAPOSTURLROOT}ws/ http://${DAWEBSOCKETSIP}:${DAWEBSOCKETSPORT}/
         WSGIDaemonProcess docassemble.webserver user=www-data group=www-data threads=5
-        WSGIScriptAlias ${DAWSGIROOT} /usr/share/docassemble/webapp/docassemble.wsgi
-        <Directory /usr/share/docassemble/webapp>
+        WSGIScriptAlias ${DAWSGIROOT} /data/share/docassemble/webapp/docassemble.wsgi
+        <Directory /data/share/docassemble/webapp>
             WSGIProcessGroup docassemble.webserver
             WSGIApplicationGroup %{GLOBAL}
             AllowOverride none

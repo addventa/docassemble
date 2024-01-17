@@ -5,15 +5,17 @@ bash -c \
 "apt-get -y update \
 && chsh -s /bin/bash www-data \
 && ln -s /var/mail/mail /var/mail/root \
-&& cp /tmp/docassemble/docassemble_webapp/docassemble.wsgi /usr/share/docassemble/webapp/ \
-&& cp /tmp/docassemble/Docker/*.sh /usr/share/docassemble/webapp/ \
-&& cp /tmp/docassemble/Docker/VERSION /usr/share/docassemble/webapp/ \
-&& cp /tmp/docassemble/Docker/pip.conf /usr/share/docassemble/local3.10/ \
-&& cp /tmp/docassemble/Docker/config/* /usr/share/docassemble/config/ \
+&& mkdir -p /data/share/docassemble/webapp \
+&& mkdir -p /data/share/docassemble/cron \
+&& cp /tmp/docassemble/docassemble_webapp/docassemble.wsgi /data/share/docassemble/webapp/ \
+&& cp /tmp/docassemble/Docker/*.sh /data/share/docassemble/webapp/ \
+&& cp /tmp/docassemble/Docker/VERSION /data/share/docassemble/webapp/ \
+&& cp /tmp/docassemble/Docker/pip.conf /data/share/docassemble/local3.10/ \
+&& cp /tmp/docassemble/Docker/config/* /data/share/docassemble/config/ \
 && cp /tmp/docassemble/Docker/cgi-bin/index.sh /usr/lib/cgi-bin/ \
-&& cp /tmp/docassemble/Docker/syslog-ng.conf /usr/share/docassemble/webapp/syslog-ng.conf \
-&& cp /tmp/docassemble/Docker/syslog-ng-docker.conf /usr/share/docassemble/webapp/syslog-ng-docker.conf \
-&& cp /tmp/docassemble/Docker/docassemble-syslog-ng.conf /usr/share/docassemble/webapp/docassemble-syslog-ng.conf \
+&& cp /tmp/docassemble/Docker/syslog-ng.conf /data/share/docassemble/webapp/syslog-ng.conf \
+&& cp /tmp/docassemble/Docker/syslog-ng-docker.conf /data/share/docassemble/webapp/syslog-ng-docker.conf \
+&& cp /tmp/docassemble/Docker/docassemble-syslog-ng.conf /data/share/docassemble/webapp/docassemble-syslog-ng.conf \
 && cp /tmp/docassemble/Docker/apache.logrotate /etc/logrotate.d/apache2 \
 && cp /tmp/docassemble/Docker/nginx.logrotate /etc/logrotate.d/nginx \
 && cp /tmp/docassemble/Docker/docassemble.logrotate /etc/logrotate.d/docassemble \
@@ -22,17 +24,17 @@ bash -c \
 && cp /tmp/docassemble/Docker/cron/docassemble-cron-daily.sh /etc/cron.daily/docassemble \
 && cp /tmp/docassemble/Docker/cron/docassemble-cron-hourly.sh /etc/cron.hourly/docassemble \
 && cp /tmp/docassemble/Docker/cron/syslogng-cron-daily.sh /etc/cron.daily/logrotatepost \
-&& cp /tmp/docassemble/Docker/cron/donothing /usr/share/docassemble/cron/donothing \
+&& cp /tmp/docassemble/Docker/cron/donothing /data/share/docassemble/cron/donothing \
 && cp /tmp/docassemble/Docker/docassemble.conf /etc/apache2/conf-available/ \
 && cp /tmp/docassemble/Docker/docassemble-behindlb.conf /etc/apache2/conf-available/ \
 && cp /tmp/docassemble/Docker/docassemble-supervisor.conf /etc/supervisor/conf.d/docassemble.conf \
-&& cp /tmp/docassemble/Docker/ssl/* /usr/share/docassemble/certs/ \
-&& cp -r /tmp/docassemble/Docker/ssl /usr/share/docassemble/config/defaultcerts \
-&& chmod og-rwx /usr/share/docassemble/certs/* \
-&& chmod og-rwx /usr/share/docassemble/config/defaultcerts/* \
+&& cp /tmp/docassemble/Docker/ssl/* /data/share/docassemble/certs/ \
+&& cp -r /tmp/docassemble/Docker/ssl /data/share/docassemble/config/defaultcerts \
+&& chmod og-rwx /data/share/docassemble/certs/* \
+&& chmod og-rwx /data/share/docassemble/config/defaultcerts/* \
 && cp /tmp/docassemble/Docker/rabbitmq.config /etc/rabbitmq/ \
-&& mkdir /usr/share/docassemble/packages \
-&& cp /tmp/docassemble/Docker/packages/* /usr/share/docassemble/packages/ \
+&& mkdir /data/share/docassemble/packages \
+&& cp /tmp/docassemble/Docker/packages/* /data/share/docassemble/packages/ \
 && cp /tmp/docassemble/Docker/config/exim4-router /etc/exim4/conf.d/router/101_docassemble \
 && cp /tmp/docassemble/Docker/config/exim4-filter /etc/exim4/docassemble-filter \
 && cp /tmp/docassemble/Docker/config/exim4-main /etc/exim4/conf.d/main/01_docassemble \
@@ -42,18 +44,18 @@ bash -c \
 && cp /tmp/docassemble/Docker/daunoconv /usr/bin/daunoconv \
 && chmod ogu+rx /usr/bin/daunoconv \
 && update-exim4.conf \
-&& chown www-data.www-data /usr/share/docassemble/config \
+&& chown www-data.www-data /data/share/docassemble/config \
 && chown www-data.www-data \
-   /usr/share/docassemble/config/config.yml.dist \
-   /usr/share/docassemble/webapp/docassemble.wsgi \
+   /data/share/docassemble/config/config.yml.dist \
+   /data/share/docassemble/webapp/docassemble.wsgi \
 && mkdir -p /data/share/docassemble/log \
 && mkdir -p /data/share/docassemble/files \
 && chown -R www-data.www-data \
    /tmp/docassemble \
-   /usr/share/docassemble/local3.10 \
+   /data/share/docassemble/local3.10 \
    /data/share/docassemble/log \
    /data/share/docassemble/files \
-&& chmod ogu+r /usr/share/docassemble/config/config.yml.dist \
+&& chmod ogu+r /data/share/docassemble/config/config.yml.dist \
 && chmod 755 /etc/ssl/docassemble \
 && cd /tmp \
 && wget https://bootstrap.pypa.io/get-pip.py \
@@ -63,8 +65,8 @@ bash -c \
 && echo \"en_US.UTF-8 UTF-8\" >> /etc/locale.gen \
 && locale-gen \
 && update-locale \
-&& /usr/bin/python3 -m venv --copies /usr/share/docassemble/local3.10 \
-&& source /usr/share/docassemble/local3.10/bin/activate \
+&& /usr/bin/python3 -m venv --copies /data/share/docassemble/local3.10 \
+&& source /data/share/docassemble/local3.10/bin/activate \
 && pip3 install --upgrade pip==21.1 \
 && pip3 install --upgrade wheel==0.37.1 \
 && pip3 install --upgrade mod_wsgi==4.9.3 \
@@ -102,26 +104,26 @@ bash -c \
    zope.event==4.5.0 \
    zope.hookable==5.1.0 \
    zope.interface==5.4.0 \
-   ./../usr/share/docassemble/packages/s4cmd-2.1.2-py3-none-any.whl \
+   ./../data/share/docassemble/packages/s4cmd-2.1.2-py3-none-any.whl \
 && pip3 install --use-feature=in-tree-build \
    /tmp/docassemble/docassemble \
    /tmp/docassemble/docassemble_base \
    /tmp/docassemble/docassemble_demo \
    /tmp/docassemble/docassemble_webapp \
-&& mv /etc/crontab /usr/share/docassemble/cron/crontab \
-&& ln -s /usr/share/docassemble/cron/crontab /etc/crontab \
-&& mv /etc/cron.daily/apache2 /usr/share/docassemble/cron/apache2 \
-&& ln -s /usr/share/docassemble/cron/apache2 /etc/cron.daily/apache2 \
-&& mv /etc/cron.daily/exim4-base /usr/share/docassemble/cron/exim4-base \
-&& ln -s /usr/share/docassemble/cron/exim4-base /etc/cron.daily/exim4-base \
-&& mv /etc/syslog-ng/syslog-ng.conf /usr/share/docassemble/syslogng/syslog-ng.conf \
-&& ln -s /usr/share/docassemble/syslogng/syslog-ng.conf /etc/syslog-ng/syslog-ng.conf \
-&& cp /usr/share/docassemble/local3.10/lib/python3.10/site-packages/mod_wsgi/server/mod_wsgi-py310.cpython-310-x86_64-linux-gnu.so /usr/lib/apache2/modules/mod_wsgi.so-3.10 \
+&& mv /etc/crontab /data/share/docassemble/cron/crontab \
+&& ln -s /data/share/docassemble/cron/crontab /etc/crontab \
+&& mv /etc/cron.daily/apache2 /data/share/docassemble/cron/apache2 \
+&& ln -s /data/share/docassemble/cron/apache2 /etc/cron.daily/apache2 \
+&& mv /etc/cron.daily/exim4-base /data/share/docassemble/cron/exim4-base \
+&& ln -s /data/share/docassemble/cron/exim4-base /etc/cron.daily/exim4-base \
+&& mv /etc/syslog-ng/syslog-ng.conf /data/share/docassemble/syslogng/syslog-ng.conf \
+&& ln -s /data/share/docassemble/syslogng/syslog-ng.conf /etc/syslog-ng/syslog-ng.conf \
+&& cp /data/share/docassemble/local3.10/lib/python3.10/site-packages/mod_wsgi/server/mod_wsgi-py310.cpython-310-x86_64-linux-gnu.so /usr/lib/apache2/modules/mod_wsgi.so-3.10 \
 && pip3 uninstall --yes mysqlclient MySQL-python &> /dev/null \
 && python3.10 -m nltk.downloader -d /usr/local/share/nltk_data all \
-&& cp /usr/share/docassemble/local3.10/lib/python3.10/site-packages/s4cmd.py /usr/share/s4cmd/ \
+&& cp /data/share/docassemble/local3.10/lib/python3.10/site-packages/s4cmd.py /usr/share/s4cmd/ \
 && chown -R www-data.www-data \
-   /usr/share/docassemble/local3.10 \
+   /data/share/docassemble/local3.10 \
    /data/share/docassemble/log \
    /data/share/docassemble/files \
 && usermod --shell /bin/bash www-data \
@@ -142,7 +144,7 @@ bash -c \
 
 USER www-data
 RUN bash -c \
-"source /usr/share/docassemble/local3.10/bin/activate \
+"source /data/share/docassemble/local3.10/bin/activate \
 && python /tmp/docassemble/Docker/nltkdownload.py \
 && cd /var/www/nltk_data/corpora \
 && unzip wordnet.zip \

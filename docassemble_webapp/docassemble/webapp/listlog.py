@@ -8,7 +8,7 @@ app = Flask(__name__)
 
 LOG_DIRECTORY = '/var/www/html/log'
 
-version_file = '/usr/share/docassemble/webapp/VERSION'
+version_file = '/data/share/docassemble/webapp/VERSION'
 if os.path.isfile(version_file) and os.access(version_file, os.R_OK):
     with open(version_file, 'r', encoding='utf-8') as fp:
         system_version = fp.read().strip()
@@ -16,7 +16,7 @@ else:
     system_version = '0.1.12'
 
 if version.parse(system_version) < version.parse('1.4.0'):
-    READY_FILE = '/usr/share/docassemble/webapp/ready'
+    READY_FILE = '/data/share/docassemble/webapp/ready'
 else:
     READY_FILE = '/var/run/docassemble/ready'
 

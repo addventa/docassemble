@@ -7,7 +7,7 @@
 #
 # This script will obtain new versions of the Javascript and CSS files
 
-export DA_ROOT="${DA_ROOT:-/usr/share/docassemble}"
+export DA_ROOT="${DA_ROOT:-/data/share/docassemble}"
 export DA_DEFAULT_LOCAL="local3.10"
 
 export DA_ACTIVATE="${DA_PYTHON:-${DA_ROOT}/${DA_DEFAULT_LOCAL}}/bin/activate"

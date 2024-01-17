@@ -8,7 +8,7 @@ from docassemble.base.logger import logmessage
 
 
 def main():
-    webapp_path = daconfig.get('webapp', '/usr/share/docassemble/webapp/docassemble.wsgi')
+    webapp_path = daconfig.get('webapp', '/data/share/docassemble/webapp/docassemble.wsgi')
     wsgi_file = webapp_path
     if os.path.isfile(wsgi_file):
         with open(wsgi_file, 'a', encoding='utf-8'):
