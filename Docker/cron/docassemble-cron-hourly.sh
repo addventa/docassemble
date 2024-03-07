@@ -46,5 +46,5 @@ if [[ $CONTAINERROLE =~ .*:(all|web):.* ]]; then
 fi
 
 if [ "${S3ENABLE:-false}" == "false" ] && [ "${AZUREENABLE:-false}" == "false" ]; then
-    rsync -auq --delete "${DA_ROOT}/files" "${DA_ROOT}/backup/"
+    rsync -auq --delete "/data/share/docassemble/files" "${DA_ROOT}/backup/"
 fi

@@ -520,7 +520,7 @@ if packaging.version.parse(daconfig.get('system version', '0.1.12')) < packaging
 else:
     READY_FILE = daconfig.get('ready file', '/var/run/docassemble/ready')
 
-UPLOAD_DIRECTORY = daconfig.get('uploads', '/usr/share/docassemble/files')
+UPLOAD_DIRECTORY = daconfig.get('uploads', '/data/share/docassemble/files')
 PACKAGE_DIRECTORY = daconfig.get('packages', '/usr/share/docassemble/local' + str(sys.version_info.major) + '.' + str(sys.version_info.minor))
 FULL_PACKAGE_DIRECTORY = os.path.join(PACKAGE_DIRECTORY, 'lib', 'python' + str(sys.version_info.major) + '.' + str(sys.version_info.minor), 'site-packages')
 LOG_DIRECTORY = daconfig.get('log', '/usr/share/docassemble/log')

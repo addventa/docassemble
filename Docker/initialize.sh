@@ -22,6 +22,12 @@ echo "--------------------------" >&2
 echo "Docassemble V1.4.9-8" >&2
 echo "--------------------------" >&2
 
+export FILES_ROOT="/data/share/docassemble/files"
+if [ -z "$(ls -A ${FILES_ROOT})" ]; then
+  echo "copying to ${FILES_ROOT}" >&2
+  cp -r /usr/share/docassemble/files ${FILES_ROOT}
+fi
+
 RESTOREFROMBACKUP=true
 
 if [ -f /var/run/docassemble/da_running ]; then
@@ -411,7 +417,7 @@ if [ "${RESTOREFROMBACKUP}" == "true" ]; then
 	if [ -d "${DA_ROOT}/backup/files" ]; then
 	    echo "initialize: Restoring files from backup" >&2
 	    rsync -auq "${DA_ROOT}/backup/files" "${DA_ROOT}/"
-	    chown -R www-data.www-data "${DA_ROOT}/files"
+	    chown -R www-data.www-data "/data/share/docassemble/files$"
 	fi
 	if [[ $CONTAINERROLE =~ .*:(all|redis):.* ]] && [ -f "${DA_ROOT}/backup/redis.rdb" ] && [ "$REDISRUNNING" == "false" ]; then
 	    echo "initialize: Restoring Redis from backup" >&2
@@ -638,22 +644,22 @@ if [ "${DAREADONLYFILESYSTEM:-false}" == "false" ]; then
 
     if [ "${AZUREENABLE:-false}" == "true" ] && [[ ! $(python -m docassemble.webapp.list-cloud files) ]]; then
 	echo "initialize: Test if a files folder is present locally" >&2
-	if [ -d "${DA_ROOT}/files" ]; then
+	if [ -d "/data/share/docassemble/files" ]; then
 	    echo "initialize: Copy files from local storage to Azure Blob Storage" >&2
-	    for the_file in $(ls "${DA_ROOT}/files"); do
+	    for the_file in $(ls "/data/share/docassemble/files"); do
 		if [[ $the_file =~ ^[0-9]+ ]]; then
-		    for sub_file in $(find "${DA_ROOT}/files/$the_file" -type f); do
-			file_number="${sub_file#${DA_ROOT}/files/}"
+		    for sub_file in $(find "/data/share/docassemble/files/$the_file" -type f); do
+			file_number="${sub_file#/data/share/docassemble/files/}"
 			file_number="${file_number:0:15}"
-			file_directory="${DA_ROOT}/files/$file_number/"
+			file_directory="/data/share/docassemble/files/$file_number/"
 			target_file="${sub_file#${file_directory}}"
 			file_number="${file_number//\//}"
 			file_number=$((16#$file_number))
 			az storage blob upload --no-progress --overwrite true --only-show-errors --output none --container-name "${AZURECONTAINER}" -f "${sub_file}" -n "files/${file_number}/${target_file}"
 		    done
 		else
-		    for sub_file in $(find "${DA_ROOT}/files/$the_file" -type f); do
-			target_file="${sub_file#${DA_ROOT}/files/}"
+		    for sub_file in $(find "/data/share/docassemble/files/$the_file" -type f); do
+			target_file="${sub_file#/data/share/docassemble/files/}"
 			az storage blob upload --no-progress --overwrite true --only-show-errors --output none --container-name "${AZURECONTAINER}" -f "${sub_file}" -n "${target_file}"
 		    done
 		fi
@@ -1640,7 +1646,7 @@ function stopfunc {
             rm -f "${DA_ROOT}/backup/config.yml"
             cp "${DA_CONFIG_FILE}" "${DA_ROOT}/backup/config.yml"
             echo "initialize: Saving files" >&2
-            rsync -auq --delete "${DA_ROOT}/files" "${DA_ROOT}/backup/"
+            rsync -auq --delete "/data/share/docassemble/files" "${DA_ROOT}/backup/"
             echo "initialize: Done saving files" >&2
         fi
         if [[ $CONTAINERROLE =~ .*:(all):.* ]]; then

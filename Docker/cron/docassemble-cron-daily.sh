@@ -78,7 +78,7 @@ elif [ "${DAREADONLYFILESYSTEM:-false}" == "false" ]; then
     if [[ $CONTAINERROLE =~ .*:(all|cron):.* ]]; then
 	rm -f "${DA_ROOT}/backup/config.yml"
 	cp "${DA_CONFIG_FILE}" "${DA_ROOT}/backup/config.yml"
-	rsync -auq --delete "${DA_ROOT}/files" "${DA_ROOT}/backup/"
+	rsync -auq --delete "/data/share/docassemble/files" "${DA_ROOT}/backup/"
     fi
 fi
 
@@ -162,7 +162,7 @@ if [ "${DAREADONLYFILESYSTEM:-false}" == "false" ] && [ "${DABACKUPDAYS}" != "0"
     # Copy uploaded files, configuration, and logs to the rolling backup
     if [[ $CONTAINERROLE =~ .*:(all|web|celery|log|cron):.* ]]; then
 	if [ "${BACKUPFILESTORAGE:-true}" == "true" ] && [ "${S3ENABLE:-false}" == "false" ] && [ "${AZUREENABLE:-false}" == "false" ]; then
-	    rsync -auq "${DA_ROOT}/files" "${BACKUPDIR}/"
+	    rsync -auq "/data/share/docassemble/files" "${BACKUPDIR}/"
 	fi
 	rsync -auq "${DA_ROOT}/config" "${BACKUPDIR}/"
 	rsync -auq "${LOGDIRECTORY}" "${BACKUPDIR}/"
