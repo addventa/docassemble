@@ -22,6 +22,9 @@ echo "--------------------------" >&2
 echo "Docassemble V1.4.9-8" >&2
 echo "--------------------------" >&2
 
+echo "moving /usr/share/docassemble/certs to /etc/ssl/docassemble" >&2
+mv "/usr/share/docassemble/certs" "/etc/ssl/docassemble"
+
 RESTOREFROMBACKUP=true
 
 if [ -f /var/run/docassemble/da_running ]; then
