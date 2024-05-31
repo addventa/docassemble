@@ -63,7 +63,6 @@ bash -c \
 && update-locale \
 && /usr/bin/python3 -m venv --copies /usr/share/docassemble/local3.10 \
 && source /usr/share/docassemble/local3.10/bin/activate \
-&& pip3 install --upgrade pip==21.1 \
 && pip3 install --upgrade wheel==0.37.1 \
 && pip3 install --upgrade mod_wsgi==4.9.3 \
 && pip3 install --upgrade \
