@@ -276,7 +276,7 @@ if [ "${RESTOREFROMBACKUP}" == "true" ]; then
 #            rm -f "$DA_CONFIG_FILE"
 #            s4cmd get "s3://${S3BUCKET}/config.yml" "$DA_CONFIG_FILE"
 #            chown www-data:www-data "$DA_CONFIG_FILE"
-        fi
+#        fi
         if [[ $CONTAINERROLE =~ .*:(all|redis):.* ]] && [[ $(s4cmd ls "s3://${S3BUCKET}/redis.rdb") ]] && [ "$REDISRUNNING" == "false" ]; then
             echo "initialize: Restoring Redis from S3" >&2
             s4cmd -f get "s3://${S3BUCKET}/redis.rdb" "/var/lib/redis/dump.rdb"
