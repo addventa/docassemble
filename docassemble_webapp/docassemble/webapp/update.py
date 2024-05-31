@@ -107,7 +107,7 @@ def check_for_updates(start_time=None, invalidate_cache=True, full=True):
     results = {}  # result of actions taken on a package. package name -> message
     if full:
         logmessage("check_for_updates: 0.5 after " + str(time.time() - start_time) + " seconds")
-        for package_name in ('psycopg2', 'pdfminer', 'pdfminer3k', 'py-bcrypt', 'pycrypto', 'constraint', 'distutils2', 'azure-storage', 'Flask-User', 'Marisol'):
+        for package_name in ('psycopg2', 'pdfminer', 'pdfminer3k', 'py-bcrypt', 'pycrypto', 'constraint', 'distutils2', 'azure-storage', 'Flask-User', 'Marisol', 'sklearn', 'backports.zoneinfo', 'Flask-Babel', 'docassemble-backports', 'typing-extensions'):
             result = db.session.execute(delete(Package).filter_by(name=package_name))
             if result.rowcount > 0:
                 db.session.commit()
@@ -264,7 +264,13 @@ def check_for_updates(start_time=None, invalidate_cache=True, full=True):
     for package in packages.values():
         # logmessage("check_for_updates: processing package id " + str(package.id))
         # logmessage("1: " + str(installs[package.id].packageversion) + " 2: " + str(package.packageversion))
-        if (package.packageversion is not None and package.id in installs and installs[package.id].packageversion is None) or (package.packageversion is not None and package.id in installs and installs[package.id].packageversion is not None and version.parse(package.packageversion) > version.parse(installs[package.id].packageversion)):
+        try:
+            pack_vers = version.parse(package.packageversion)
+            inst_vers = version.parse(installs[package.id].packageversion)
+        except:
+            pack_vers = version.parse('1.0.0')
+            inst_vers = version.parse('1.0.0')
+        if (package.packageversion is not None and package.id in installs and installs[package.id].packageversion is None) or (package.packageversion is not None and package.id in installs and installs[package.id].packageversion is not None and pack_vers > inst_vers):
             logmessage("check_for_updates: a new version of " + package.name + " is needed because the necessary package version, " + str(package.packageversion) + ", is ahead of the installed version, " + str(installs[package.id].packageversion) + " after " + str(time.time() - start_time) + " seconds")
             new_version_needed = True
         else:
@@ -332,7 +338,6 @@ def check_for_updates(start_time=None, invalidate_cache=True, full=True):
         if returnval != 0:
             logmessage("Return value was not good" + " after " + str(time.time() - start_time) + " seconds")
             ok = False
-        # pip._vendor.pkg_resources._initialize_master_working_set()
         if full:
             pip_info = get_pip_info(package.name, start_time=start_time)
             real_name = pip_info['Name']

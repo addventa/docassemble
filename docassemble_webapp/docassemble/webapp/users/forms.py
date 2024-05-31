@@ -43,17 +43,63 @@ def fix_nickname(form, field):
 
 class MySignInForm(LoginForm):
 
+    def ldap_bind(self, connect):
+        base_dn = daconfig['ldap login']['base dn'].strip()
+        if daconfig['ldap login'].get('anonymous bind', False):
+            bind_dn = ""
+            bind_password = ""
+        else:
+            bind_dn = daconfig['ldap login']['bind dn'].strip()
+            bind_password = daconfig['ldap login']['bind password'].strip()
+
+        username = ""
+        password = ""
+        try:
+            search_filter = daconfig['ldap login'].get('search pattern',
+                                                       "mail=%s") % (self.email.data)
+            connect.simple_bind_s(bind_dn, bind_password)
+            search_results = connect.search_s(base_dn,
+                                              ldap.SCOPE_SUBTREE, search_filter)
+            if len(search_results) == 0:
+                logmessage(("Email %s was not found in LDAP "
+                            "using search filter %s, base dn %s") %
+                           (self.email.data, search_filter, base_dn))
+            else:
+                if len(search_results) > 1:
+                    logmessage(("Email %s was found multiple times in LDAP "
+                                "using search filter %s, base dn %s "
+                                "- the first result will be used as dn: %s") %
+                               (self.email.data, search_filter, base_dn, search_results[0][0]))
+                username = search_results[0][0]
+                password = self.password.data
+        except (ldap.LDAPError, ldap.INVALID_CREDENTIALS):
+            # no unbind to make use of the rest of the LDAP workflow
+            logmessage(("Could not login into LDAP with email %s "
+                        "and given password") %
+                       (self.email.data))
+
+        return username, password
+
     def validate(self):
         if BAN_IP_ADDRESSES:
             key = 'da:failedlogin:ip:' + str(get_requester_ip(request))
             failed_attempts = r.get(key)
             if failed_attempts is not None and int(failed_attempts) > daconfig['attempt limit']:
                 abort(404)
+        ldap_server = daconfig['ldap login'].get('server', 'localhost').strip()
         if daconfig['ldap login'].get('enable', False):
-            ldap_server = daconfig['ldap login'].get('server', 'localhost').strip()
-            username = self.email.data
-            password = self.password.data
-            connect = ldap.initialize('ldap://' + ldap_server)
+            if daconfig['ldap login'].get('ldap over TLS', False):
+                ldap_protocol = "ldaps"
+            else:
+                ldap_protocol = "ldap"
+            connect = ldap.initialize(ldap_protocol + '://' + ldap_server)
+
+            if daconfig['ldap login'].get('login with bind_dn', False):
+                username, password = self.ldap_bind(connect)
+            else:
+                username = self.email.data
+                password = self.password.data
+
             connect.set_option(ldap.OPT_REFERRALS, 0)
             try:
                 connect.simple_bind_s(username, password)
@@ -76,15 +122,21 @@ class MySignInForm(LoginForm):
                     result = True
                 else:
                     connect.unbind_s()
-                    result = super().validate()
+                    try:
+                        result = super().validate()
+                    except:
+                        result = False
             except (ldap.LDAPError, ldap.INVALID_CREDENTIALS):
                 connect.unbind_s()
-                result = super().validate()
+                try:
+                    result = super().validate()
+                except:
+                    result = False
         else:
             user_manager = current_app.user_manager
             user, user_email = user_manager.find_user_by_email(self.email.data)
             if user is None:
-                if daconfig.get('confirm registration', False):
+                if daconfig.get('confirm registration', False) or not daconfig.get('allow registration', False):
                     self.email.errors = []
                     self.email.errors.append(word("Incorrect Email and/or Password"))
                     self.password.errors = []
@@ -108,6 +160,11 @@ class MySignInForm(LoginForm):
                 else:
                     self.email.errors.append(word("You cannot log in this way."))
                 return False
+            if self.password.data == 'password':
+                pipe = r.pipeline()
+                pipe.set('da:insecure_password_present', '1')
+                pipe.expire('da:insecure_password_present', 60)
+                pipe.execute()
             # logmessage("Trying super validate")
             result = super().validate()
             # logmessage("Super validate response was " + repr(result))
@@ -196,20 +253,34 @@ class UserProfileForm(FlaskForm):
 
 
 class EditUserProfileForm(UserProfileForm):
-    email = StringField(word('E-mail'), validators=[Email(word('Must be a valid e-mail address')), DataRequired(word('E-mail is required'))])
+    email = StringField(word('E-mail'))
     role_id = SelectMultipleField(word('Privileges'), coerce=int)
     active = BooleanField(word('Active'))
     uses_mfa = BooleanField(word('Uses two-factor authentication'))
 
     def validate(self, user_id, admin_id):  # pylint: disable=arguments-differ
+        existing_user = db.session.execute(select(UserModel).filter_by(id=user_id)).scalar()
+        phone_user = existing_user.social_id.startswith('phone$')
         user_manager = current_app.user_manager
         rv = UserProfileForm.validate(self)
         if not rv:
             return False
-        user, user_email = user_manager.find_user_by_email(self.email.data)  # pylint: disable=unused-variable
-        if user is not None and user.id != user_id:
-            self.email.errors.append(word('That e-mail address is already taken.'))
-            return False
+        if phone_user and self.email.data == '':
+            self.email.data = None
+        if not phone_user:
+            if not (self.email.data and self.email.data.strip()):
+                self.email.errors.append(word('E-mail is required'))
+                return False
+        if self.email.data:
+            try:
+                Email("error")(self, self.email)
+            except ValidationError:
+                self.email.errors.append(word('Must be a valid e-mail address'))
+                return False
+            user, user_email = user_manager.find_user_by_email(self.email.data)  # pylint: disable=unused-variable
+            if user is not None and user.id != user_id:
+                self.email.errors.append(word('That e-mail address is already taken.'))
+                return False
         if current_user.id == user_id and current_user.has_roles('admin'):
             if admin_id not in self.role_id.data:
                 self.role_id.errors.append(word('You cannot take away your own admin privilege.'))

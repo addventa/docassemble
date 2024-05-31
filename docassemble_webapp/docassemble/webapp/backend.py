@@ -1,4 +1,5 @@
 from io import IOBase as FileType
+import copy
 import codecs
 import json
 import logging
@@ -8,7 +9,7 @@ import pickle
 import platform
 import re
 import sys
-# import time
+import time
 import types
 import xml.etree.ElementTree as ET
 import pandas
@@ -16,13 +17,14 @@ from Cryptodome.Cipher import AES
 from dateutil import tz
 from flask import session, url_for as base_url_for
 from flask_login import current_user
-from flask_mail import Mail as FlaskMail, Message  # noqa: F401 # pylint: disable=unused-import
 from flask_wtf.csrf import generate_csrf
 from sqlalchemy import or_, and_, select, delete
 import ruamel.yaml
 import tzlocal
-from docassemble.base.functions import pickleable_objects
-from docassemble.base.config import daconfig, hostname
+from docassemble.base.error import DAException
+from docassemble.webapp.da_flask_mail import Message  # noqa: F401 # pylint: disable=unused-import
+from docassemble.base.functions import pickleable_objects, filename_invalid
+from docassemble.base.config import daconfig, hostname, DEBUG_BOOT, START_TIME, boot_log
 from docassemble.base.generate_key import random_bytes, random_alphanumeric
 from docassemble.base.logger import logmessage
 import docassemble.base.functions
@@ -35,6 +37,7 @@ from docassemble.webapp.file_number import get_new_file_number
 from docassemble.webapp.files import SavedFile, get_ext_and_mimetype
 from docassemble.webapp.fixpickle import fix_pickle_obj, fix_pickle_dict
 from docassemble.webapp.mailgun_mail import Mail as MailgunMail
+from docassemble.webapp.da_flask_mail import FlaskMail
 from docassemble.webapp.packages.models import PackageAuth
 from docassemble.webapp.screenreader import to_text
 from docassemble.webapp.sendgrid_mail import Mail as SendgridMail
@@ -48,9 +51,13 @@ import docassemble.webapp.worker
 if platform.machine() == 'x86_64':
     import docassemble.webapp.google_api
 
+if DEBUG_BOOT:
+    boot_log("backend: starting")
 TypeType = type(type(None))
 NoneType = type(None)
 DEBUG = daconfig.get('debug', False)
+
+safeyaml = ruamel.yaml.YAML(typ='safe')
 
 # def elapsed(name_of_function):
 #     def elapse_decorator(func):
@@ -91,7 +98,7 @@ def save_numbered_file(filename, orig_path, yaml_file_name=None, uid=None):
         except:
             uid = unattached_uid()
     if uid is None:
-        raise Exception("save_numbered_file: uid not defined")
+        raise DAException("save_numbered_file: uid not defined")
     file_number = get_new_file_number(uid, filename, yaml_file_name=yaml_file_name)
     extension, mimetype = get_ext_and_mimetype(filename)
     new_file = SavedFile(file_number, extension=extension, fix=True, should_not_exist=True)
@@ -153,7 +160,7 @@ def write_ml_source(playground, playground_number, current_project, filename, fi
             the_dependent = record.dependent
             if the_dependent is not None:
                 the_dependent = fix_pickle_obj(codecs.decode(bytearray(the_dependent, encoding='utf-8'), 'base64'))
-            the_entry = dict(independent=the_independent, dependent=the_dependent)
+            the_entry = {'independent': the_independent, 'dependent': the_dependent}
             if record.key is not None:
                 the_entry['key'] = record.key
             output[parts[2]].append(the_entry)
@@ -165,42 +172,150 @@ def write_ml_source(playground, playground_number, current_project, filename, fi
     return False
 
 
+def user_is_developer(user_id):
+    try:
+        for user in db.session.execute(select(UserModel).options(db.joinedload(UserModel.roles)).filter_by(id=int(user_id))).unique().scalars():
+            for role in user.roles:
+                if role.name in ('developer', 'admin'):
+                    return True
+    except:
+        pass
+    return False
+
+
 def absolute_filename(the_file):
     match = re.match(r'^docassemble.playground([0-9]+)([A-Za-z]?[A-Za-z0-9]*):(.*)', the_file)
     # logmessage("absolute_filename call: " + the_file)
     if match:
+        if not user_is_developer(match.group(1)):
+            return None
         filename = re.sub(r'[^A-Za-z0-9\-\_\. ]', '', match.group(3))
+        if filename_invalid(filename):
+            return None
         # logmessage("absolute_filename: filename is " + filename + " and subdir is " + match.group(2))
-        playground = SavedFile(match.group(1), section='playground', fix=True, filename=filename, subdir=match.group(2))
+        playground = SavedFile(match.group(1), section='playground', fix=True, filename=filename, subdir=match.group(2), must_exist=True)
         return playground
     match = re.match(r'^/playgroundtemplate/([0-9]+)/([A-Za-z0-9]+)/(.*)', the_file)
     if match:
+        if not user_is_developer(match.group(1)):
+            return None
         filename = re.sub(r'[^A-Za-z0-9\-\_\. ]', '', match.group(3))
-        playground = SavedFile(match.group(1), section='playgroundtemplate', fix=True, filename=filename, subdir=match.group(2))
+        if filename_invalid(filename):
+            return None
+        playground = SavedFile(match.group(1), section='playgroundtemplate', fix=True, filename=filename, subdir=match.group(2), must_exist=True)
         return playground
     match = re.match(r'^/playgroundstatic/([0-9]+)/([A-Za-z0-9]+)/(.*)', the_file)
     if match:
+        if not user_is_developer(match.group(1)):
+            return None
         filename = re.sub(r'[^A-Za-z0-9\-\_\. ]', '', match.group(3))
-        playground = SavedFile(match.group(1), section='playgroundstatic', fix=True, filename=filename, subdir=match.group(2))
+        if filename_invalid(filename):
+            return None
+        playground = SavedFile(match.group(1), section='playgroundstatic', fix=True, filename=filename, subdir=match.group(2), must_exist=True)
         return playground
     match = re.match(r'^/playgroundsources/([0-9]+)/([A-Za-z0-9]+)/(.*)', the_file)
     if match:
+        if not user_is_developer(match.group(1)):
+            return None
         filename = re.sub(r'[^A-Za-z0-9\-\_\. ]', '', match.group(3))
-        playground = SavedFile(match.group(1), section='playgroundsources', fix=True, filename=filename, subdir=match.group(2))
+        if filename_invalid(filename):
+            return None
+        playground = SavedFile(match.group(1), section='playgroundsources', fix=True, filename=filename, subdir=match.group(2), must_exist=True)
         write_ml_source(playground, match.group(1), match.group(2), filename)
         return playground
     return None
 
-if 'mailgun domain' in daconfig['mail'] and 'mailgun api key' in daconfig['mail']:
-    mail = MailgunMail(app)
-elif 'sendgrid api key' in daconfig['mail'] and daconfig['mail']['sendgrid api key']:
-    mail = SendgridMail(app)
-else:
-    mail = FlaskMail(app)
+
+def get_mail_config():
+    the_mail_configs = {}
+    default_config = None
+    for mail_config in daconfig['mail']:
+        if mail_config.get('name', None) == 'default':
+            default_config = mail_config
+    if default_config is None and len(daconfig['mail']) > 0:
+        default_config = daconfig['mail'][0]
+    if default_config is None:
+        default_config = {'username': None, 'password': None, 'default sender': None, 'server': 'localhost', 'port': 25, 'use ssl': False, 'use tls': True}
+    app.config['MAIL_USERNAME'] = default_config.get('username', None)
+    app.config['MAIL_PASSWORD'] = default_config.get('password', None)
+    app.config['MAIL_DEFAULT_SENDER'] = default_config.get('default sender', None)
+    app.config['MAIL_SERVER'] = default_config.get('server', 'localhost')
+    app.config['MAIL_PORT'] = default_config.get('port', 25)
+    app.config['MAIL_USE_SSL'] = default_config.get('use ssl', False)
+    app.config['MAIL_USE_TLS'] = default_config.get('use tls', True)
+    count = 0
+    for mail_config in daconfig['mail']:
+        the_config = copy.deepcopy(mail_config)
+        if the_config.get('mailgun api key', None):
+            try:
+                the_config['mailgun api url'] = mail_config.get('mailgun api url', 'https://api.mailgun.net/v3/%s/messages.mime') % mail_config.get('mailgun domain', 'NOT_USING_MAILGUN')
+            except:
+                the_config['mailgun api url'] = 'https://api.mailgun.net/v3/%s/messages.mime' % (mail_config.get('mailgun domain', 'NOT_USING_MAILGUN'),)
+        if not the_config.get('name', None):
+            the_config['name'] = 'config' + str(count)
+        the_mail_configs[the_config['name']] = the_config
+        if 'default' not in the_mail_configs and mail_config is default_config:
+            the_mail_configs['default'] = the_config
+        count += 1
+    if 'default' not in the_mail_configs:
+        the_mail_configs['default'] = default_config
+    for config_name, mail_config in the_mail_configs.items():
+        if mail_config.get('mailgun domain', None) and mail_config.get('mailgun api key', None):
+            mail_class = MailgunMail
+            config = {
+                'MAILGUN_API_URL': mail_config['mailgun api url'],
+                'MAILGUN_API_KEY': mail_config['mailgun api key'],
+                'MAIL_DEFAULT_SENDER': mail_config.get('default sender', None),
+                'MAIL_DEBUG': app.config.get('MAIL_DEBUG', False),
+                'MAIL_MAX_EMAILS': app.config.get('MAIL_MAX_EMAILS'),
+                'MAIL_SUPPRESS_SEND': app.config.get('MAIL_SUPPRESS_SEND', False),
+                'MAIL_ASCII_ATTACHMENTS': app.config.get('MAIL_ASCII_ATTACHMENTS', False)
+            }
+        elif 'sendgrid api key' in mail_config and mail_config['sendgrid api key']:
+            mail_class = SendgridMail
+            config = {
+                'SENDGRID_API_KEY': mail_config['sendgrid api key'],
+                'MAIL_DEFAULT_SENDER': mail_config.get('default sender', None),
+                'MAIL_DEBUG': app.config.get('MAIL_DEBUG', False),
+                'MAIL_MAX_EMAILS': app.config.get('MAIL_MAX_EMAILS'),
+                'MAIL_SUPPRESS_SEND': app.config.get('MAIL_SUPPRESS_SEND', False),
+                'MAIL_ASCII_ATTACHMENTS': app.config.get('MAIL_ASCII_ATTACHMENTS', False)
+            }
+        else:
+            mail_class = FlaskMail
+            config = {
+                'MAIL_SERVER': mail_config.get('server', 'localhost'),
+                'MAIL_USERNAME': mail_config.get('username', None),
+                'MAIL_PASSWORD': mail_config.get('password', None),
+                'MAIL_PORT': mail_config.get('port', 25),
+                'MAIL_USE_TLS': mail_config.get('use tls', True),
+                'MAIL_USE_SSL': mail_config.get('use ssl', False),
+                'MAIL_DEFAULT_SENDER': mail_config.get('default sender', None),
+                'MAIL_DEBUG': app.config.get('MAIL_DEBUG', False),
+                'MAIL_MAX_EMAILS': app.config.get('MAIL_MAX_EMAILS'),
+                'MAIL_SUPPRESS_SEND': app.config.get('MAIL_SUPPRESS_SEND', False),
+                'MAIL_ASCII_ATTACHMENTS': app.config.get('MAIL_ASCII_ATTACHMENTS', False)
+            }
+        if config_name == 'default':
+            mail_config['mail'] = mail_class(app=app, config=config)
+        else:
+            mail_config['mail'] = mail_class(config=config)
+    return the_mail_configs
+
+if DEBUG_BOOT:
+    boot_log("backend: getting email configuration")
+
+mail_configs = get_mail_config()
+
+if DEBUG_BOOT:
+    boot_log("backend: finished getting email configuration")
 
 
-def da_send_mail(the_message):
-    mail.send(the_message)
+def da_send_mail(the_message, config='default'):
+    if config not in mail_configs:
+        logmessage("invalid mail configuration " + config)
+        config = 'default'
+    mail_configs[config]['mail'].send(the_message)
 
 DEFAULT_LANGUAGE = daconfig.get('language', 'en')
 DEFAULT_LOCALE = daconfig.get('locale', 'en_US.utf8')
@@ -236,12 +351,12 @@ def sql_get(key, secret=None):
             try:
                 result = decrypt_object(record.value, secret)
             except:
-                raise Exception("Unable to decrypt stored object.")
+                raise DAException("Unable to decrypt stored object.")
         else:
             try:
                 result = unpack_object(record.value)
             except:
-                raise Exception("Unable to unpack stored object.")
+                raise DAException("Unable to unpack stored object.")
         return result
     return None
 
@@ -296,6 +411,9 @@ def get_info_from_file_number_with_uids(*pargs, **kwargs):
         kwargs['uids'] = get_session_uids()
     return get_info_from_file_number(*pargs, **kwargs)
 
+if DEBUG_BOOT:
+    boot_log("backend: configuring common functions")
+
 classes = daconfig['table css class'].split(',')
 DEFAULT_TABLE_CLASS = json.dumps(classes[0].strip())
 if len(classes) > 1:
@@ -342,6 +460,9 @@ docassemble.base.functions.set_language(DEFAULT_LANGUAGE, dialect=DEFAULT_DIALEC
 docassemble.base.functions.set_locale(DEFAULT_LOCALE)
 docassemble.base.functions.update_locale()
 
+if DEBUG_BOOT:
+    boot_log("backend: finished configuring common functions")
+
 
 def fix_words():
     word_file_list = daconfig.get('words', [])
@@ -360,7 +481,7 @@ def fix_words():
             if filename.lower().endswith('.yaml') or filename.lower().endswith('.yml'):
                 with open(filename, 'r', encoding='utf-8') as stream:
                     try:
-                        for document in ruamel.yaml.safe_load_all(stream):
+                        for document in safeyaml.load_all(stream):
                             if document and isinstance(document, dict):
                                 for lang, words in document.items():
                                     if isinstance(words, dict):
@@ -477,10 +598,17 @@ def fix_words():
         else:
             logmessage("filename " + filename + " did not exist")
 
+if DEBUG_BOOT:
+    boot_log("backend: processing translations")
+
 fix_words()
 
 if 'currency symbol' in daconfig:
     docassemble.base.functions.update_language_function('*', 'currency_symbol', lambda: daconfig['currency symbol'])
+
+if DEBUG_BOOT:
+    boot_log("backend: finished processing translations")
+    boot_log("backend: obtaining cloud object")
 
 cloud = docassemble.webapp.cloud.get_cloud()
 
@@ -504,9 +632,12 @@ docassemble.base.functions.update_server(cloud=cloud,
 if platform.machine() == 'x86_64':
     docassemble.base.functions.update_server(google_api=docassemble.webapp.google_api)
 
-initial_dict = dict(_internal=dict(session_local={}, device_local={}, user_local={}, dirty={}, progress=0, tracker=0, docvar={}, doc_cache={}, steps=1, steps_offset=0, secret=None, informed={}, livehelp=dict(availability='unavailable', mode='help', roles=[], partner_roles=[]), answered=set(), answers={}, objselections={}, starttime=None, modtime=None, accesstime={}, tasks={}, gather=[], event_stack={}, misc={}), url_args={}, nav=docassemble.base.functions.DANav())
+if DEBUG_BOOT:
+    boot_log("backend: finished obtaining cloud object")
+
+initial_dict = {'_internal': {'session_local': {}, 'device_local': {}, 'user_local': {}, 'dirty': {}, 'progress': 0, 'tracker': 0, 'docvar': {}, 'doc_cache': {}, 'steps': 1, 'steps_offset': 0, 'secret': None, 'informed': {}, 'livehelp': {'availability': 'unavailable', 'mode': 'help', 'roles': [], 'partner_roles': []}, 'answered': set(), 'answers': {}, 'objselections': {}, 'starttime': None, 'modtime': None, 'accesstime': {}, 'tasks': {}, 'gather': [], 'event_stack': {}, 'misc': {}}, 'url_args': {}, 'nav': docassemble.base.functions.DANav()}
 # else:
-#    initial_dict = dict(_internal=dict(tracker=0, steps_offset=0, answered=set(), answers={}, objselections={}), url_args={})
+#    initial_dict = {'_internal': {'tracker': 0, 'steps_offset': 0, 'answered': set(), 'answers': {}, 'objselections': {}}, 'url_args': {}}
 if 'initial_dict' in daconfig:
     initial_dict.update(daconfig['initial dict'])
 docassemble.base.parse.set_initial_dict(initial_dict)
@@ -640,7 +771,7 @@ def parse_the_user_id(the_user_id):
         if m.group(1) == 't':
             return None, int(m.group(2))
         return int(m.group(2)), None
-    raise Exception("Invalid user ID")
+    raise DAException("Invalid user ID")
 
 
 def safe_pickle(the_object):
@@ -696,7 +827,7 @@ def fetch_user_dict(user_code, filename, secret=None):
     result = db.session.execute(stmt)
     for d in list(result):
         # logmessage("fetch_user_dict: indexno is " + str(d.indexno))
-        if d.dictionary:
+        if d.dictionary and isinstance(d.dictionary, str):
             if d.encrypted:
                 # logmessage("fetch_user_dict: entry was encrypted")
                 user_dict = decrypt_dictionary(d.dictionary, secret)
@@ -859,7 +990,7 @@ def reset_user_dict(user_code, filename, user_id=None, temp_user_id=None, force=
         the_user_id = None
     else:
         if user_id is None and temp_user_id is None:
-            if current_user.is_authenticated and not current_user.is_anonymous:
+            if current_user.is_authenticated:
                 user_type = 'user'
                 the_user_id = current_user.id
             else:
@@ -991,9 +1122,9 @@ def get_chat_log(chat_mode, yaml_filename, session_id, user_id, temp_user_id, se
                 role_list = [role.name for role in person.roles]
                 if len(role_list) == 0:
                     role_list = ['user']
-                messages.append(dict(id=record.id, is_self=is_self, temp_owner_id=record.temp_owner_id, temp_user_id=record.temp_user_id, owner_id=record.owner_id, user_id=record.user_id, first_name=person.first_name, last_name=person.last_name, email=person.email, modtime=modtime, message=message, roles=role_list))
+                messages.append({'id': record.id, 'is_self': is_self, 'temp_owner_id': record.temp_owner_id, 'temp_user_id': record.temp_user_id, 'owner_id': record.owner_id, 'user_id': record.user_id, 'first_name': person.first_name, 'last_name': person.last_name, 'email': person.email, 'modtime': modtime, 'message': message, 'roles': role_list})
             else:
-                messages.append(dict(id=record.id, is_self=is_self, temp_owner_id=record.temp_owner_id, temp_user_id=record.temp_user_id, owner_id=record.owner_id, user_id=record.user_id, modtime=modtime, message=message, roles=['user']))
+                messages.append({'id': record.id, 'is_self': is_self, 'temp_owner_id': record.temp_owner_id, 'temp_user_id': record.temp_user_id, 'owner_id': record.owner_id, 'user_id': record.user_id, 'modtime': modtime, 'message': message, 'roles': ['user']})
     else:
         if chat_mode in ['peer', 'peerhelp']:
             records = db.session.execute(select(ChatLog).where(and_(ChatLog.filename == yaml_filename, ChatLog.key == session_id, or_(ChatLog.open_to_peer == True, ChatLog.temp_owner_id == chat_person_id))).order_by(ChatLog.id)).scalars().all()  # noqa: E712 # pylint: disable=singleton-comparison
@@ -1022,9 +1153,9 @@ def get_chat_log(chat_mode, yaml_filename, session_id, user_id, temp_user_id, se
                 role_list = [role.name for role in person.roles]
                 if len(role_list) == 0:
                     role_list = ['user']
-                messages.append(dict(id=record.id, is_self=is_self, temp_owner_id=record.temp_owner_id, temp_user_id=record.temp_user_id, owner_id=record.owner_id, user_id=record.user_id, first_name=person.first_name, last_name=person.last_name, email=person.email, modtime=modtime, message=message, roles=role_list))
+                messages.append({'id': record.id, 'is_self': is_self, 'temp_owner_id': record.temp_owner_id, 'temp_user_id': record.temp_user_id, 'owner_id': record.owner_id, 'user_id': record.user_id, 'first_name': person.first_name, 'last_name': person.last_name, 'email': person.email, 'modtime': modtime, 'message': message, 'roles': role_list})
             else:
-                messages.append(dict(id=record.id, is_self=is_self, temp_owner_id=record.temp_owner_id, temp_user_id=record.temp_user_id, owner_id=record.owner_id, user_id=record.user_id, modtime=modtime, message=message, roles=['user']))
+                messages.append({'id': record.id, 'is_self': is_self, 'temp_owner_id': record.temp_owner_id, 'temp_user_id': record.temp_user_id, 'owner_id': record.owner_id, 'user_id': record.user_id, 'modtime': modtime, 'message': message, 'roles': ['user']})
     return messages
 
 
@@ -1033,7 +1164,7 @@ def file_set_attributes(file_number, **kwargs):
     upload = db.session.execute(select(Uploads).filter_by(indexno=file_number).with_for_update()).scalar()
     if upload is None:
         db.session.commit()
-        raise Exception("file_set_attributes: file number " + str(file_number) + " not found.")
+        raise DAException("file_set_attributes: file number " + str(file_number) + " not found.")
     if 'private' in kwargs and kwargs['private'] in [True, False] and upload.private != kwargs['private']:
         upload.private = kwargs['private']
     if 'persistent' in kwargs and kwargs['persistent'] in [True, False] and upload.persistent != kwargs['persistent']:
@@ -1089,8 +1220,8 @@ def file_user_access(file_number, allow_user_id=None, allow_email=None, disallow
     if disallow_all:
         db.session.execute(delete(UploadsUserAuth).filter_by(uploads_indexno=file_number))
     if not (allow_user_id or allow_email or disallow_user_id or disallow_email or disallow_all):
-        result = dict(user_ids=[], emails=[], temp_user_ids=[])
-        for auth in db.session.execute(select(UploadsUserAuth.user_id, UploadsUserAuth.temp_user_id, UserModel.email).outerjoin(UserModel, UploadsUserAuth.user_id == UserModel.id).where(UploadsUserAuth.uploads_indexno == file_number)).scalars().all():
+        result = {'user_ids': [], 'emails': [], 'temp_user_ids': []}
+        for auth in db.session.execute(select(UploadsUserAuth.user_id, UploadsUserAuth.temp_user_id, UserModel.email).outerjoin(UserModel, UploadsUserAuth.user_id == UserModel.id).where(UploadsUserAuth.uploads_indexno == file_number)).all():
             if auth.user_id is not None:
                 result['user_ids'].append(auth.user_id)
             if auth.temp_user_id is not None:
@@ -1128,7 +1259,7 @@ def file_privilege_access(file_number, allow=None, disallow=None, disallow_all=F
         db.session.execute(delete(UploadsRoleAuth).filter_by(uploads_indexno=file_number))
     if not (allow or disallow or disallow_all):
         result = []
-        for auth in db.session.execute(select(UploadsRoleAuth.id, Role.name).join(Role, UploadsRoleAuth.role_id == Role.id).where(UploadsRoleAuth.uploads_indexno == file_number)).scalars():
+        for auth in db.session.execute(select(UploadsRoleAuth.id, Role.name).join(Role, UploadsRoleAuth.role_id == Role.id).where(UploadsRoleAuth.uploads_indexno == file_number)).all():
             result.append(auth.name)
         return result
     return None
@@ -1171,7 +1302,7 @@ def get_session(i):
     if i in session['sessions']:
         return session['sessions'][i]
     if 'i' in session and 'uid' in session:  # TEMPORARY
-        session['sessions'][session['i']] = dict(uid=session['uid'], encrypted=session.get('encrypted', True), key_logged=session.get('key_logged', False), chatstatus=session.get('chatstatus', 'off'))
+        session['sessions'][session['i']] = {'uid': session['uid'], 'encrypted': session.get('encrypted', True), 'key_logged': session.get('key_logged', False), 'chatstatus': session.get('chatstatus', 'off')}
         if i == session['i']:
             delete_obsolete()
             return session['sessions'][i]
@@ -1201,14 +1332,14 @@ def update_session(i, uid=None, encrypted=None, key_logged=None, chatstatus=None
         session['sessions'] = {}
     if i not in session['sessions'] or uid is not None:
         if uid is None:
-            raise Exception("update_session: cannot create new session without a uid")
+            raise DAException("update_session: cannot create new session without a uid")
         if encrypted is None:
             encrypted = True
         if key_logged is None:
             key_logged = False
         if chatstatus is None:
             chatstatus = 'off'
-        session['sessions'][i] = dict(uid=uid, encrypted=encrypted, key_logged=key_logged, chatstatus=chatstatus)
+        session['sessions'][i] = {'uid': uid, 'encrypted': encrypted, 'key_logged': key_logged, 'chatstatus': chatstatus}
     else:
         if uid is not None:
             session['sessions'][i]['uid'] = uid
@@ -1228,3 +1359,6 @@ def get_session_uids():
     if 'sessions' in session:
         return [item['uid'] for item in session['sessions'].values()]
     return []
+
+if DEBUG_BOOT:
+    boot_log("backend: completed")

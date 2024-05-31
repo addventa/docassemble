@@ -1,5 +1,898 @@
 # Change Log
 
+## [1.4.92] - 2024-01-17
+
+### Fixed
+- The `reconsider` and `need` modifiers were not active on all
+  `mandatory` blocks.
+- The `depends on` and `on change` features did not work on all `code`
+  blocks executed during `process_action()`.
+- Playground raised exception if `playground examples` is an empty
+  list.
+
+## [1.4.91] - 2024-01-07
+
+### Changed
+- Improved error messages when Python code contains errors.
+
+### Fixed
+- Error when YAML parsing did not succeed.
+
+## [1.4.90] - 2024-01-05
+
+### Fixed
+- Error when YAML parsing did not succeed.
+
+## [1.4.89] - 2023-12-23
+
+### Added
+- The `invite_user()` function.
+
+### Changed
+- Upgraded dependencies.
+- The `/api/user/<user_id>` PATCH endpoint now allows changing whether
+  the user is `active`.
+- Changed the background color of the signature canvas to grey when
+  dark mode is in effect.
+
+## [1.4.88] - 2023-12-03
+
+### Changed
+- When `min` or `max` is used with a `datatype: date` or `datatype:
+  datetime`, the minimum and/or maximum are now indicated in the HTML
+  so that browser widgets know what they are.
+- When the browser uses dark mode, the red asterisk is less bright.
+- When `grid` is used, items are aligned to the bottom of the row.
+
+### Fixed
+- Bug in `/api/playground_install`.
+- Fixed formatting in `grid` mode when label is empty.
+- When browsing other users' playgrounds, the Download and GitHub
+  buttons in the Packages folder did not work as intended.
+
+## [1.4.87] - 2023-11-28
+
+### Changed
+- Set a specific maximum number of open file descriptors (1048576) to
+  avoid problems with `ulimit -n` being too high on some kernels
+  (system update required).
+
+## [1.4.86] - 2023-11-26
+
+### Added
+- The `disabled` field modifier for showing a field on the screen that
+  is always disabled.
+- The `under text` field modifier for showing help text under a form
+  field in a smaller font.
+- The `item grid` field modifier, which is similar to the `grid`
+  modifier, but affects whether the choices in a list of radio buttons
+  or checkboxes wrap.
+- The `developer can install` Configuration directive.
+- The `debug startup process` Configuration directive for logging the
+  timing of the different parts of the `uwsgi` loading process.
+- The `current_section` attribute of the output of `user_info()`.
+- The `owner password` option under `attachment` for protecting a PDF
+  file with an owner password.
+- Support for login using Zitadel.
+
+### Changed
+- The CSS for `<code>` elements no longer collapses spaces.
+
+### Fixed
+- The UI of fields with `datatype: range` were not shown as disabled
+  even if the underlying `<input>` was disabled.
+- Sync and Run did not work correctly in some browsers because of a
+  JavaScript timing issue.
+- Module files in zipped packages were not detected unless a root
+  directory was used.
+
+## [1.4.85] - 2023-11-02
+
+### Added
+- The `run oauthlib on http` Configuration directive. You may need to
+  set this to `True` if you use the `oauthlib` library on a server
+  that uses `http://` instead of `https://`.
+
+### Fixed
+- If integration with GitHub goes wrong, the user could continue to
+  see errors after correcting the configuration.
+
+## [1.4.84] - 2023-10-26
+
+### Fixed
+- An incorrect `instanceName` was used when a variable name in an
+  `objects`, `objects from file` or `data` block contained an iterator
+  variable.
+
+## [1.4.83] - 2023-10-25
+
+### Added
+- The `default rendering font` Configuration directive. This allows
+  you to specify a system-wide font that should be used for rendering
+  form fields when using an `attachment` with `pdf template file` and
+  `editable: False`.
+
+### Changed
+- The feature from 1.4.79, described below as "`pdftk` will render
+  form fields to text using the `msttcorefonts` version of Arial,
+  which has better support for Unicode characters," has been removed
+  because with this font, `pdftk` rendered text too small when the
+  font size in the field was "Auto." To reenable this feature, specify
+  a `default rendering font` in your Configuration, or specify a
+  `rendering font` with each attachment.
+
+### Fixed
+- Error when non-`str` values are used as `datatype: checkboxes`
+  values.
+- The `css class` of a `question` persisted after the Continue button
+  was pressed.
+
+## [1.4.82] - 2023-10-15
+
+### Changed
+- Selected dependencies upgraded.
+- Users whose accounts are made inactive will be immediately logged
+  out.
+- When a relative file reference is given to `bootstrap theme` in
+  `features`, the reference will be resolved using the package in
+  which the immediate YAML file is located, rather than the package of
+  the main interview file.
+- The `docassemble.webapp` package now depends on `certbot`,
+  `certbot-apache`, `certbot-nginx`, and `acme`, even though it does
+  not use these packages. This is because upgrades to
+  `docassemble.webapp` may upgrade dependencies of `certbot` and cause
+  `certbot` to fail.
+
+### Fixed
+- The web server that responds while docassemble is starting up no
+  longer returns 404 errors (system upgrade required).
+- Incorrect input validation of email field when editing profile of a
+  user who uses the phone-based login method.
+
+## [1.4.81] - 2023-10-03
+
+### Fixed
+- Test for appropriate system version before using a `rendering font`.
+
+### Changed
+- Added clipboard button next to API key.
+- Avoid exceptions when invalid values are passed to `ordinal()` and
+  `ordinal_number()`.
+
+## [1.4.80] - 2023-10-01
+
+### Changed
+- Added error message if more than one of `show if`, `hide if`,
+  `disable if`, or `enable if` is used on the same field. The only
+  situation in which these can be combined on a single field is if one
+  is using the `code` form and the other is not.
+
+### Fixed
+- Inefficient JavaScript for handling nested `show if` field
+  modifiers.
+- The input validation error message for entering a non-number did not
+  appear if the validation failed on the regular expression pattern.
+
+## [1.4.79] - 2023-09-18
+
+### Added
+- The `rendering font` option to `attachment`.
+
+### Changed
+- `pdftk` will render form fields to text using the `msttcorefonts`
+  version of Arial, which has better support for Unicode characters.
+- Updated the collection of Material Icons.
+
+### Fixed
+- Exception raised in certain circumstances when using `depends on`.
+- When `hide corner interface` was used, on small screens the toggler
+  still showed.
+
+## [1.4.78] - 2023-09-16
+
+### Added
+- The `pen color` modifier for the `signature` block.
+- The `file css class` field modifier for `datatype: file` and
+  `datatype: files` fields. This can be set to `None` to disable the
+  Bootstrap File Input plugin for the file upload input element.
+
+### Fixed
+- Errors with the Apache web server option (system upgrade required).
+- Error with `js show if` when used in conjunction with `grid`.
+
+## [1.4.77] - 2023-09-10
+
+### Added
+- The `hide continue button` and `disable continue button` modifiers
+  for `question`.
+- The `offset` option for the `grid` field modifier for inserting
+  horizontal space before a field.
+
+### Fixed
+- Error when calling `.privilege_access()` on a `DAFile`.
+- Error when using social logins.
+
+## [1.4.76] - 2023-09-09
+
+### Added
+- The `grid` field modifier for displaying fields side-by-side in a
+  responsive flexbox.
+- The `tabular` modifier for the `review` block, which will cause the
+  items to be displayed in an HTML `<table>`.
+- The `abbreviate` optional keyword parameter of the `states_list()` function.
+
+### Changed
+- Altered the CSS of `radio`, `yesno`, `yesnowide`, and `checkboxes`
+  labels so that the text will not wrap under the bullet.
+- Configuration will not save if there are duplicate keys in the YAML.
+
+### Fixed
+- Avoided `KeyError` when combining `terms` and `autoterms`.
+
+## [1.4.75] - 2023-09-05
+
+- No changes, version advanced by accident.
+
+## [1.4.74] - 2023-09-05
+
+### Fixed
+- Bug with `datatype: object`.
+
+## [1.4.73] - 2023-09-04
+
+### Added
+- The `gotenberg url` Configuration directive, which allows for the
+  use of an external Gotenberg server for DOCX to PDF
+  conversion.
+- The Docker environment variable `SUPERVISORLOGLEVEL`, which can be
+  set to `debug` so that application log messages can be viewed with
+  `docker logs` (system upgrade required).
+
+### Changed
+- Additional fonts are installed in the operating system to support
+  a greater variety of languages (system upgrade required).
+- Upgraded pdftk and Pandoc (system upgrade required).
+- Disabled autocomplete on login and register pages.
+- The `DAFileList` is now initialized with the `complete_attribute`
+  set to `initialized` and the `object_type` of `DAFile`.
+
+### Fixed
+- Issue with JSON representation of the question when fields were
+  generated by code.
+- When using Keycloak, logging out resulted in an error message due to
+  a change in the Keycloak code.
+
+## [1.4.72] - 2023-08-23
+
+### Changed
+- The pseudo-fields `favorite_fruit[nota]` and `favorite_fruit[aota]`
+  referring to the "None of the above" and "All of the above"
+  checkboxes in a `datatype: checkboxes` field can now be used in a
+  boolean `show if`.
+
+## [1.4.71] - 2023-08-22
+
+### Changed
+- The `val()`, `getField()`, and `setField()` JavaScript functions can
+  references pseudo-fields `favorite_fruit[nota]` and
+  `favorite_fruit[aota]` to refer to the "None of the above" and "All
+  of the above" checkboxes in a `datatype: checkboxes` field.
+
+### Fixed
+- Bug introduced in 1.4.70 relating to GitHub URLs.
+
+## [1.4.70] - 2023-08-20
+
+### Changed
+- When installing a package with a GitHub URL, the
+  `#egg=mypackagename` feature of GitHub URLs is now respected, and
+  the name of the package will be extracted from `#egg` instead of
+  from the GitHub repository name.
+- Grouped the `initialize`, `postgres`, and `redis` Supervisor
+  processes into a group called `main` so that they shut down
+  simultaneously rather than sequentially.
+
+### Fixed
+- The `js show if` feature did not work correctly when an expression
+  reference two different fields.
+- The `auto terms` and `terms` features interfered with each other
+  when the same term was referenced in each.
+- Bug in locale-setting code.
+- The system for forcing the admin user to change their password when
+  the password is `password` introduced unnecessary delay on page
+  loads.
+- The "Please wait while docassemble starts . . ." page would refresh
+  into an error rather than refresh into the default interview under
+  some conditions.
+
+## [1.4.69] - 2023-08-15
+
+### Fixed
+- The `val()` JavaScript function erroneously returned encoded values
+  for `datatype: object` and `datatype: object_radio` fields. The
+  function has been modified so that it returns the `instanceName` of
+  the selected object.
+- The combobox HTML did not set an `aria-label`.
+- Markdown-to-HTML conversion in popover `help` text was not
+  full-featured.
+
+## [1.4.68] - 2023-08-10
+
+### Changed
+- The `ldap login` feature now supports TLS and anonymous binding.
+
+### Fixed
+- Error with exporting tables to Excel, caused by the upgrade of the
+  Pandas dependency.
+- The way that locale-related functions actually worked did not match
+  the way they were documented; they have been fixed so that they
+  match the way they are documented. The `update_locale()` function is
+  also now imported by default.
+- Bug with handling of non-required object fields that are not
+  answered.
+
+## [1.4.67] - 2023-07-28
+
+### Changed
+- Upgraded `webdriver_manager`.
+- The `.delete()` method of `DAGlobal` will now exit silently if
+  called on a `DAGlobal` object that has already been deleted.
+
+## [1.4.66] - 2023-07-24
+
+### Changed
+- Upgraded dependencies. Packages that might require code changes
+  include `selenium` (now at version 4) and `matplotlib` (see the
+  "Generating a graph and inserting it into a document" recipe). Due
+  to incompatibilities with the latest version of `markdown`, the
+  `mdx_smartypants` extension is no longer being used. Instead the
+  standard `smarty` extension is used. There are some differences
+  between the two extensions, such as the transformation of ellipses.
+
+### Fixed
+- Adapted code so no error will be raised if docassemble tries to
+  create a directory where one already exists. A race condition of
+  some sort seemed to be causing such errors for some users.
+
+## [1.4.65] - 2023-07-13
+
+### Fixed
+- The `navigation: horizontal` feature was not functional.
+
+## [1.4.64] - 2023-07-11
+
+### Fixed
+- Issue with the `NameError` exception change in 1.4.63.
+
+## [1.4.63] - 2023-07-02
+
+### Changed
+- If a `NameError` exception arises out of code in a module file,
+  **docassemble** will raise an exception instead of treating the
+  exception as a reference to an undefined variable.
+
+### Fixed
+- Issue with using `default admin account` to set a default API key if
+  an external Redis server is not being used (requires system
+  upgrade).
+
+## [1.4.62] - 2023-06-21
+
+### Fixed
+- Issue with administrative interviews not appearing in the menu.
+- Issue with unchecked checkbox fields subject to a `show if` not
+  being located for purposes of placing an error message.
+- Issue with failing to process false values of `object_checkboxes`.
+
+## [1.4.61] - 2023-06-18
+
+### Fixed
+- Issues with the timing of `change` event triggers on the combobox.
+
+## [1.4.60] - 2023-06-17
+
+### Fixed
+- Bug with `datatype: raw`.
+
+## [1.4.59] - 2023-06-12
+
+### Fixed
+- Adapted the fix made in 1.4.58 to work correctly with objects with
+  random instance names.
+
+## [1.4.58] - 2023-06-10
+
+### Added
+- The optional keyword argument `evaluate` of `force_ask()`.
+
+### Changed
+- The CSS of `signature` screens was changed so that the compact mode
+  only takes effect if the screen is small and has a landscape
+  orientation.
+
+### Fixed
+- The `value()` function (which is used by `reconsider()` and the
+  `reconsider` modifier) did not raise the correct undefined variable
+  exceptions when the variable name included variable aliases. The
+  code was fixed so that the exceptions raised correspond with the
+  exceptions that would be raised if the expression was evaluated by
+  Python. It is possible that interview logic in existing interviews
+  may rely upon the quirks of the previous version of the code, so it
+  is important (as it always is) to test interviews before deploying
+  this version in production.
+- The JSON representation of a `question` did not show fields that
+  were generated by `code`.
+- Error with the `rtf to docx` file type.
+- The `instanceName` of a `DAFileCollection` object generated by an
+  `attachment` or `attachments` block was set to the literal `variable
+  name` without interpolation of variables.
+
+## [1.4.57] - 2023-06-05
+
+### Fixed
+- Modified the change that 1.4.56 made to `force_ask()` and
+  `reconsider()` to work better with objects with random instance
+  names.
+
+## [1.4.56] - 2023-06-04
+
+### Added
+- The `hide corner interface` option under `features`.
+
+### Changed
+- The `administrative interviews` Configuration directive now accepts
+  items that add custom URLs to the menu.
+- `force_ask()` or `reconsider()` will now attempt to act on the
+  intrinsic name of the referenced variable rather than the literal
+  string passed to the function.
+- The functions `format_date()`, `format_datetime()`, `format_time()`,
+  `month_of()`, `year_of()`, `day_of()`, `dow_of()`, `qr_code()` are
+  now available as Jinja2 filters.
+- The JavaScript functions `var()`, `getField()`, `setField()`, and
+  `getFields()` were modified to work better with multiple choice
+  fields. `getField()` now returns the `<fieldset>` parent element
+  rather than the first input element. `val()` will return an array of
+  answers for a checkbox or multiselect. Object-based fields use
+  instance names as values.
+
+### Fixed
+- Items under `administrative interviews` will now appear for users
+  who are not logged in if the permissions allow anonymous users to
+  see the item.
+- When a `datatype: checkboxes` field has `required: False`, the "None
+  of the above" selection does not need to be selected.
+
+## [1.4.55] - 2023-05-21
+
+### Fixed
+- Issue with the "Run" button in the variables sidebar in the
+  Playground, introduced by the upgrade of Flask in 1.4.52.
+
+## [1.4.54] - 2023-05-21
+
+### Fixed
+- Updated `setup.py` to require Python 3.10. Version 1.4.53 has been
+  deleted from PyPI so that users with Python 3.8 cannot upgrade past
+  1.4.52.
+
+## [1.4.53] - 2023-05-21
+
+### Added
+- The `delete` keyword parameter to `set_session_variables()`.
+
+### Changed
+- Use `importlib.resources` instead of `pkg_resources`.
+
+## [1.4.52] - 2023-05-17
+
+### Changed
+- Upgraded Flask.
+- `depends on` will now invalidate dependencies.
+
+### Fixed
+- Allow use of True and False as radio button values in `pdf template
+  file` document assembly.
+- Allow `_use_jinja2` in `include_docx_template()`.
+
+## [1.4.51] - 2023-05-08
+
+### Fixed
+- Bug introduced in 1.4.48.
+
+## [1.4.50] - 2023-05-08
+
+### Fixed
+- Bug introduced in 1.4.48.
+
+## [1.4.49] - 2023-05-07
+
+### Changed
+- A `unoconv` job will not be submitted while another `unoconv` job is
+  still running.
+
+## [1.4.48] - 2023-05-05
+
+### Fixed
+- Avoid exceptions based on invalid version names.
+- Issue with Playground variable parser.
+
+## [1.4.47] - 2023-04-29
+
+### Changed
+- Names for keys in the dictionary returned by
+  `all_variables(special='title')` now correspond with the names used
+  to set the values (with backward compatibility).
+- Preserve capitalization when conjugating verbs.
+- Upgrade `reportlab`, `docxtpl`, and `pikepdf` dependencies.
+
+### Fixed
+- Issue with file inputs not enabling and disabling.
+- Bug that caused wrong exception to be raised if DOCX to PDF
+  conversion failed.
+- Replaced `description-file` with `description_file` in `setup.cfg`.
+- Error with `/restart_session` endpoint when user not logged in.
+
+## [1.4.46] - 2023-04-19
+
+### Changed
+- Added `all` and `any` as Jinja2 filters.
+
+### Fixed
+- Issue with placement of server-side validation messages when a
+  custom data type has a `show if`.
+
+## [1.4.45] - 2023-04-14
+
+### Changed
+- Failure to convert DOCX to PDF will raise an Exception.
+
+### Fixed
+- JavaScript issue with the "None of the above" checkboxes when
+  choice-specific `help` is applied to a checkbox choice.
+
+## [1.4.44] - 2023-04-09
+
+### Added
+- The `bearer` authentication option for `DAWeb`.
+- The `sheets_service()` method of `DAGoogleAPI`.
+- Google Fonts (system upgrade required).
+
+### Changed
+- Package versions in the Packages folder of the Playground must be
+  valid Python version numbers.
+- Upgraded `cryptography`, `redis`, and `pikepdf`.
+- Upgraded Pandoc (system upgrade required).
+
+### Fixed
+- Issue with rotation of `supervisord.log`.
+- Accessibility problem with toggler in the sections interface.
+
+## [1.4.43] - 2023-03-24
+
+### Added
+- `navigation bar html` option for administrative page screen parts.
+
+### Fixed
+- Bug introduced in 1.4.42.
+- Issue with `/api/resume_url` when URL parameters are provided.
+
+## [1.4.42] - 2023-03-19
+
+### Added
+- The `revoke()` method of the object returned from
+  `background_action()`.
+
+### Changed
+- When listing choices in a multiple choice question, you can use
+  `show if` to conditionally include the choice in the list of
+  choices.
+
+## [1.4.41] - 2023-03-14
+
+### Changed
+- The `check in` feature now sends two additional action arguments,
+  `_changed` and `_initial`. These arguments are not reported by
+  `action_arguments()` but can be retrieved with `action_argument()`.
+- The `defined()`, `value()`, and `showifdef()` functions now accept a
+  keyword argument `prior` which can be set to `True` in order to
+  correctly handle situations where the user has just clicked the Back
+  button and it is necessary to know the value that a variable had
+  prior to the user pressing the Back button. If `prior` is `True`,
+  the set of interview answers that was just discarded will be
+  accessed first, and then the current interview answers will be
+  accessed. In situations where the user has not just pressed the Back
+  button, setting `prior` to `True` has no effect.
+- The `countries_list()` and `states_list()` functions now return
+  alphabetically sorted results. `states_list()` returns an empty
+  dictionary when the `country_code` is invalid.
+- When the second argument of `background_response()` is `'fields'`,
+  and the first argument is a dictionary of variable names and values,
+  the value of a dropdown field can be set to a dictionary with keys
+  `value` and `choices`. The `choices` will replace the options in the
+  dropdown for that field.
+
+### Fixed
+- Upgraded `pikepdf` and fixed issue with way it is called.
+
+## [1.4.40] - 2023-03-07
+
+### Changed
+- The `analytics id` subdirective of `google` can refer to a list of
+  IDs, all of which will be configured.
+
+### Fixed
+- The `state_name()` function did not work with countries that lack
+  "state" abbreviations.
+- Cursor was not pointer over combobox drop-down items.
+- Better handling of radio buttons in PDF files.
+- Support for `/` characters in GitHub branch names.
+- Better method of calling `git`.
+
+## [1.4.39] - 2023-02-22
+
+### Fixed
+- Moved the `daPageLoad` event trigger until after the setup of the
+  jQuery Validation Plugin.
+
+## [1.4.38] - 2023-02-20
+
+### Fixed
+- Issue with SendGrid e-mail sending.
+
+## [1.4.37] - 2023-02-17
+
+### Added
+- The `auto color scheme` Configuration directive.
+### Fixed
+- Issue with double quotation marks in variable names under `objects`
+  and `objects from file`.
+
+## [1.4.36] - 2023-02-08
+
+### Fixed
+- CSS issue on small screens.
+
+## [1.4.35] - 2023-02-06
+
+### Fixed
+- Issue with package upgrading.
+
+## [1.4.34] - 2023-02-06
+
+### Fixed
+- Small screen menu button had wrong color.
+- E-mail sending bug introduced in 1.4.33.
+
+## [1.4.33] - 2023-02-05
+
+### Changed
+- Updated Python and JavaScript dependencies.
+- Upgraded Bootstrap to version 5.3.
+- Added support for using `min` and `max` with `datatype: time` and
+  `datatype: datetime`.
+- The `data` and `data from code` blocks can be used with an `objects:
+  objects` modifier, which will cause the data structure to be
+  interpreted in the manner of `objects_from_file()`. A `gathered`
+  modifier is also supported.
+- `continue button field` can now be used with `buttons` where one of
+  the items under `buttons` is `continue`.
+- The Configuration directive `mail` now accepts a list of
+  configurations, and `send_mail()` now accepts a `config` keyword
+  parameter.
+### Fixed
+- Removed code that transformed `\\_` into `__` in Markdown.
+- Ensured that dropdown options are free of HTML.
+- Default values of object-based fields did not appear in all
+  circumstances.
+- The `editable: False` option for `pdf template file` now shows
+  better formatting of fields.
+
+## [1.4.32] - 2023-01-28
+
+### Fixed
+- Bug in 1.4.31.
+
+## [1.4.31] - 2023-01-28
+
+### Added
+- The `all of the above` and `check others` modifiers for checkbox
+  fields.
+- The `celery modules` Configuration directive.
+- Recipe for calling background tasks from Flask endpoints.
+### Changed
+- When setting up two factor authentication with the authenticator
+  app, a code is shown in addition to a QR code.
+- The way that `objects from file` works has changed; it is no longer
+  treated as a `mandatory` block, but instead acts like an `objects`
+  block that is called upon when a variable is needed.
+
+## [1.4.30] - 2023-01-23
+
+### Fixed
+- Scrolling issue when moving from one screen to another.
+- JavaScript bug.
+
+## [1.4.29] - 2023-01-20
+
+### Fixed
+- Follow-up fix to 1.4.28 change regarding unicode values in
+  `js show if`.
+
+## [1.4.28] - 2023-01-19
+
+### Fixed
+- The "branch" drop-down on the Package Management page was not
+  working on production servers.
+- Follow-up fix to 1.4.26 change regarding unicode values in
+  `datatype: checkboxes`.
+- JavaScript warning message from Google API regarding a callback
+  function.
+
+## [1.4.27] - 2023-01-16
+
+### Changed
+- The `jQuery Validation Plugin` settings were adapted to always apply
+  validation to hidden elements.
+
+## [1.4.26] - 2023-01-15
+
+### Fixed
+- Removed dependency on `sklearn`.
+- Issue with unicode values in `datatype: checkboxes`.
+
+## [1.4.25] - 2023-01-05
+
+### Fixed
+- Rolling backup files on S3 were copied to the wrong directory during
+  initialization.
+- Issue with `objects from file` blocks being run repeatedly if they
+  are not marked as `mandatory`.
+
+## [1.4.24] - 2022-12-30
+
+### Added
+- Option for using `show if` in `action buttons`.
+### Fixed
+- Error with `pdf template file` and image inclusion introduced in
+  1.4.21.
+- Error with `.from_url()` method of `DAFile`.
+
+## [1.4.23] - 2022-12-10
+
+### Added
+- The screen parts `continue button color`, `resume button color`,
+  `help button color`, and `back button color`.
+- The question modifiers `continue button color` and `resume button
+  color`.
+- Additional options `labelauty` and `labelauty nota` under the
+  `button colors` Configuration directive.
+### Changed
+- Items in multiple choice lists, when expressed as a dictionary, can
+  now include keys `css class` and `color`. The HTML element for the
+  item will have the `css class` as a CSS class. The `color` is
+  expected to be a Bootstrap color name. This will change the
+  background color of the HTML element, unless the element is an
+  `<option>` element. The `css class` and `color` keys have no effect
+  on combobox items.
+- Buttons in `action buttons` can be modified with a `css class`.
+
+## [1.4.22] - 2022-12-08
+
+### Fixed
+- Error with the `.fix_up()` method of `DAFile` introduced in 1.4.21.
+
+## [1.4.21] - 2022-12-07
+
+### Added
+- The `suppress autofill` directive under `features`.
+- The `grid classes` Configuration directive.
+- The `alert html` and `alert container html` Configuration
+  directives.
+### Changed
+- Replaced `PyPDF2` with `pikepdf`.
+- Bates numbering is more efficient.
+- The `section` modifier now accepts Mako templating.
+### Fixed
+- Overzealous matching of `DAContext` variables in `data` blocks.
+- Possibly remedied an inefficiency in labelauty.
+- Not all object types were allowed in `data from code`.
+
+## [1.4.20] - 2022-11-16
+
+### Fixed
+- Updated the CloudConvert API.
+- Fixed typo affecting `/run/packagename/directoryname/filename`
+  links.
+
+## [1.4.19] - 2022-11-13
+
+### Added
+- The `wide side by side` directive under `features`.
+### Changed
+- Better example code for running Alembic from a package that uses
+  `SQLObject`.
+### Fixed
+- UI error on administrative screens on mobile.
+- Cancel button on Change Password page directed to the wrong place
+  when `show profile link: False` is in the Configuration.
+
+## [1.4.18] - 2022-11-06
+
+### Added
+- Ability to pass options directly to the Google Places JavaScript API
+  when using `address autocomplete`.
+- The `hidden` `input type` for defining variables that are populated
+  by JavaScript.
+### Fixed
+- The YAML on the Configuration page can now be searched in its
+  entirety using the web browser's search feature.
+
+## [1.4.17] - 2022-11-03
+
+### Added
+- The `suppress login alerts` Configuration directive.
+
+### Fixed
+- Changed NGINX configuration so that requests for hostnames other
+  than `external hostname` are redirected.
+- Changed `list collect` behavior to prevent reaching circularity
+  limit when quantity of items is very large.
+- Issue with validation code on file fields with `show if`.
+
+## [1.4.16] - 2022-11-01
+
+### Fixed
+- Issue with alembic not running properly during restart.
+
+## [1.4.15] - 2022-10-31
+
+### Fixed
+- Problem with `authorized registration domains`.
+
+## [1.4.14] - 2022-10-25
+
+### Fixed
+- Additional fix to allow the use of `table prefix` in `db`.
+
+## [1.4.13] - 2022-10-24
+
+### Changed
+- The `include_internal` option of `store_variables_snapshot()`,
+  `variables_as_json()`, and `all_variables()` now controls whether
+  the `nav` variable is included in the output.
+- The `authorized registration domains` Configuration directive now
+  applies to social login methods as well as username/password login.
+- Increased accessibility of the `datatype: combobox` interface.
+### Fixed
+- Problem with the exim4 mail configuration.
+- Problem when `table prefix` in `db` was used.
+
+## [1.4.12] - 2022-10-02
+
+### Added
+- The `mms attachments` option in the `twilio` configuration.
+
+## [1.4.11] - 2022-10-01
+
+### Fixed
+- Issues with SMS interface.
+
+## [1.4.10] - 2022-10-01
+
+### Added
+- The `signature pen thickness scaling factor` Configuration
+  directive.
+### Changed
+- Upgraded Mako to version 1.2.2.
+- The field modifiers `address autocomplete`, `label above field`, and
+  `floating label` can now refer to Python expressions.
+- Upgraded Google OAuth.
+### Fixed
+- Issue with exim4's overinclusive `dc_other_hostnames` setting.
+- Error with images in Markdown to DOCX conversion.
+- Error with `overlay_pdf()`.
+- Error with `temporary session` when user is not logged in.
+
 ## [1.4.9] - 2022-09-10
 
 ### Added

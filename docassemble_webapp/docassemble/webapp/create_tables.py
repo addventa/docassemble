@@ -2,6 +2,7 @@ import sys
 import os
 import time
 import datetime
+import importlib.resources
 import docassemble.base.config
 if __name__ == "__main__":
     docassemble.base.config.load(arguments=sys.argv)
@@ -25,7 +26,6 @@ from sqlalchemy.sql import text
 # import random
 # import string
 from docassemble_flask_user import UserManager, SQLAlchemyAdapter
-import pkg_resources
 from alembic.config import Config
 from alembic import command
 
@@ -33,7 +33,7 @@ from alembic import command
 def get_role(the_db, name, result=None):
     if result is None:
         result = {}
-    the_role = the_db.session.execute(select(Role).filter_by(name=name)).first()
+    the_role = the_db.session.execute(select(Role).filter_by(name=name)).scalar()
     if the_role:
         return the_role
     the_role = Role(name=name)
@@ -106,12 +106,12 @@ def test_for_errors(start_time=None):
             ['userdictkeys', 'indexno', UserDictKeys]]
     for table, column, tableclass in todo:
         last_value = 0
-        for results in db.session.execute(text("select last_value from " + table + "_" + column + "_seq")):
+        for results in db.session.execute(text('select last_value from "' + dbtableprefix + table + '_' + column + '_seq"')):
             last_value = results[0]
         max_value = db.session.execute(select(db.func.max(getattr(tableclass, column)))).scalar()
         if max_value is not None and max_value > last_value:
-            logmessage('create_tables.test_for_errors: ' + table + " has an error: " + str(last_value) + " " + str(max_value) + " after " + str(time.time() - start_time) + " seconds.")
-            db.session.execute(text("alter sequence " + table + "_" + column + "_seq restart with :newval"), {'newval': max_value + 1})
+            logmessage('create_tables.test_for_errors: ' + dbtableprefix + table + " has an error: " + str(last_value) + " " + str(max_value) + " after " + str(time.time() - start_time) + " seconds.")
+            db.session.execute(text('alter sequence "' + dbtableprefix + table + '_' + column + '_seq" restart with :newval'), {'newval': max_value + 1})
             db.session.commit()
 
 
@@ -203,10 +203,11 @@ def main():
     else:
         do_varchar_upgrade = True
     with app.app_context():
+        insp = inspect(db.engine)
+        tables_exist = insp.has_table(dbtableprefix + 'userdict')
         logmessage("create_tables.main: inside app context after " + str(time.time() - start_time) + " seconds.")
         if daconfig.get('use alembic', True):
             logmessage("create_tables.main: running alembic after " + str(time.time() - start_time) + " seconds.")
-            insp = inspect(db.engine)
             if do_varchar_upgrade:
                 changed = False
                 if insp.has_table(dbtableprefix + 'userdict'):
@@ -241,8 +242,8 @@ def main():
                     changed = True
                 if changed:
                     db.session.commit()
-            packagedir = pkg_resources.resource_filename(pkg_resources.Requirement.parse('docassemble.webapp'), 'docassemble/webapp')
-            if not os.path.isdir(packagedir):
+            packagedir = importlib.resources.files('docassemble.webapp')
+            if not packagedir.is_dir():
                 sys.exit("path for running alembic could not be found")
             alembic_cfg = Config(os.path.join(packagedir, 'alembic.ini'))
             alembic_cfg.set_main_option("sqlalchemy.url", alchemy_connection_string())
@@ -274,6 +275,8 @@ def main():
             except:
                 logmessage("create_tables.main: unable to test for errors after " + str(time.time() - start_time) + " seconds.")
         logmessage("create_tables.main: populating tables after " + str(time.time() - start_time) + " seconds.")
+        if not tables_exist:
+            time.sleep(4)
         populate_tables(start_time=start_time)
         logmessage("create_tables.main: disposing engine after " + str(time.time() - start_time) + " seconds.")
         db.engine.dispose()

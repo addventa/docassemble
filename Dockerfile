@@ -38,6 +38,7 @@ bash -c \
 && cp /tmp/docassemble/Docker/config/exim4-main /etc/exim4/conf.d/main/01_docassemble \
 && cp /tmp/docassemble/Docker/config/exim4-acl /etc/exim4/conf.d/acl/29_docassemble \
 && cp /tmp/docassemble/Docker/config/exim4-update /etc/exim4/update-exim4.conf.conf \
+&& cp /tmp/docassemble/Docker/config/nascent.conf /usr/share/docassemble/config/nascent.conf \
 && cp /tmp/docassemble/Docker/nascent.html /var/www/nascent/index.html \
 && cp /tmp/docassemble/Docker/daunoconv /usr/bin/daunoconv \
 && chmod ogu+rx /usr/bin/daunoconv \
@@ -63,38 +64,37 @@ bash -c \
 && update-locale \
 && /usr/bin/python3 -m venv --copies /usr/share/docassemble/local3.10 \
 && source /usr/share/docassemble/local3.10/bin/activate \
-&& pip3 install --upgrade pip==21.1 \
-&& pip3 install --upgrade wheel==0.37.1 \
-&& pip3 install --upgrade mod_wsgi==4.9.3 \
+&& pip3 install --upgrade pip==23.3.2 \
+&& pip3 install --upgrade wheel==0.42.0 \
+&& pip3 install --upgrade mod_wsgi==5.0.0 \
 && pip3 install --upgrade \
-   acme==1.26.0 \
-   certbot-apache==1.15.0 \
-   certbot-nginx==1.15.0 \
-   certbot==1.15.0 \
-   certifi==2021.10.8 \
-   cffi==1.15.0 \
-   charset-normalizer==2.0.12 \
-   click==8.1.2 \
-   ConfigArgParse==1.5.3 \
-   configobj==5.0.6 \
-   cryptography==36.0.2 \
-   distro==1.7.0 \
-   idna==3.3 \
-   joblib==1.1.0 \
-   josepy==1.13.0 \
-   nltk==3.7 \
+   acme==2.8.0 \
+   certbot==2.8.0 \
+   certbot-apache==2.8.0 \
+   certbot-nginx==2.8.0 \
+   certifi==2023.11.17 \
+   cffi==1.16.0 \
+   charset-normalizer==3.3.2 \
+   click==8.1.7 \
+   ConfigArgParse==1.7 \
+   configobj==5.0.8 \
+   cryptography==41.0.7 \
+   distro==1.8.0 \
+   idna==3.6 \
+   joblib==1.3.2 \
+   josepy==1.14.0 \
+   nltk==3.8.1 \
    parsedatetime==2.6 \
    pycparser==2.21 \
-   PyOpenSSL==22.0.0 \
-   pyparsing==3.0.8 \
+   pyOpenSSL==23.3.0 \
+   pyparsing==3.1.1 \
    pyRFC3339==1.1 \
-   python-augeas==0.5.0 \
-   pytz==2022.1 \
-   regex==2022.3.15 \
-   requests-toolbelt==0.9.1 \
-   requests==2.27.1 \
+   python-augeas==1.1.0 \
+   pytz==2023.3.post1 \
+   regex==2023.10.3 \
+   requests==2.31.0 \
    six==1.16.0 \
-   tqdm==4.64.0 \
+   tqdm==4.66.1 \
    urllib3==1.26.9 \
    zope.component==5.0.1 \
    zope.event==4.5.0 \
@@ -123,6 +123,8 @@ bash -c \
    /usr/share/docassemble/log \
    /usr/share/docassemble/files \
 && usermod --shell /bin/bash www-data \
+&& rm -f /usr/lib/apache2/modules/mod_wsgi.so \
+&& ln -s /usr/lib/apache2/modules/mod_wsgi.so-3.10 /usr/lib/apache2/modules/mod_wsgi.so \
 && rm -f /etc/cron.daily/apt-compat \
 && sed -i -e 's/^\(daemonize\s*\)yes\s*$/\1no/g' -e 's/^bind 127.0.0.1/bind 0.0.0.0/g' /etc/redis/redis.conf \
 && sed -i -e 's/#APACHE_ULIMIT_MAX_FILES/APACHE_ULIMIT_MAX_FILES/' -e 's/ulimit -n 65536/ulimit -n 8192/' /etc/apache2/envvars \
@@ -143,8 +145,8 @@ RUN bash -c \
 "source /usr/share/docassemble/local3.10/bin/activate \
 && python /tmp/docassemble/Docker/nltkdownload.py \
 && cd /var/www/nltk_data/corpora \
-&& unzip wordnet.zip \
-&& unzip omw-1.4.zip"
+&& unzip -o wordnet.zip \
+&& unzip -o omw-1.4.zip"
 
 USER root
 RUN rm -rf /tmp/docassemble
@@ -154,6 +156,7 @@ ENV \
 CONTAINERROLE="all" \
 LOCALE="en_US.UTF-8 UTF-8" \
 TIMEZONE="America/New_York" \
+SUPERVISORLOGLEVEL="info" \
 EC2="" \
 S3ENABLE="" \
 S3BUCKET="" \

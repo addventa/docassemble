@@ -7,6 +7,9 @@
 {%- if extra_js is not defined %}
 {%- set extra_js = get_part('login page extra javascript') %}
 {%- endif %}
+{%- if navigation_bar_html is not defined %}
+{%- set navigation_bar_html = get_part('login page navigation bar html') %}
+{%- endif %}
 {%- extends 'flask_user/public_base.html' %}
 {%- block content %}
 {%- from "base_templates/form_macros.html" import render_field, render_checkbox_field, render_submit_field, myrender_hidden_field %}
@@ -37,7 +40,7 @@
               </div>
               <div class="row">
                 <div class="col">
-                  {{ field(class_='form-control', type='email') }}
+                  {{ field(class_='form-control', type='email', autocomplete='off') }}
                 </div>
               </div>
               {%- if field.errors %}
@@ -64,7 +67,7 @@
               </div>
               <div class="row">
                 <div class="col">
-                  {{ field(class_='form-control') }}
+                  {{ field(class_='form-control', autocomplete='off') }}
                 </div>
               </div>
               {%- if field.errors %}
@@ -80,7 +83,7 @@
               {{ render_submit_field(form.submit) }}
             </div>
           </form>
-          {%- if config['USE_GOOGLE_LOGIN'] or config['USE_FACEBOOK_LOGIN'] or config['USE_TWITTER_LOGIN'] or config['USE_AUTH0_LOGIN'] or config['USE_KEYCLOAK_LOGIN'] or config['USE_AZURE_LOGIN'] or config['USE_PHONE_LOGIN'] %}
+          {%- if config['USE_GOOGLE_LOGIN'] or config['USE_FACEBOOK_LOGIN'] or config['USE_ZITADEL_LOGIN'] or config['USE_TWITTER_LOGIN'] or config['USE_AUTH0_LOGIN'] or config['USE_KEYCLOAK_LOGIN'] or config['USE_AZURE_LOGIN'] or config['USE_PHONE_LOGIN'] %}
           <p style="padding: 15px 15px 5px 15px;"><strong>{{ word('or') }}</strong></p>
           {%- endif %}
           {%- endif %}
@@ -112,6 +115,11 @@
           {%- if config['USE_KEYCLOAK_LOGIN'] %}
           <div class="row danomargin">
             <div class="daiconbox col-md-7"><a role="button" class="danohover" href="{{ url_for('oauth_authorize', provider='keycloak', next=request.args.get('next', '')) }}"><table><tbody><tr><td style="padding-left:4px;vertical-align:middle;"><img alt="" src="{{ url_for('static', filename='app/keycloak-logo.png', v=config['DA_VERSION']) }}"></td><td style="width:100%;vertical-align:middle;text-align:center;">{{ word('Sign in with Keycloak') }}</td></tr></tbody></table></a></div>
+          </div>
+          {%- endif %}
+          {%- if config['USE_ZITADEL_LOGIN'] %}
+          <div class="row danomargin">
+            <div class="daiconbox col-md-7"><a role="button" class="danohover" href="{{ url_for('oauth_authorize', provider='zitadel', next=request.args.get('next', '')) }}"><table><tbody><tr><td style="padding-left:4px;vertical-align:middle;"><img alt="" src="{{ url_for('static', filename='app/zitadel-logo.png', v=config['DA_VERSION']) }}"></td><td style="width:100%;vertical-align:middle;text-align:center;">{{ word('Sign in with Zitadel') }}</td></tr></tbody></table></a></div>
           </div>
           {%- endif %}
           {%- if config['USE_AZURE_LOGIN'] %}

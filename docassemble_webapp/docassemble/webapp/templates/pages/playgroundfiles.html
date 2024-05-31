@@ -77,11 +77,11 @@
 {%- endif %}
             <ul id="editnav" class="nav nav-pills mt-1">
               <li class="nav-item">
-                <a tabindex="571" class="nav-link" title="{{ word('Create a new file') }}" href="{{ url_for('playground_files', section=section, new='1', project=current_project) }}"><i class="fas fa-plus-circle" aria-hidden="true"></i>&nbsp;&nbsp;{{ word('Add') }}</a>
+                <a tabindex="571" class="nav-link" title="{{ word('Create a new file') }}" href="{{ url_for('playground_files', section=section, new='1', project=current_project) }}"><i class="fas fa-plus-circle" aria-hidden="true"></i>&nbsp;{{ word('Add') }}</a>
               </li>
               <li class="nav-item dropdown">
                 <a tabindex="572" class="nav-link dropdown-toggle" data-bs-toggle="dropdown" href="#" role="button" aria-haspopup="true" aria-expanded="false" title="{{ word('Edit another file')}}">
-                  <i class="fas fa-file" aria-hidden="true"></i>&nbsp;&nbsp;{% if current_file == '' %}{{ word("(New file)") }}{% else %}{{ current_file }}{% endif %}
+                  <i class="fas fa-file" aria-hidden="true"></i>&nbsp;{% if current_file == '' %}{{ word("(New file)") }}{% else %}{{ current_file }}{% endif %}
                 </a>
                 <div class="dropdown-menu daheightlim">
                   {%- if any_files %}
@@ -124,8 +124,8 @@
           </div>
 {%- if active_file %}
           <div class="col-md-4 pgright">
-            <div id="playgroundbox" class="card bg-light playgroundbox">
-              <div class="card-header">{{ word('Variables, etc. from') }}&nbsp;<span class="select-wrapper"><select tabindex="130" id="daVariables" class="playground-select">{% for file in pulldown_files %}<option {% if file == active_file %}selected {% endif %}value="{{ file }}">{{ file }}</option>{% endfor %}</select></span>&nbsp;<a class="dabadge btn btn-primary da-larger-badge" target="_blank" id="daRunButton">{{ word('Run') }}</a></h3>
+            <div id="playgroundbox" class="card bg-body-tertiary playgroundbox">
+              <div class="card-header bg-body-secondary">{{ word('Variables, etc. from') }}&nbsp;<span class="select-wrapper"><select tabindex="130" id="daVariables" class="playground-select">{% for file in pulldown_files %}<option {% if file == active_file %}selected {% endif %}value="{{ file }}">{{ file }}</option>{% endfor %}</select></span>&nbsp;<a class="dabadge btn btn-primary da-larger-badge" target="_blank" id="daRunButton">{{ word('Run') }}</a></h3>
               </div>
               <div class="card-body" id="daplaygroundcard">
                 <table id="daplaygroundtable" class="daplaygroundtable">

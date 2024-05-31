@@ -60,7 +60,7 @@ def url_sanitize(url):
 
 class SavedFile:
 
-    def __init__(self, file_number, extension=None, fix=False, section='files', filename='file', subdir=None, should_not_exist=False):
+    def __init__(self, file_number, extension=None, fix=False, section='files', filename='file', subdir=None, should_not_exist=False, must_exist=False):
         file_number = int(file_number)
         section = str(section)
         if section not in docassemble.base.functions.this_thread.saved_files:
@@ -96,7 +96,9 @@ class SavedFile:
         else:
             self.path = os.path.join(self.directory, self.filename)
         if fix:
-            self.fix()
+            self.fix(must_exist=must_exist)
+            if must_exist and not os.path.isfile(self.path):
+                return None
             if should_not_exist and os.path.isdir(self.directory):
                 found_error = False
                 for root, dirs, files in os.walk(self.directory):  # pylint: disable=unused-variable
@@ -115,9 +117,10 @@ class SavedFile:
                     if hasattr(self, 'directory') and os.path.isdir(self.directory):
                         shutil.rmtree(self.directory)
                     if not os.path.isdir(self.directory):
-                        os.makedirs(self.directory)
+                        os.makedirs(self.directory, exist_ok=True)
+        return None
 
-    def fix(self):
+    def fix(self, must_exist=False):
         if self.fixed:
             return
         # logmessage("fix: starting " + str(self.section) + '/' + str(self.file_number))
@@ -126,7 +129,7 @@ class SavedFile:
             self.modtimes = {}
             self.keydict = {}
             if not os.path.isdir(self.directory):
-                os.makedirs(self.directory)
+                os.makedirs(self.directory, exist_ok=True)
             prefix = str(self.section) + '/' + str(self.file_number) + '/'
             # logmessage("fix: prefix is " + prefix)
             for key in cloud.list_keys(prefix):
@@ -135,7 +138,7 @@ class SavedFile:
                 fulldir = os.path.dirname(fullpath)
                 dirs_in_use.add(fulldir)
                 if not os.path.isdir(fulldir):
-                    os.makedirs(fulldir)
+                    os.makedirs(fulldir, exist_ok=True)
                 server_time = key.get_epoch_modtime()
                 if not os.path.isfile(fullpath):
                     key.get_contents_to_filename(fullpath)
@@ -162,8 +165,8 @@ class SavedFile:
                 if subdir not in dirs_in_use and os.path.isdir(subdir):
                     shutil.rmtree(subdir)
         else:
-            if not os.path.isdir(self.directory):
-                os.makedirs(self.directory)
+            if not os.path.isdir(self.directory) and not must_exist:
+                os.makedirs(self.directory, exist_ok=True)
         self.fixed = True
         # logmessage("fix: ending " + str(self.section) + '/' + str(self.file_number))
 
@@ -228,12 +231,12 @@ class SavedFile:
         self.fix()
         cookiefile = tempfile.NamedTemporaryFile(suffix='.txt')
         f = open(os.path.join(self.directory, filename), 'wb')
-        c = pycurl.Curl()
+        c = pycurl.Curl()  # pylint: disable=c-extension-no-member
         c.setopt(c.URL, url)
         c.setopt(c.FOLLOWLOCATION, True)
         c.setopt(c.WRITEDATA, f)
-        c.setopt(pycurl.USERAGENT, 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Googlebot/2.1; +http://www.google.com/bot.html) Safari/537.36')
-        c.setopt(pycurl.COOKIEFILE, cookiefile.name)
+        c.setopt(pycurl.USERAGENT, 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Googlebot/2.1; +http://www.google.com/bot.html) Safari/537.36')  # pylint: disable=c-extension-no-member
+        c.setopt(pycurl.COOKIEFILE, cookiefile.name)  # pylint: disable=c-extension-no-member
         c.perform()
         c.close()
         cookiefile.close()
@@ -242,7 +245,7 @@ class SavedFile:
     def fetch_url_post(self, url, post_args, **kwargs):
         filename = kwargs.get('filename', self.filename)
         self.fix()
-        r = requests.post(url_sanitize(url), data=post_args)
+        r = requests.post(url_sanitize(url), data=post_args, timeout=600)
         if r.status_code != 200:
             raise DAError('fetch_url_post: retrieval from ' + url + 'failed')
         with open(os.path.join(self.directory, filename), 'wb') as fp:
@@ -286,7 +289,7 @@ class SavedFile:
         new_file = os.path.join(self.directory, filename)
         new_file_dir = os.path.dirname(new_file)
         if not os.path.isdir(new_file_dir):
-            os.makedirs(new_file_dir)
+            os.makedirs(new_file_dir, exist_ok=True)
         shutil.copyfile(orig_path, new_file)
         if 'filename' not in kwargs:
             self.save()
@@ -510,7 +513,7 @@ def make_package_zip(pkgname, info, author_info, tz_name, current_project='defau
     trimlength = len(directory) + 1
     packagedir = os.path.join(directory, 'docassemble-' + str(pkgname))
     temp_zip = tempfile.NamedTemporaryFile(suffix=".zip")
-    zf = zipfile.ZipFile(temp_zip, mode='w')
+    zf = zipfile.ZipFile(temp_zip, compression=zipfile.ZIP_DEFLATED, mode='w')
     the_timezone = zoneinfo.ZoneInfo(tz_name)
     for root, dirs, files in os.walk(packagedir):  # pylint: disable=unused-variable
         for file in files:
@@ -558,10 +561,7 @@ def make_package_dir(pkgname, info, author_info, directory=None, current_project
         area[sec] = SavedFile(author_info['id'], fix=True, section=sec)
     dependencies = ", ".join(map(lambda x: repr(x + get_version_suffix(x)), sorted(info['dependencies'])))
     initpy = """\
-try:
-    __import__('pkg_resources').declare_namespace(__name__)
-except ImportError:
-    __path__ = __import__('pkgutil').extend_path(__path__, __name__)
+__import__('pkg_resources').declare_namespace(__name__)
 
 """
     licensetext = str(info['license'])
@@ -595,7 +595,7 @@ include README.md
 """
     setupcfg = """\
 [metadata]
-description-file = README.md
+description_file = README.md
 """
     setuppy = """\
 import os
@@ -687,13 +687,13 @@ machine learning training files, and other source files.
     staticdir = os.path.join(packagedir, 'docassemble', str(pkgname), 'data', 'static')
     sourcesdir = os.path.join(packagedir, 'docassemble', str(pkgname), 'data', 'sources')
     if not os.path.isdir(questionsdir):
-        os.makedirs(questionsdir)
+        os.makedirs(questionsdir, exist_ok=True)
     if not os.path.isdir(templatesdir):
-        os.makedirs(templatesdir)
+        os.makedirs(templatesdir, exist_ok=True)
     if not os.path.isdir(staticdir):
-        os.makedirs(staticdir)
+        os.makedirs(staticdir, exist_ok=True)
     if not os.path.isdir(sourcesdir):
-        os.makedirs(sourcesdir)
+        os.makedirs(sourcesdir, exist_ok=True)
     dir_questions = directory_for(area['playground'], current_project)
     dir_template = directory_for(area['playgroundtemplate'], current_project)
     dir_modules = directory_for(area['playgroundmodules'], current_project)

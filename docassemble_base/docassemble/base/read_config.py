@@ -17,9 +17,11 @@ if __name__ == "__main__":
         print('export DAWEBSERVER="' + daconfig['web server'] + '"')
     else:
         print('export DAWEBSERVER="nginx"')
+    if daconfig.get('run oauthlib on http', False):
+        print('export OAUTHLIB_INSECURE_TRANSPORT=1')
     if '--limited' in sys.argv:
         sys.exit(0)
-    if 'other os locales' in daconfig and type(daconfig['other os locales']) is list:
+    if 'other os locales' in daconfig and isinstance(daconfig['other os locales'], list):
         print('declare -a OTHERLOCALES')
         print('export OTHERLOCALES')
         indexno = 0
@@ -45,11 +47,14 @@ if __name__ == "__main__":
         print('DAMAXCONTENTLENGTH=' + str(16 * 1024 * 1024))
     if 'celery processes' in daconfig and isinstance(daconfig['celery processes'], int):
         print('DACELERYWORKERS=' + str(daconfig['celery processes']))
-    if 'debian packages' in daconfig and isinstance(daconfig['debian packages'], list):
+    if 'debian packages' in daconfig and isinstance(daconfig['debian packages'], list) and daconfig.get('ubuntu packages', None) is None:
+        daconfig['ubuntu packages'] = daconfig['debian packages']
+        del daconfig['debian packages']
+    if 'ubuntu packages' in daconfig and isinstance(daconfig['ubuntu packages'], list):
         print('declare -a PACKAGES')
         print('export PACKAGES')
         indexno = 0
-        for package in daconfig['debian packages']:
+        for package in daconfig['ubuntu packages']:
             print('PACKAGES[' + str(indexno) + ']=' + repr(str(package)))
             indexno += 1
     else:
@@ -61,7 +66,7 @@ if __name__ == "__main__":
             for package in map(lambda x: x.strip(), separator.split(packages_variable)):
                 print('PACKAGES[' + str(indexno) + ']=' + repr(str(package)))
                 indexno += 1
-    if 'python packages' in daconfig and type(daconfig['python packages']) is list:
+    if 'python packages' in daconfig and isinstance(daconfig['python packages'], list):
         print('declare -a PYTHONPACKAGES')
         print('export PYTHONPACKAGES')
         indexno = 0

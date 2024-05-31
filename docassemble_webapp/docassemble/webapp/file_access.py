@@ -3,14 +3,14 @@ import importlib
 import mimetypes
 import os
 import re
-import subprocess
 # import sys
 import tempfile
 import xml.etree.ElementTree as ET
-import PyPDF2
+from pikepdf import Pdf
 from PIL import Image
 from docassemble.base.generate_key import random_lower_string
 from docassemble.base.logger import logmessage
+from docassemble.base.error import DAException
 import docassemble.base.config
 import docassemble.base.functions
 from docassemble.webapp.core.models import Uploads, UploadsUserAuth, UploadsRoleAuth
@@ -76,6 +76,7 @@ def get_info_from_file_reference(file_reference, **kwargs):
     # logmessage('file reference is ' + str(file_reference))
     convert = kwargs.get('convert', None)
     privileged = kwargs.get('privileged', None)
+    return_nonexistent = kwargs.get('return_nonexistent', False)
     has_info = False
     if re.search(r'^[0-9]+$', str(file_reference)):
         uids = kwargs.get('uids', None)
@@ -164,7 +165,7 @@ def get_info_from_file_reference(file_reference, **kwargs):
                 result['package'] = the_package
         elif len(parts) == 2:
             result['package'] = parts[0]
-        result['fullpath'] = docassemble.base.functions.static_filename_path(file_reference)
+        result['fullpath'] = docassemble.base.functions.static_filename_path(file_reference, return_nonexistent=return_nonexistent)
     # logmessage("path is " + str(result['fullpath']))
     if result['fullpath'] is not None:  # os.path.isfile(result['fullpath'])
         if not has_info:
@@ -193,48 +194,33 @@ def get_info_from_file_reference(file_reference, **kwargs):
     return result
 
 
-def safe_pypdf_reader(filename):
-    try:
-        return PyPDF2.PdfFileReader(open(filename, 'rb'), overwriteWarnings=False)
-    except PyPDF2.utils.PdfReadError:
-        new_filename = tempfile.NamedTemporaryFile(prefix="datemp", mode="wb", suffix=".pdf", delete=False)
-        qpdf_subprocess_arguments = [QPDF_PATH, filename, new_filename.name]
-        try:
-            result = subprocess.run(qpdf_subprocess_arguments, timeout=60, check=False).returncode
-        except subprocess.TimeoutExpired:
-            result = 1
-        if result != 0:
-            raise Exception("Call to qpdf failed for template " + str(filename) + " where arguments were " + " ".join(qpdf_subprocess_arguments))
-        return PyPDF2.PdfFileReader(open(new_filename.name, 'rb'), overwriteWarnings=False)
-
-
 def add_info_about_file(filename, basename, result):
     if result['extension'] == 'pdf':
         try:
-            reader = safe_pypdf_reader(filename)
-            result['encrypted'] = reader.isEncrypted
-            try:
-                if '/AcroForm' in reader.trailer['/Root']:
-                    result['acroform'] = True
-                else:
+            with Pdf.open(filename) as reader:
+                result['encrypted'] = reader.is_encrypted
+                try:
+                    if '/AcroForm' in reader.trailer['/Root']:
+                        result['acroform'] = True
+                    else:
+                        result['acroform'] = False
+                except:
                     result['acroform'] = False
-            except:
-                result['acroform'] = False
-            result['pages'] = reader.getNumPages()
+                result['pages'] = len(reader.pages)
         except:
             result['pages'] = 1
     elif os.path.isfile(basename + '.pdf'):
         try:
-            reader = safe_pypdf_reader(basename + '.pdf')
-            result['encrypted'] = reader.isEncrypted
-            try:
-                if '/AcroForm' in reader.trailer['/Root']:
-                    result['acroform'] = True
-                else:
+            with Pdf.open(basename + '.pdf') as reader:
+                result['encrypted'] = reader.is_encrypted
+                try:
+                    if '/AcroForm' in reader.trailer['/Root']:
+                        result['acroform'] = True
+                    else:
+                        result['acroform'] = False
+                except:
                     result['acroform'] = False
-            except:
-                result['acroform'] = False
-            result['pages'] = reader.getNumPages()
+                result['pages'] = len(reader.pages)
         except:
             result['pages'] = 1
     elif result['extension'] in ['png', 'jpg', 'gif']:
@@ -251,7 +237,7 @@ def add_info_about_file(filename, basename, result):
                     result['width'] = float(dimen[2]) - float(dimen[0])
                     result['height'] = float(dimen[3]) - float(dimen[1])
         except:
-            raise Exception("problem reading " + str(filename))
+            raise DAException("problem reading " + str(filename))
             # logmessage('add_info_about_file: could not read ' + str(filename))
 
 

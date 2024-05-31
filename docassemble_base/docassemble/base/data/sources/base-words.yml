@@ -29,6 +29,7 @@
 "Åland Islands": Null
 "Albania": Null
 "Algeria": Null
+"All of the above": Null
 "Allowed sites": Null
 "All Playgrounds": Null
 "Already registered?": Null
@@ -43,16 +44,17 @@
 "Anguilla": Null
 "Anonymous": Null
 "anonymous visitor": Null
+"An SSH key is already installed on your GitHub account. The existing SSH key will not be replaced. Note that if you are connecting to GitHub from multiple docassemble servers, each server needs to have a different appname in the Configuration. If you have problems using GitHub, disable the integration and configure it again.": Null
 "Answer here": Null
 "Antarctica": Null
 "Antigua and Barbuda": Null
 "An uploaded JSON file": Null
+"API key copied to clipboard.": Null
 "API key": Null
 "API keys": Null
 "API Keys": Null
 "Apply": Null
 "App": Null
-"A QR code": Null
 ", are attached": Null
 "A reset password email has been sent to '%(email)s'. Open that email and follow the instructions to reset your password.": Null
 "are you": Null
@@ -172,6 +174,7 @@
 "Control": Null
 "Convert to .md": Null
 "Cook Islands": Null
+"Copy API key": Null
 "Copy from here and paste into a YAML file, e.g., in the Sources folder of the Playground or the sources folder of a package.": Null
 "Costa Rica": Null
 "could not connect to Google Drive": Null
@@ -242,6 +245,7 @@
 "Download this file": Null
 "Download this log file": Null
 "Draft translation of system phrases": Null
+"Dropdown": Null
 "Ecuador": Null
 "Edit another file": Null
 "Edit another interview": Null
@@ -344,6 +348,7 @@
 "French Polynesia": Null
 "French Southern Territories": Null
 "from": Null
+"From": Null
 "Functions": Null
 "Gabon": Null
 "Gambia": Null
@@ -590,7 +595,6 @@
 "Name of new privilege is required": Null
 "Name of new privilege": Null
 "Names and questions": Null
-"Names from": Null
 "Namibia": Null
 "n/a": Null
 "Nauru": Null
@@ -704,7 +708,6 @@
 "Password is required": Null
 "Password must be at least six characters long with at least one lowercase letter, at least one uppercase letter, and at least one number.": Null
 "Password must have at least 6 characters with one lowercase letter, one uppercase letter and one number": Null
-"password": Null
 "Password": Null
 "PDF/DOCX File": Null
 "Per Month": Null
@@ -784,6 +787,7 @@
 "PyPI package": Null
 "PyPI Password": Null
 "PyPI Username": Null
+"Python version %s": Null
 "Qatar": Null
 "question": Null
 "Question": Null
@@ -803,6 +807,7 @@
 "Register with Google": Null
 "Register with Twitter": Null
 "Register with your mobile phone": Null
+"Register with Zitadel": Null
 "Registration attempt": Null
 "Registration is invite only": Null
 "remaining on disk": Null
@@ -880,6 +885,7 @@
 "Serbia": Null
 "Server did not respond to request for update.": Null
 "Sessions": Null
+"Setup key": Null
 "Seychelles": Null
 "Share": Null
 "she": Null
@@ -905,6 +911,7 @@
 "Sign in with Keycloak": Null
 "Sign in with Twitter": Null
 "Sign in with your mobile phone": Null
+"Sign in with Zitadel": Null
 "Sign Out": Null
 "Sign up": Null
 "Sign Your Name": Null
@@ -1026,6 +1033,7 @@
 "There was an error.": Null
 "There was an error updating the packages.": Null
 "There was an error with the synchronization.": Null
+"There was a problem connecting to GitHub. Please check your GitHub configuration and try again.": Null
 "There was a problem reading the YAML file you uploaded.  Are you sure it is a YAML file?  File was not saved.": Null
 "There was a problem sending the text message.": Null
 "There was a problem sending you a text message.  Please log in another way.": Null
@@ -1057,6 +1065,7 @@
 "Timor-Leste": Null
 "Title": Null
 "t": Null
+"Toggle": Null
 "Togo": Null
 "Tokelau": Null
 "Token": Null
@@ -1185,8 +1194,8 @@
 "Verification code": Null
 "Verify": Null
 "Verify your phone": Null
-"Version ": Null
 "Version": Null
+"Version number does not conform to PEP 440": Null
 "Viet Nam": Null
 "View documentation": Null
 "Virgin Islands, British": Null
@@ -1253,12 +1262,18 @@
 "You must type at least %s characters.": Null
 "You need to be logged in to access this interview.": Null
 "You need to enter a complete e-mail address.": Null
+"You need to enter a date and time between %s and %s.": Null
+"You need to enter a date and time on or after %s.": Null
+"You need to enter a date and time on or before %s.": Null
 "You need to enter a date between %s and %s.": Null
 "You need to enter a date on or after %s.": Null
 "You need to enter a date on or before %s.": Null
 "You need to enter a number.": Null
 "You need to enter a number that is at least %s.": Null
 "You need to enter a number that is at most %s.": Null
+"You need to enter a time at or after %s.": Null
+"You need to enter a time at or before %s.": Null
+"You need to enter a time between %s and %s.": Null
 "You need to enter a valid date and time.": Null
 "You need to enter a valid date.": Null
 "You need to enter a valid number.": Null
@@ -1296,7 +1311,6 @@
 "Your email address": Null
 "Your email has been confirmed.": Null
 "Your file upload is larger than the server can accept. Please reduce the size of your file upload.": Null
-"Your GitHub integration has already been configured.": Null
 "Your GitHub integration is currently turned on.  Below, you can change which repositories docassemble can access.  You can disable GitHub integration if you no longer wish to use it.": Null
 "Your GitHub settings were saved.": Null
 "Your information was saved.": Null

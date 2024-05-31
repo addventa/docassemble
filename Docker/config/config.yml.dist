@@ -129,3 +129,4 @@ sql ping: {{DASQLPING}}
 default icons: font awesome
 config from: {{CONFIGFROM}}
 enable unoconv: {{ENABLEUNOCONV}}
+gotenberg url: {{GOTENBERGURL}}

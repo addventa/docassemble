@@ -35,6 +35,14 @@ if [[ $PGVERSION == 14* ]]; then
     PGVERSION=14
 fi
 
+if [[ $PGVERSION == 15* ]]; then
+    PGVERSION=15
+fi
+
+if [[ $PGVERSION == 16* ]]; then
+    PGVERSION=16
+fi
+
 chown -R postgres.postgres /etc/postgresql
 chown -R postgres.postgres /var/lib/postgresql
 chown -R postgres.postgres /var/run/postgresql
@@ -66,6 +74,7 @@ function stopfunc {
     fi
     echo "stopping postgres" >&2
     pg_ctlcluster --force $PGVERSION main stop
+    rm -f "/var/run/docassemble/status-postgres-running"
     exit 0
 }
 
@@ -80,7 +89,8 @@ else
 fi
 
 mkdir -p "/var/run/postgresql/${PGVERSION}-main.pg_stat_tmp"
-chown -R postgres.postgres "/var/run/postgresql/${PGVERSION}-main.pg_stat_tmp"
+chown -R postgres:postgres "/var/run/postgresql/${PGVERSION}-main.pg_stat_tmp"
 
+touch "/var/run/docassemble/status-postgres-running"
 su postgres -c "/usr/lib/postgresql/${PGVERSION}/bin/postgres -D /var/lib/postgresql/${PGVERSION}/main -c config_file=/etc/postgresql/${PGVERSION}/main/postgresql.conf" &
 wait %1

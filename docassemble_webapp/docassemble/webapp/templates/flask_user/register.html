@@ -3,6 +3,7 @@
 {%- set tab_title = get_part('register page tab title', word('Register')) %}
 {%- set extra_css = get_part('register page extra css') %}
 {%- set extra_js = get_part('register page extra javascript') %}
+{%- set navigation_bar_html = get_part('register page navigation bar html') %}
 {%- extends 'flask_user/public_base.html' %}
 {%- block content %}
 {%- from "base_templates/form_macros.html" import render_field, render_submit_field, render_select_field, myrender_hidden_field %}
@@ -19,28 +20,28 @@
           <form action="" method="POST" novalidate formnovalidate class="form" role="form">
             {{ form.hidden_tag() }}
             {%- if 'first_name' in config['USER_PROFILE_FIELDS'] %}
-            {{ render_field(form.first_name) }}
+            {{ render_field(form.first_name, autocomplete='off') }}
             {%- endif %}
             {%- if 'last_name' in config['USER_PROFILE_FIELDS'] %}
-            {{ render_field(form.last_name) }}
+            {{ render_field(form.last_name, autocomplete='off') }}
             {%- endif %}
             {%- if 'country' in config['USER_PROFILE_FIELDS'] %}
-            {{ render_field(form.country) }}
+            {{ render_field(form.country, autocomplete='off') }}
             {%- endif %}
             {%- if 'subdivisionfirst' in config['USER_PROFILE_FIELDS'] %}
-            {{ render_field(form.subdivisionfirst) }}
+            {{ render_field(form.subdivisionfirst, autocomplete='off') }}
             {%- endif %}
             {%- if 'subdivisionsecond' in config['USER_PROFILE_FIELDS'] %}
-            {{ render_field(form.subdivisionsecond) }}
+            {{ render_field(form.subdivisionsecond, autocomplete='off') }}
             {%- endif %}
             {%- if 'subdivisionthird' in config['USER_PROFILE_FIELDS'] %}
-            {{ render_field(form.subdivisionthird) }}
+            {{ render_field(form.subdivisionthird, autocomplete='off') }}
             {%- endif %}
             {%- if 'organization' in config['USER_PROFILE_FIELDS'] %}
-            {{ render_field(form.organization) }}
+            {{ render_field(form.organization, autocomplete='off') }}
             {%- endif %}
             {%- if 'language' in config['USER_PROFILE_FIELDS'] %}
-            {{ render_field(form.language) }}
+            {{ render_field(form.language, autocomplete='off') }}
             {%- endif %}
             {%- if 'timezone' in config['USER_PROFILE_FIELDS'] %}
             {{ render_select_field(form.timezone) }}
@@ -48,7 +49,7 @@
             {%- set field = form.username if user_manager.enable_username else form.email %}
             <div class="da-form-group">
               <label for="{{ field.id }}" class="form-label">{{ field.label.text }}</label>
-              {{ field(class_="form-control", type="email") }}
+              {{ field(class_="form-control", type="email", autocomplete='off') }}
               {%- if field.errors %}
                 {%- for e in field.errors %}
               <p class="da-has-error text-danger">{{ e }}</p>
@@ -56,18 +57,18 @@
               {% endif %}
             </div>
             {%- if user_manager.enable_email and user_manager.enable_username %}
-            {{ render_field(form.email, type='email') }}
+            {{ render_field(form.email, type='email', autocomplete='off') }}
             {%- endif %}
-            {{ render_field(form.password) }}
+            {{ render_field(form.password, autocomplete='off') }}
             {%- if user_manager.enable_retype_password %}
-            {{ render_field(form.retype_password) }}
+            {{ render_field(form.retype_password, autocomplete='off') }}
             {%- endif %}
             <br>
             {{ get_part('register page submit') }}<div class="form-actions">
               {{ render_submit_field(form.submit) }}
             </div>
           </form>
-          {%- if config['USE_GOOGLE_LOGIN'] or config['USE_FACEBOOK_LOGIN'] or config['USE_TWITTER_LOGIN'] or config['USE_AUTH0_LOGIN'] or config['USE_AZURE_LOGIN'] or config['USE_PHONE_LOGIN'] %}
+          {%- if config['USE_GOOGLE_LOGIN'] or config['USE_FACEBOOK_LOGIN'] or config['USE_ZITADEL_LOGIN'] or config['USE_TWITTER_LOGIN'] or config['USE_AUTH0_LOGIN'] or config['USE_AZURE_LOGIN'] or config['USE_PHONE_LOGIN'] %}
           <p style="padding: 15px 15px 5px 15px;"><strong>{{ word('or') }}</strong></p>
           {%- endif %}
           {%- endif %}
@@ -94,6 +95,11 @@
           {%- if config['USE_AUTH0_LOGIN'] %}
           <div class="row danomargin">
             <div class="daiconbox col-md-7"><a role="button" class="danohover" href="{{ url_for('oauth_authorize', provider='auth0') }}"><table><tbody><tr><td style="padding-left:4px;vertical-align:middle;"><img alt="" src="{{ url_for('static', filename='app/auth0-logo.png', v=config['DA_VERSION']) }}"></td><td style="width:100%;vertical-align:middle;text-align:center;">{{ word('Register with Auth0') }}</td></tr></tbody></table></a></div>
+          </div>
+          {%- endif %}
+          {%- if config['USE_ZITADEL_LOGIN'] %}
+          <div class="row danomargin">
+            <div class="daiconbox col-md-7"><a role="button" class="danohover" href="{{ url_for('oauth_authorize', provider='zitadel') }}"><table><tbody><tr><td style="padding-left:4px;vertical-align:middle;"><img alt="" src="{{ url_for('static', filename='app/zitadel-logo.png', v=config['DA_VERSION']) }}"></td><td style="width:100%;vertical-align:middle;text-align:center;">{{ word('Register with Zitadel') }}</td></tr></tbody></table></a></div>
           </div>
           {%- endif %}
           {%- if config['USE_AZURE_LOGIN'] %}

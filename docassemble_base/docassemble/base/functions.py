@@ -1,7 +1,6 @@
 import re
 import types
 import os
-import inspect
 import locale
 import decimal
 from io import IOBase
@@ -16,13 +15,14 @@ import random
 from collections.abc import Iterable
 from unicodedata import normalize
 from enum import Enum
+from pathlib import Path
+import importlib.resources
+import sys
 import astunparse
-# import sys
 import tzlocal
 import us
 import pycountry
 import markdown
-from mdx_smartypants import SmartypantsExt
 import nltk
 try:
     if not os.path.isfile(os.path.join(nltk.data.path[0], 'corpora', 'omw-1.4.zip')):
@@ -52,10 +52,9 @@ import docassemble_pattern.it  # pylint: disable=import-error,no-name-in-module
 import docassemble_pattern.nl  # pylint: disable=import-error,no-name-in-module
 from pylatex.utils import escape_latex
 # import operator
-import da_pkg_resources as pkg_resources
 import titlecase
 from docassemble.base.logger import logmessage
-from docassemble.base.error import ForcedNameError, QuestionError, ResponseError, CommandError, BackgroundResponseError, BackgroundResponseActionError, ForcedReRun, DAError
+from docassemble.base.error import ForcedNameError, QuestionError, ResponseError, CommandError, BackgroundResponseError, BackgroundResponseActionError, ForcedReRun, DAError, DANameError, DAInvalidFilename
 from docassemble.base.generate_key import random_string
 import docassemble.base.astparser
 from user_agents import parse as ua_parse
@@ -68,8 +67,9 @@ equals_byte = bytes('=', 'utf-8')
 TypeType = type(type(None))
 locale.setlocale(locale.LC_ALL, '')
 contains_volatile = re.compile(r'^(x\.|x\[|.*\[[ijklmn]\])')
+match_brackets_or_dot = re.compile(r'(\[.+?\]|\.[a-zA-Z_][a-zA-Z0-9_]*)')
 
-__all__ = ['alpha', 'roman', 'item_label', 'ordinal', 'ordinal_number', 'comma_list', 'word', 'get_language', 'set_language', 'get_dialect', 'set_country', 'get_country', 'get_locale', 'set_locale', 'comma_and_list', 'need', 'nice_number', 'quantity_noun', 'currency_symbol', 'verb_past', 'verb_present', 'noun_plural', 'noun_singular', 'indefinite_article', 'capitalize', 'space_to_underscore', 'force_ask', 'period_list', 'name_suffix', 'currency', 'static_image', 'title_case', 'url_of', 'process_action', 'url_action', 'get_info', 'set_info', 'get_config', 'prevent_going_back', 'qr_code', 'action_menu_item', 'from_b64_json', 'defined', 'value', 'message', 'response', 'json_response', 'command', 'background_response', 'background_response_action', 'single_paragraph', 'quote_paragraphs', 'location_returned', 'location_known', 'user_lat_lon', 'interview_url', 'interview_url_action', 'interview_url_as_qr', 'interview_url_action_as_qr', 'interview_email', 'get_emails', 'action_arguments', 'action_argument', 'get_default_timezone', 'user_logged_in', 'user_privileges', 'user_has_privilege', 'user_info', 'background_action', 'background_response', 'background_response_action', 'us', 'set_live_help_status', 'chat_partners_available', 'phone_number_in_e164', 'phone_number_formatted', 'phone_number_is_valid', 'countries_list', 'country_name', 'write_record', 'read_records', 'delete_record', 'variables_as_json', 'all_variables', 'language_from_browser', 'device', 'plain', 'bold', 'italic', 'subdivision_type', 'indent', 'raw', 'fix_punctuation', 'set_progress', 'get_progress', 'referring_url', 'undefine', 'invalidate', 'dispatch', 'yesno', 'noyes', 'phone_number_part', 'log', 'encode_name', 'decode_name', 'interview_list', 'interview_menu', 'server_capabilities', 'session_tags', 'get_chat_log', 'get_user_list', 'get_user_info', 'set_user_info', 'get_user_secret', 'create_user', 'create_session', 'get_session_variables', 'set_session_variables', 'go_back_in_session', 'manage_privileges', 'redact', 'forget_result_of', 're_run_logic', 'reconsider', 'get_question_data', 'set_save_status', 'single_to_double_newlines', 'verbatim', 'add_separators', 'store_variables_snapshot', 'update_terms', 'set_variables', 'language_name', 'run_action_in_session']
+__all__ = ['alpha', 'roman', 'item_label', 'ordinal', 'ordinal_number', 'comma_list', 'word', 'get_language', 'set_language', 'get_dialect', 'set_country', 'get_country', 'get_locale', 'set_locale', 'comma_and_list', 'need', 'nice_number', 'quantity_noun', 'currency_symbol', 'verb_past', 'verb_present', 'noun_plural', 'noun_singular', 'indefinite_article', 'capitalize', 'space_to_underscore', 'force_ask', 'period_list', 'name_suffix', 'currency', 'static_image', 'title_case', 'url_of', 'process_action', 'url_action', 'get_info', 'set_info', 'get_config', 'prevent_going_back', 'qr_code', 'action_menu_item', 'from_b64_json', 'defined', 'value', 'message', 'response', 'json_response', 'command', 'background_response', 'background_response_action', 'single_paragraph', 'quote_paragraphs', 'location_returned', 'location_known', 'user_lat_lon', 'interview_url', 'interview_url_action', 'interview_url_as_qr', 'interview_url_action_as_qr', 'interview_email', 'get_emails', 'action_arguments', 'action_argument', 'get_default_timezone', 'user_logged_in', 'user_privileges', 'user_has_privilege', 'user_info', 'background_action', 'background_response', 'background_response_action', 'us', 'set_live_help_status', 'chat_partners_available', 'phone_number_in_e164', 'phone_number_formatted', 'phone_number_is_valid', 'countries_list', 'country_name', 'write_record', 'read_records', 'delete_record', 'variables_as_json', 'all_variables', 'language_from_browser', 'device', 'plain', 'bold', 'italic', 'subdivision_type', 'indent', 'raw', 'fix_punctuation', 'set_progress', 'get_progress', 'referring_url', 'undefine', 'invalidate', 'dispatch', 'yesno', 'noyes', 'phone_number_part', 'log', 'encode_name', 'decode_name', 'interview_list', 'interview_menu', 'server_capabilities', 'session_tags', 'get_chat_log', 'get_user_list', 'get_user_info', 'set_user_info', 'get_user_secret', 'create_user', 'invite_user', 'create_session', 'get_session_variables', 'set_session_variables', 'go_back_in_session', 'manage_privileges', 'redact', 'forget_result_of', 're_run_logic', 'reconsider', 'get_question_data', 'set_save_status', 'single_to_double_newlines', 'verbatim', 'add_separators', 'store_variables_snapshot', 'update_terms', 'set_variables', 'language_name', 'run_action_in_session']
 
 # debug = False
 # default_dialect = 'us'
@@ -82,7 +82,6 @@ __all__ = ['alpha', 'roman', 'item_label', 'ordinal', 'ordinal_number', 'comma_l
 # except:
 #     default_timezone = 'America/New_York'
 # daconfig = {}
-smartyext = SmartypantsExt(configs={})
 dot_split = re.compile(r'([^\.\[\]]+(?:\[.*?\])?)')
 newlines = re.compile(r'[\r\n]+')
 single_newline = re.compile(r'[\r\n]')
@@ -119,6 +118,26 @@ class ReturnValue:
         if hasattr(self, 'error_message'):
             return str(self.error_message)
         return str(self.value)
+
+
+def filename_invalid(filename):
+    if '../' in filename:
+        return True
+    if re.search(r'[^A-Za-z0-9\_\.\-\/ ]', filename):
+        return True
+    if len(filename) > 268:
+        return True
+    return False
+
+
+def package_name_invalid(packagename):
+    if re.search(r'[^A-Za-z0-9\_\.\-]', packagename):
+        return True
+    if len(packagename) > 268:
+        return True
+    if not packagename.startswith('docassemble.'):
+        return True
+    return False
 
 
 def get_current_variable():
@@ -305,6 +324,7 @@ def language_from_browser(*pargs):
         valid_options = list(pargs)
     else:
         restrict = False
+        valid_options = []
     if 'headers' in this_thread.current_info:
         language_header = this_thread.current_info['headers'].get('Accept-Language', None)
         if language_header is not None:
@@ -367,7 +387,7 @@ def state_name(state_code, country_code=None):
     if country_code is None:
         country_code = get_country() or 'US'
     for subdivision in pycountry.subdivisions.get(country_code=country_code):
-        m = re.search(r'-([A-Z]+)$', subdivision.code)
+        m = re.search(r'-([A-Z0-9]+)$', subdivision.code)
         if m and m.group(1) == state_code:
             return word(subdivision.name)
     return state_code
@@ -661,23 +681,29 @@ def subdivision_type(country_code):
 
 def countries_list():
     """Returns a list of countries, suitable for use in a multiple choice field."""
-    return [{country.alpha_2: word(country.name)} for country in sorted(pycountry.countries, key=lambda x: x.name)]
+    return [{item[0]: item[1]} for item in sorted([[country.alpha_2, word(country.name)] for country in pycountry.countries], key=lambda x: x[1])]
 
 
-def states_list(country_code=None):
+def states_list(country_code=None, abbreviate=False):
     """Returns a list of U.S. states or subdivisions of another country,
     suitable for use in a multiple choice field."""
     ensure_definition(country_code)
     if country_code is None:
         country_code = get_country() or 'US'
     mapping = {}
-    for subdivision in pycountry.subdivisions.get(country_code=country_code):
+    state_list = pycountry.subdivisions.get(country_code=country_code)
+    if state_list is None:
+        return {}
+    for subdivision in state_list:
         if subdivision.parent_code is not None:
             continue
         m = re.search(r'-([A-Z0-9]+)$', subdivision.code)
         if m:
-            mapping[m.group(1)] = word(subdivision.name)
-    return mapping
+            if abbreviate:
+                mapping[m.group(1)] = m.group(1)
+            else:
+                mapping[m.group(1)] = word(subdivision.name)
+    return dict(sorted(mapping.items(), key=lambda item: item[1]))
 
 
 def interface():
@@ -778,6 +804,10 @@ def user_info():
         user.current_filename = this_thread.current_question.from_source.path
     except:
         user.current_filename = None
+    try:
+        user.current_section = this_thread.current_section or get_user_dict()['nav'].current
+    except:
+        user.current_section = None
     return user
 
 
@@ -785,7 +815,11 @@ def action_arguments():
     """Used when processing an "action."  Returns a dictionary with the
     arguments passed to url_action() or interview_url_action()."""
     if 'arguments' in this_thread.current_info:
-        return this_thread.current_info['arguments']
+        args = copy.deepcopy(this_thread.current_info['arguments'])
+        if '_initial' in args and '_changed' in args:
+            del args['_initial']
+            del args['_changed']
+        return args
     return {}
 
 
@@ -862,7 +896,7 @@ def chat_partners_available(*pargs, **kwargs):
         the_user_id = 't' + str(this_thread.current_info['user']['theid'])
     if the_user_id == 'tNone':
         logmessage("chat_partners_available: unable to get temporary user id")
-        return dict(peer=0, help=0)
+        return {'peer': 0, 'help': 0}
     return server.chat_partners_available(session_id, yaml_filename, the_user_id, mode, partner_roles)
 
 
@@ -984,9 +1018,9 @@ def temp_redirect(url, expire_seconds, do_local, one_time):
             break
     pipe = server.server_redis.pipeline()
     if one_time:
-        pipe.set(the_key, json.dumps(dict(url=url, once=True)))
+        pipe.set(the_key, json.dumps({'url': url, 'once': True}))
     else:
-        pipe.set(the_key, json.dumps(dict(url=url)))
+        pipe.set(the_key, json.dumps({'url': url}))
     pipe.expire(the_key, expire_seconds)
     pipe.execute()
     if do_local:
@@ -1592,6 +1626,7 @@ server.button_class_prefix = 'btn-'
 server.chat_partners_available = null_func
 server.chord = null_func_func
 server.create_user = null_func
+server.invite_user = null_func
 server.daconfig = {}
 server.debug = False
 server.debug_status = False
@@ -1700,7 +1735,7 @@ def url_of(file_reference, **kwargs):
     if file_reference == 'temp_url':
         url = kwargs.get('url', None)
         if url is None:
-            raise Exception("url_of: a url keyword parameter must accompany temp_url")
+            raise DAError("url_of: a url keyword parameter must accompany temp_url")
         expire = kwargs.get('expire', None)
         local = kwargs.get('local', False)
         one_time = kwargs.get('one_time', False)
@@ -1710,13 +1745,13 @@ def url_of(file_reference, **kwargs):
             expire = int(expire)
             assert expire > 0
         except:
-            raise Exception("url_of: invalid expire value")
+            raise DAError("url_of: invalid expire value")
         return temp_redirect(url, expire, bool(local), bool(one_time))
     if file_reference == 'login_url':
         username = kwargs.get('username', None)
         password = kwargs.get('password', None)
         if username is None or password is None:
-            raise Exception("url_of: username and password must accompany login_url")
+            raise DAError("url_of: username and password must accompany login_url")
         info = {'username': username, 'password': password}
         for param in ('expire', 'url_args', 'next', 'i', 'session', 'resume_existing'):
             if param in kwargs and kwargs[param] is not None:
@@ -1724,7 +1759,7 @@ def url_of(file_reference, **kwargs):
         result = server.get_login_url(**info)
         if result['status'] == 'success':
             return result['url']
-        raise Exception("url_of: " + result['message'])
+        raise DAError("url_of: " + result['message'])
     if 'package' not in kwargs:
         kwargs['_package'] = get_current_package()
     if 'question' not in kwargs:
@@ -1736,7 +1771,7 @@ def url_of(file_reference, **kwargs):
 
 def server_capabilities():
     """Returns a dictionary with true or false values indicating various capabilities of the server."""
-    result = dict(sms=False, fax=False, google_login=False, facebook_login=False, auth0_login=False, keycloak_login=False, twitter_login=False, azure_login=False, phone_login=False, s3=False, azure=False, github=False, pypi=False, googledrive=False, google_maps=False)
+    result = {'sms': False, 'fax': False, 'google_login': False, 'facebook_login': False, 'auth0_login': False, 'keycloak_login': False, 'twitter_login': False, 'azure_login': False, 'phone_login': False, 's3': False, 'azure': False, 'github': False, 'pypi': False, 'googledrive': False, 'google_maps': False}
     if 'twilio' in server.daconfig and isinstance(server.daconfig['twilio'], (list, dict)):
         if isinstance(server.daconfig['twilio'], list):
             tconfigs = server.daconfig['twilio']
@@ -1931,13 +1966,14 @@ this_thread.gathering_mode = {}
 this_thread.global_vars = GenericObject()
 this_thread.current_variable = []
 this_thread.open_files = set()
-this_thread.markdown = markdown.Markdown(extensions=[smartyext, 'markdown.extensions.sane_lists', 'markdown.extensions.tables', 'markdown.extensions.attr_list', 'markdown.extensions.md_in_html', 'footnotes'], output_format='html5')
+this_thread.markdown = markdown.Markdown(extensions=['smarty', 'markdown.extensions.sane_lists', 'markdown.extensions.tables', 'markdown.extensions.attr_list', 'markdown.extensions.md_in_html', 'footnotes'], output_format='html5')
 this_thread.saved_files = {}
 this_thread.message_log = []
 this_thread.misc = {}
 this_thread.probing = False
 this_thread.prevent_going_back = False
 this_thread.current_question = None
+this_thread.current_section = None
 
 
 def backup_thread_variables():
@@ -1981,7 +2017,7 @@ def background_response_action(*pargs, **kwargs):
 
 def background_error_action(*pargs, **kwargs):
     """Indicates an action that should be run if the current background task results in an error."""
-    this_thread.current_info['on_error'] = dict(action=pargs[0], arguments=kwargs)
+    this_thread.current_info['on_error'] = {'action': pargs[0], 'arguments': kwargs}
 
 
 def background_action(*pargs, **kwargs):
@@ -2031,6 +2067,9 @@ class MyAsyncResult:
             self._cached_result = BackgroundResult(server.worker_convert(self.obj).get())
         return self._cached_result.value
 
+    def revoke(self, terminate=True):
+        return server.worker_convert(self.obj).revoke(terminate=terminate)
+
 
 def worker_caller(func, ui_notification, action):
     # logmessage("Got to worker_caller in functions")
@@ -2069,6 +2108,10 @@ def worker_caller(func, ui_notification, action):
 
 
 def ordinal_function_en(i, **kwargs):
+    try:
+        i = int(i)
+    except:
+        i = 0
     use_word = kwargs.get('use_word', None)
     if use_word is True:
         kwargs['function'] = 'ordinal'
@@ -2381,8 +2424,9 @@ def reset_local_variables():
     this_thread.current_info = {}
     this_thread.current_package = None
     this_thread.current_question = None
+    this_thread.current_section = None
     this_thread.internal = {}
-    this_thread.markdown = markdown.Markdown(extensions=[smartyext, 'markdown.extensions.sane_lists', 'markdown.extensions.tables', 'markdown.extensions.attr_list', 'markdown.extensions.md_in_html', 'footnotes'], output_format='html5')
+    this_thread.markdown = markdown.Markdown(extensions=['smarty', 'markdown.extensions.sane_lists', 'markdown.extensions.tables', 'markdown.extensions.attr_list', 'markdown.extensions.md_in_html', 'footnotes'], output_format='html5')
     this_thread.prevent_going_back = False
 
 
@@ -2455,8 +2499,8 @@ def get_locale(*pargs):
 
     """
     if len(pargs) == 1:
-        if 'locale_override' in this_thread.misc and pargs[0] in this_thread.misc['locale_override']:
-            return this_thread.misc['locale_override'][pargs[0]]
+        if 'locale_overrides' in this_thread.misc and pargs[0] in this_thread.misc['locale_overrides']:
+            return this_thread.misc['locale_overrides'][pargs[0]]
         return locale.localeconv().get(pargs[0], None)
     return this_thread.locale
 
@@ -2466,17 +2510,22 @@ def get_currency_symbol():
     one, and otherwise returns the default currency symbol.
 
     """
-    if 'locale_override' in this_thread.misc and 'currency_symbol' in this_thread.misc['locale_override']:
-        return this_thread.misc['locale_override']['currency_symbol']
+    if 'locale_overrides' in this_thread.misc and 'currency_symbol' in this_thread.misc['locale_overrides']:
+        return this_thread.misc['locale_overrides']['currency_symbol']
     return currency_symbol()
 
 
 def update_locale():
     """Updates the system locale based on the value set by set_locale()."""
+    if '_' in this_thread.locale:
+        the_locale = str(this_thread.locale)
+    else:
+        the_locale = str(this_thread.language) + '_' + str(this_thread.locale)
     try:
-        locale.setlocale(locale.LC_ALL, str(this_thread.locale))
-    except:
-        logmessage("update_locale error: unable to set the locale to " + str(this_thread.locale))
+        locale.setlocale(locale.LC_ALL, the_locale)
+    except Exception as err:
+        logmessage("update_locale error: unable to set the locale to " + the_locale)
+        logmessage(err.__class__.__name__ + ": " + str(err))
         locale.setlocale(locale.LC_ALL, 'en_US.utf8')
 
 
@@ -2653,6 +2702,17 @@ def salutation_default(indiv, **kwargs):
     return salut
 
 
+def string_to_number(number):
+    try:
+        float_number = float(number)
+        int_number = int(number)
+        if float_number == int_number:
+            return int_number
+        return float_number
+    except:
+        return number
+
+
 def number_to_word(number, **kwargs):
     language = kwargs.get('language', None)
     capitalize_arg = kwargs.get('capitalize', False)
@@ -2666,6 +2726,7 @@ def number_to_word(number, **kwargs):
         if language == lang and this_thread.locale.startswith(loc):
             language = loc
             break
+    number = string_to_number(number)
     if raise_on_error:
         the_word = num2words.num2words(number, lang=language, to=function)
     else:
@@ -3540,7 +3601,7 @@ def response(*pargs, **kwargs):
 
 def json_response(data, response_code=None):
     """Sends data in JSON format as an HTTP response."""
-    raise ResponseError(json.dumps(data, sort_keys=True, indent=2) + "\n", content_type="application/json", response_code=response_code)
+    raise ResponseError(binaryresponse=(json.dumps(data, sort_keys=True, indent=2) + "\n").encode('utf-8'), content_type="application/json", response_code=response_code)
 
 
 def variables_as_json(include_internal=False):
@@ -3566,7 +3627,7 @@ def store_variables_snapshot(data=None, include_internal=False, key=None, persis
 def all_variables(simplify=True, include_internal=False, special=False, make_copy=False):
     """Returns the interview variables as a dictionary suitable for export to JSON or other formats."""
     if special == 'titles':
-        return this_thread.interview.get_title(get_user_dict())
+        return this_thread.interview.get_title(get_user_dict(), adapted=True)
     if special == 'metadata':
         return copy.deepcopy(this_thread.interview.consolidated_metadata)
     if special == 'tags':
@@ -3615,15 +3676,15 @@ def force_ask(*pargs, **kwargs):
         if 'event_stack' in this_thread.internal and unique_id in this_thread.internal['event_stack']:
             this_thread.internal['event_stack'][unique_id] = []
     if kwargs.get('persistent', True):
-        raise ForcedNameError(*the_pargs, user_dict=get_user_dict())
+        raise ForcedNameError(*the_pargs, user_dict=get_user_dict(), evaluate=kwargs.get('evaluate', False))
     force_ask_nameerror(the_pargs[0])
 
 
 def force_ask_nameerror(variable_name, priority=False):
-    raise NameError("name '" + str(variable_name) + "' is not defined")
+    raise DANameError("name '" + str(variable_name) + "' is not defined")
 
 
-def force_gather(*pargs, forget_prior=False):
+def force_gather(*pargs, forget_prior=False, evaluate=False):
     """Similar to force_ask(), except it works globally across all users
     and sessions and it does not seek definitions of already-defined
     variables. In addition to making a single attempt to ask a
@@ -3643,20 +3704,23 @@ def force_gather(*pargs, forget_prior=False):
         if var_name in the_user_dict:
             the_context[var_name] = the_user_dict[var_name]
     last_variable_name = None
-    for variable_name in unpack_pargs(pargs):
+    pargs = unpack_pargs(pargs)
+    if evaluate:
+        pargs = intrinsic_names_of(*pargs, the_user_dict=the_user_dict)
+    for variable_name in pargs:
         if variable_name not in [(variable_dict if isinstance(variable_dict, str) else variable_dict['var']) for variable_dict in this_thread.internal['gather']]:
-            this_thread.internal['gather'].append(dict(var=variable_name, context=the_context))
+            this_thread.internal['gather'].append({'var': variable_name, 'context': the_context})
         last_variable_name = variable_name
     if last_variable_name is not None:
-        raise ForcedNameError(last_variable_name, gathering=True)
+        raise ForcedNameError(last_variable_name, gathering=True, user_dict=the_user_dict)
 
 
-def static_filename_path(filereference):
+def static_filename_path(filereference, return_nonexistent=False):
     ensure_definition(filereference)
     if re.search(r'data/templates/', filereference):
-        result = package_template_filename(filereference)
+        result = package_template_filename(filereference, return_nonexistent=return_nonexistent)
     else:
-        result = package_data_filename(static_filename(filereference))
+        result = package_data_filename(static_filename(filereference), return_nonexistent=return_nonexistent)
     # if result is None or not os.path.isfile(result):
     #    result = server.absolute_filename("/playgroundstatic/" + re.sub(r'[^A-Za-z0-9\-\_\. ]', '', filereference)).path
     return result
@@ -3713,20 +3777,17 @@ def qr_code(string, width=None, alt_text=None):
     return '[QR ' + string + ', ' + width + ', ' + str(alt_text) + ']'
 
 
-def pkg_resources_resource_filename(package_or_requirement, resource_name):
+def standard_template_filename(the_file, return_nonexistent=False):
+    if filename_invalid(the_file):
+        return None
     try:
-        result = pkg_resources.resource_filename(package_or_requirement, resource_name)  # pylint: disable=not-callable
+        path = Path(importlib.resources.files('docassemble.base'), 'data', 'templates', str(the_file))
     except:
         return None
-    return result
-
-
-def standard_template_filename(the_file):
-    try:
-        return pkg_resources_resource_filename(pkg_resources.Requirement.parse('docassemble.base'), "docassemble/base/data/templates/" + str(the_file))
-    except:
-        # logmessage("Error retrieving data file")
-        return None
+    if path.exists() or return_nonexistent:
+        return str(path)
+    # logmessage("Error retrieving data file")
+    return None
 
 
 def package_template_filename(the_file, **kwargs):
@@ -3746,18 +3807,30 @@ def package_template_filename(the_file, **kwargs):
             return abs_file.path
         if not re.match(r'data/.*', parts[1]):
             parts[1] = 'data/templates/' + parts[1]
+        if filename_invalid(parts[1]) or package_name_invalid(parts[0]):
+            return None
         try:
-            return pkg_resources_resource_filename(pkg_resources.Requirement.parse(parts[0]), re.sub(r'\.', r'/', parts[0]) + '/' + parts[1])
+            path = Path(importlib.resources.files(parts[0]), parts[1])
         except:
             return None
+        if path.exists() or kwargs.get('return_nonexistent', False):
+            return str(path)
     return None
 
 
-def standard_question_filename(the_file):
-    return pkg_resources_resource_filename(pkg_resources.Requirement.parse('docassemble.base'), "docassemble/base/data/questions/" + str(the_file))
+def standard_question_filename(the_file, return_nonexistent=False):
+    if filename_invalid(the_file):
+        return None
+    try:
+        path = Path(importlib.resources.files('docassemble.base'), 'data', 'questions', str(the_file))
+    except:
+        return None
+    if path.exists() or return_nonexistent:
+        return str(path)
+    return None
 
 
-def package_data_filename(the_file):
+def package_data_filename(the_file, return_nonexistent=False):
     # logmessage("package_data_filename with: " + str(the_file))
     if the_file is None:
         return None
@@ -3769,6 +3842,8 @@ def package_data_filename(the_file):
         parts = [this_thread.current_package, the_file]
     #    parts = ['docassemble.base', the_file]
     if len(parts) == 2:
+        if filename_invalid(parts[1]) or package_name_invalid(parts[0]):
+            return None
         m = re.search(r'^docassemble.playground([0-9]+)([A-Za-z]?[A-Za-z0-9]*)$', parts[0])
         if m:
             if re.search(r'^data/sources/', parts[1]):
@@ -3782,24 +3857,34 @@ def package_data_filename(the_file):
             if abs_file is None:
                 return None
             return abs_file.path
+        if filename_invalid(parts[1]) or package_name_invalid(parts[0]):
+            return None
         try:
-            result = pkg_resources_resource_filename(pkg_resources.Requirement.parse(parts[0]), re.sub(r'\.', r'/', parts[0]) + '/' + parts[1])
+            path = Path(importlib.resources.files(parts[0]), parts[1])
         except:
+            return None
+        if path.exists() or return_nonexistent:
+            result = str(path)
+        else:
             result = None
     # if result is None or not os.path.isfile(result):
     #    result = server.absolute_filename("/playgroundstatic/" + re.sub(r'[^A-Za-z0-9\-\_\.]', '', the_file)).path
     return result
 
 
-def package_question_filename(the_file):
+def package_question_filename(the_file, return_nonexistent=False):
     parts = the_file.split(":")
     if len(parts) == 2:
-        if not re.match(r'data/.*', parts[1]):
+        if not re.match(r'^data/questions/', parts[1]):
             parts[1] = 'data/questions/' + parts[1]
+        if filename_invalid(parts[1]) or package_name_invalid(parts[0]):
+            raise DAInvalidFilename("Invalid filename")
         try:
-            return pkg_resources_resource_filename(pkg_resources.Requirement.parse(parts[0]), re.sub(r'\.', r'/', parts[0]) + '/' + parts[1])
+            path = Path(importlib.resources.files(parts[0]), parts[1])
         except:
             return None
+        if path.exists() or return_nonexistent:
+            return str(path)
     return None
 
 # def default_absolute_filename(the_file):
@@ -3844,7 +3929,7 @@ def process_action():
     # logmessage("process_action() started")
     # logmessage("process_action: starting")
     if 'action' not in this_thread.current_info:
-        to_be_gathered = [(dict(var=variable_dict, context={}) if isinstance(variable_dict, str) else variable_dict) for variable_dict in this_thread.internal['gather']]  # change this later
+        to_be_gathered = [({'var': variable_dict, 'context': {}} if isinstance(variable_dict, str) else variable_dict) for variable_dict in this_thread.internal['gather']]  # change this later
         for variable_dict in to_be_gathered:
             # logmessage("process_action: considering a gather of " + variable_name)
             if defined(variable_dict['var']):
@@ -3914,7 +3999,7 @@ def process_action():
                     if var_name in the_user_dict:
                         the_context[var_name] = the_user_dict[var_name]
                 del the_user_dict
-                this_thread.internal['gather'].append(dict(var=variable_name, context=the_context))
+                this_thread.internal['gather'].append({'var': variable_name, 'context': the_context})
         unique_id = this_thread.current_info['user']['session_uid']
         if 'event_stack' in this_thread.internal and unique_id in this_thread.internal['event_stack'] and len(this_thread.internal['event_stack'][unique_id]) and this_thread.internal['event_stack'][unique_id][0]['action'] == the_action and list_same(this_thread.internal['event_stack'][unique_id][0]['arguments']['variables'], this_thread.current_info['arguments']['variables']):
             # logmessage("popped the da_compute")
@@ -3930,7 +4015,7 @@ def process_action():
                     if var_name in the_user_dict:
                         the_context[var_name] = the_user_dict[var_name]
                 del the_user_dict
-                this_thread.internal['gather'].append(dict(var=variable_name, context=the_context))
+                this_thread.internal['gather'].append({'var': variable_name, 'context': the_context})
         unique_id = this_thread.current_info['user']['session_uid']
         if 'event_stack' in this_thread.internal and unique_id in this_thread.internal['event_stack'] and len(this_thread.internal['event_stack'][unique_id]) and this_thread.internal['event_stack'][unique_id][0]['action'] == the_action and list_same(this_thread.internal['event_stack'][unique_id][0]['arguments']['variables'], this_thread.current_info['arguments']['variables']):
             # logmessage("popped the da_compute")
@@ -3986,7 +4071,7 @@ def process_action():
                     logmessage("process_action: item is: " + str(this_thread.current_info['action_item'].instanceName))
                 except:
                     pass
-        force_ask(dict(action='_da_list_ensure_complete', arguments=dict(group=this_thread.current_info['action_list'].instanceName)))
+        force_ask({'action': '_da_list_ensure_complete', 'arguments': {'group': this_thread.current_info['action_list'].instanceName}})
         # raise ForcedReRun()
     if the_action == '_da_dict_remove':
         if 'action_item' in this_thread.current_info and 'action_dict' in this_thread.current_info:
@@ -4010,7 +4095,7 @@ def process_action():
                     logmessage("process_action: item is: " + str(this_thread.current_info['action_item'].instanceName))
                 except:
                     pass
-        force_ask(dict(action='_da_dict_ensure_complete', arguments=dict(group=this_thread.current_info['action_dict'].instanceName)))
+        force_ask({'action': '_da_dict_ensure_complete', 'arguments': {'group': this_thread.current_info['action_dict'].instanceName}})
         # raise ForcedReRun()
     if the_action in ('_da_dict_edit', '_da_list_edit') and 'items' in this_thread.current_info['arguments']:
         if isinstance(this_thread.current_info['arguments']['items'][0], dict) and 'follow up' in this_thread.current_info['arguments']['items'][0] and isinstance(this_thread.current_info['arguments']['items'][0]['follow up'], list) and len(this_thread.current_info['arguments']['items'][0]['follow up']) > 0:
@@ -4044,6 +4129,7 @@ def process_action():
     if the_action == '_da_list_add' and 'action_list' in this_thread.current_info:
         need_item = False
         the_list = this_thread.current_info['action_list']
+        do_complete = this_thread.current_info['arguments'].get('complete', True)
         if hasattr(the_list, 'gathered') and the_list.gathered:
             the_list.was_gathered = True
             the_list.reset_gathered()
@@ -4058,7 +4144,7 @@ def process_action():
                             this_thread.internal['event_stack'] = {}
                         if unique_id not in this_thread.internal['event_stack']:
                             this_thread.internal['event_stack'][unique_id] = []
-                        item_action = dict(action=the_list.item_name(len(the_list.elements)), arguments={})
+                        item_action = {'action': the_list.item_name(len(the_list.elements)), 'arguments': {}}
                         this_thread.internal['event_stack'][unique_id].insert(0, item_action)
                         this_thread.current_info.update(item_action)
                     else:
@@ -4085,12 +4171,13 @@ def process_action():
             this_thread.internal['event_stack'][unique_id] = []
         if len(this_thread.internal['event_stack'][unique_id]) > 0 and this_thread.internal['event_stack'][unique_id][0]['action'] == the_action and this_thread.internal['event_stack'][unique_id][0]['arguments']['list'] == the_list.instanceName:
             this_thread.internal['event_stack'][unique_id].pop(0)
-        the_action = dict(action='_da_list_complete', arguments=dict(list=the_list.instanceName))
-        if need_item:
-            this_thread.internal['event_stack'][unique_id].insert(1, the_action)
-        else:
-            this_thread.internal['event_stack'][unique_id].insert(0, the_action)
-            this_thread.current_info.update(the_action)
+        if do_complete:
+            the_action = {'action': '_da_list_complete', 'arguments': {'list': the_list.instanceName}}
+            if need_item:
+                this_thread.internal['event_stack'][unique_id].insert(1, the_action)
+            else:
+                this_thread.internal['event_stack'][unique_id].insert(0, the_action)
+                this_thread.current_info.update(the_action)
         raise ForcedReRun()
         # the_list._validate(the_list.object_type, the_list.complete_attribute)
     if the_action == '_da_dict_add' and 'action_dict' in this_thread.current_info:
@@ -4120,7 +4207,7 @@ def process_action():
             this_thread.internal['event_stack'][unique_id] = []
         if len(this_thread.internal['event_stack'][unique_id]) > 0 and this_thread.internal['event_stack'][unique_id][0]['action'] == the_action and this_thread.internal['event_stack'][unique_id][0]['arguments']['dict'] == the_dict.instanceName:
             this_thread.internal['event_stack'][unique_id].pop(0)
-        the_action = dict(action='_da_dict_complete', arguments=dict(dict=the_dict.instanceName))
+        the_action = {'action': '_da_dict_complete', 'arguments': {'dict': the_dict.instanceName}}
         this_thread.internal['event_stack'][unique_id].insert(0, the_action)
         this_thread.current_info.update(the_action)
         raise ForcedReRun()
@@ -4138,7 +4225,7 @@ def process_action():
                                 if var_name in the_user_dict:
                                     the_context[var_name] = the_user_dict[var_name]
                             del the_user_dict
-                            this_thread.internal['gather'].append(dict(var=var, context=the_context))
+                            this_thread.internal['gather'].append({'var': var, 'context': the_context})
                 elif this_thread.current_info['arguments'][key] not in [(variable_dict if isinstance(variable_dict, str) else variable_dict['var']) for variable_dict in this_thread.internal['gather']]:
                     the_context = {}
                     the_user_dict = get_user_dict()
@@ -4146,9 +4233,9 @@ def process_action():
                         if var_name in the_user_dict:
                             the_context[var_name] = the_user_dict[var_name]
                     del the_user_dict
-                    this_thread.internal['gather'].append(dict(var=this_thread.current_info['arguments'][key], context=the_context))
+                    this_thread.internal['gather'].append({'var': this_thread.current_info['arguments'][key], 'context': the_context})
                 del this_thread.current_info['arguments'][key]
-        to_be_gathered = [(dict(var=variable_dict, context={}) if isinstance(variable_dict, str) else variable_dict) for variable_dict in this_thread.internal['gather']]
+        to_be_gathered = [({'var': variable_dict, 'context': {}} if isinstance(variable_dict, str) else variable_dict) for variable_dict in this_thread.internal['gather']]
         for variable_dict in to_be_gathered:
             if defined(variable_dict['var']):
                 if variable_dict in this_thread.internal['gather']:  # change this later
@@ -4211,8 +4298,8 @@ def action_menu_item(label, action, **kwargs):
     args = copy.deepcopy(kwargs)
     if '_screen_size' in args:
         del args['_screen_size']
-        return dict(label=label, url=url_action(action, **args), screen_size=kwargs['_screen_size'])
-    return dict(label=label, url=url_action(action, **args))
+        return {'label': label, 'url': url_action(action, **args), 'screen_size': kwargs['_screen_size']}
+    return {'label': label, 'url': url_action(action, **args)}
 
 
 def from_b64_json(string):
@@ -4268,7 +4355,7 @@ def components_of(full_variable):
 
 
 def get_user_dict():
-    frame = inspect.stack()[1][0]
+    frame = sys._getframe(1)
     the_user_dict = frame.f_locals
     while '_internal' not in the_user_dict:
         frame = frame.f_back
@@ -4295,7 +4382,7 @@ def undefine(*pargs, invalidate=False):  # pylint: disable=redefined-outer-name
     for var in the_pargs:
         str(var)
         if not isinstance(var, str):
-            raise Exception("undefine() must be given a string, not " + repr(var) + ", a " + str(var.__class__.__name__))
+            raise DAError("undefine() must be given a string, not " + repr(var) + ", a " + str(var.__class__.__name__))
         try:
             eval(var, {})
             continue
@@ -4303,10 +4390,10 @@ def undefine(*pargs, invalidate=False):  # pylint: disable=redefined-outer-name
             vars_to_delete.append(var)
         components = components_of(var)
         if len(components) == 0 or len(components[0]) < 2:
-            raise Exception("undefine: variable " + repr(var) + " is not a valid variable name")
+            raise DAError("undefine: variable " + repr(var) + " is not a valid variable name")
     if len(vars_to_delete) == 0:
         return
-    frame = inspect.stack()[1][0]
+    frame = sys._getframe(1)
     the_user_dict = frame.f_locals
     while '_internal' not in the_user_dict:
         frame = frame.f_back
@@ -4336,7 +4423,7 @@ def undefine(*pargs, invalidate=False):  # pylint: disable=redefined-outer-name
 def dispatch(var):
     """Shows a menu screen."""
     if not isinstance(var, str):
-        raise Exception("dispatch() must be given a string")
+        raise DAError("dispatch() must be given a string")
     while value(var) != 'None':
         value(value(var))
         undefine(value(var))
@@ -4350,10 +4437,10 @@ def set_variables(variables, process_objects=False):
     if hasattr(variables, 'instanceName') and hasattr(variables, 'elements'):
         variables = variables.elements
     if not isinstance(variables, dict):
-        raise Exception("set_variables: argument must be a dictionary")
+        raise DAError("set_variables: argument must be a dictionary")
     user_dict = get_user_dict()
     if user_dict is None:
-        raise Exception("set_variables: could not find interview answers")
+        raise DAError("set_variables: could not find interview answers")
     if process_objects:
         variables = server.transform_json_variables(variables)  # pylint: disable=assignment-from-none
     for var, val in variables.items():
@@ -4368,10 +4455,10 @@ def define(var, val):
     """Sets the given variable, expressed as a string, to the given value."""
     ensure_definition(var, val)
     if not isinstance(var, str) or not re.search(r'^[A-Za-z_]', var):
-        raise Exception("define() must be given a string as the variable name")
+        raise DAError("define() must be given a string as the variable name")
     user_dict = get_user_dict()
     if user_dict is None:
-        raise Exception("define: could not find interview answers")
+        raise DAError("define: could not find interview answers")
     # Trigger exceptions for the left hand side before creating __define_val
     exec(var + " = None", user_dict)
     # logmessage("Got past the lhs check")
@@ -4396,7 +4483,14 @@ class DefCaller(Enum):
         return self == self.DEFINED
 
 
-def _defined_internal(var, caller: DefCaller, alt=None):
+def _defined_internal_with_prior(var, caller: DefCaller, alt=None):
+    try:
+        return _defined_internal(var, caller, alt=alt, prior=True)
+    except:
+        return _defined_internal(var, caller, alt=alt)
+
+
+def _defined_internal(var, caller: DefCaller, alt=None, prior=False):
     """Checks if a variable is defined at all in the stack. Used by defined(),
     value(), and showifdef(). `var` is the name of the variable to check,
     `caller` is the name of the function calling (which determines what to do
@@ -4408,32 +4502,33 @@ def _defined_internal(var, caller: DefCaller, alt=None):
       user all of the questions necessary to answer it
     * SHOWIFDEF, then the value if returned, but only if no questions have to be asked
     """
-    frame = inspect.stack()[1][0]
+    frame = sys._getframe(1)
     components = components_of(var)
     if len(components) == 0 or len(components[0]) < 2:
-        raise Exception("defined: variable " + repr(var) + " is not a valid variable name")
+        raise DAError("defined: variable " + repr(var) + " is not a valid variable name")
     variable = components[0][1]
     the_user_dict = frame.f_locals
     failure_val = False if caller.is_predicate() else alt
-    while variable not in the_user_dict:
+    user_dict_name = 'old_user_dict' if prior else 'user_dict'
+    while (variable not in the_user_dict) or prior:
         frame = frame.f_back
         if frame is None:
             if caller.is_pure():
                 return failure_val
-            force_ask(variable, persistent=False)
-        if 'user_dict' in frame.f_locals:
-            the_user_dict = eval('user_dict', frame.f_locals)
+            force_ask_nameerror(variable)
+        if user_dict_name in frame.f_locals:
+            the_user_dict = eval(user_dict_name, frame.f_locals)
             if variable in the_user_dict:
                 break
             if caller.is_pure():
                 return failure_val
-            force_ask(variable, persistent=False)
+            force_ask_nameerror(variable)
         else:
             the_user_dict = frame.f_locals
     if variable not in the_user_dict:
         if caller.is_pure():
             return failure_val
-        force_ask(variable, persistent=False)
+        force_ask_nameerror(variable)
     if len(components) == 1:
         if caller.is_predicate():
             return True
@@ -4441,14 +4536,36 @@ def _defined_internal(var, caller: DefCaller, alt=None):
     cum_variable = ''
     if caller.is_pure():
         this_thread.probing = True
+    has_random_instance_name = False
     for elem in components:
         if elem[0] == 'name':
-            # on a new name, we re-accumulate the prev checked code from scratch
             cum_variable = elem[1]
             continue
         if elem[0] == 'attr':
+            base_var = cum_variable
             to_eval = "hasattr(" + cum_variable + ", " + repr(elem[1]) + ")"
             cum_variable += '.' + elem[1]
+            try:
+                result = eval(to_eval, the_user_dict)
+            except:
+                if caller.is_pure():
+                    this_thread.probing = False
+                    return failure_val
+                force_ask_nameerror(base_var)
+            if result:
+                continue
+            if caller.is_pure():
+                this_thread.probing = False
+                return failure_val
+            the_cum = eval(base_var, the_user_dict)
+            try:
+                if not the_cum.has_nonrandom_instance_name:
+                    has_random_instance_name = True
+            except:
+                pass
+            if has_random_instance_name:
+                force_ask_nameerror(cum_variable)
+            getattr(the_cum, elem[1])
         elif elem[0] == 'index':
             try:
                 the_index = eval(elem[1], the_user_dict)
@@ -4456,41 +4573,44 @@ def _defined_internal(var, caller: DefCaller, alt=None):
                 if caller.is_pure():
                     this_thread.probing = False
                     return failure_val
-                force_ask(elem[1], persistent=False)
+                value(elem[1])
             try:
                 the_cum = eval(cum_variable, the_user_dict)
             except:
                 if caller.is_pure():
                     this_thread.probing = False
                     return failure_val
-                force_ask(cum_variable, persistent=False)
+                force_ask_nameerror(cum_variable)
             if hasattr(the_cum, 'instanceName') and hasattr(the_cum, 'elements'):
                 var_elements = cum_variable + '.elements'
             else:
                 var_elements = cum_variable
-
             if isinstance(the_index, int):
                 to_eval = 'len(' + var_elements + ') > ' + str(the_index)
             else:
                 to_eval = elem[1] + " in " + var_elements
             cum_variable += '[' + elem[1] + ']'
-        # elif elem[0] == 'binop':
-        #     # no easy way to check if 2 objs can be compared w/o just comparing
-        #     to_eval = elem[1]
-        #     cum_variable += elem[1]
-        try:
-            result = eval(to_eval, the_user_dict)
-        except:
+            try:
+                result = eval(to_eval, the_user_dict)
+            except:
+                # the evaluation probably will never fail because we know the base variable is defined
+                if caller.is_pure():
+                    this_thread.probing = False
+                    return failure_val
+                force_ask_nameerror(cum_variable)
+            if result:
+                continue
             if caller.is_pure():
                 this_thread.probing = False
                 return failure_val
-            force_ask(to_eval, persistent=False)
-        if result:
-            continue
-        if caller.is_pure():
-            this_thread.probing = False
-            return failure_val
-        force_ask(var, persistent=False)
+            try:
+                if not the_cum.has_nonrandom_instance_name:
+                    has_random_instance_name = True
+            except:
+                pass
+            if has_random_instance_name:
+                force_ask_nameerror(cum_variable)
+            the_cum[the_index]  # pylint: disable=pointless-statement
     if caller.is_pure():
         this_thread.probing = False
     if caller.is_predicate():
@@ -4498,52 +4618,58 @@ def _defined_internal(var, caller: DefCaller, alt=None):
     return eval(cum_variable, the_user_dict)
 
 
-def value(var: str):
+def value(var: str, prior=False):
     """Returns the value of the variable given by the string 'var'."""
     str(var)
     if not isinstance(var, str):
-        raise Exception("value() must be given a string")
+        raise DAError("value() must be given a string")
     try:
         return eval(var, {})
     except:
         pass
     if re.search(r'[\(\)\n\r]|lambda:|lambda ', var):
-        raise Exception("value() is invalid: " + repr(var))
+        raise DAError("value() is invalid: " + repr(var))
+    if prior:
+        return _defined_internal_with_prior(var, DefCaller.VALUE)
     return _defined_internal(var, DefCaller.VALUE)
 
 
-def defined(var: str) -> bool:
+def defined(var: str, prior=False) -> bool:
     """Returns true if the variable has already been defined.  Otherwise, returns false."""
     str(var)
     if not isinstance(var, str):
-        raise Exception("defined() must be given a string")
+        raise DAError("defined() must be given a string")
     if not re.search(r'[A-Za-z][A-Za-z0-9\_]*', var):
-        raise Exception("defined() must be given a valid Python variable name")
+        raise DAError("defined() must be given a valid Python variable name")
     try:
         eval(var, {})
         return True
     except:
         pass
+    if prior:
+        return _defined_internal_with_prior(var, DefCaller.VALUE)
     return _defined_internal(var, DefCaller.DEFINED)
 
 
-def showifdef(var: str, alternative=''):
+def showifdef(var: str, alternative='', prior=False):
     """Returns the variable indicated by the variable name if it is
      defined, but otherwise returns empty text, or other alternative text.
      """
     # A combination of the preambles of defined and value
     str(var)
     if not isinstance(var, str):
-        raise Exception("showifdef() must be given a string")
+        raise DAError("showifdef() must be given a string")
     if not re.search(r'[A-Za-z][A-Za-z0-9\_]*', var):
-        raise Exception("showifdef() must be given a valid Python variable name")
+        raise DAError("showifdef() must be given a valid Python variable name")
     try:
         return eval(var, {})
     except:
         pass
     if re.search(r'[\(\)\n\r]|lambda:|lambda ', var):
-        raise Exception("showifdef() is invalid: " + repr(var))
-    return _defined_internal(var, DefCaller.SHOWIFDEF, alt=alternative)
+        raise DAError("showifdef() is invalid: " + repr(var))
+    if prior:
+        return _defined_internal_with_prior(var, DefCaller.SHOWIFDEF, alt=alternative)
+    return _defined_internal(var, DefCaller.SHOWIFDEF, alt=alternative, prior=prior)
 
 
 def illegal_variable_name(var):
@@ -4697,7 +4823,7 @@ def dict_as_json(user_dict, include_internal=False):
 def serializable_dict(user_dict, include_internal=False):
     result_dict = {}
     for key, data in user_dict.items():
-        if key == '_internal' and not include_internal:
+        if key in ('_internal', 'nav') and not include_internal:
             continue
         if key == '__builtins__':
             continue
@@ -4748,7 +4874,7 @@ def safe_json(the_object, level=0, is_key=False):
     if isinstance(the_object, decimal.Decimal):
         return float(the_object)
     if isinstance(the_object, DANav):
-        return dict(past=list(the_object.past), current=the_object.current, hidden=(the_object.hidden if hasattr(the_object, 'hidden') else False), progressive=(the_object.progressive if hasattr(the_object, 'progressive') else True))
+        return {'past': list(the_object.past), 'current': the_object.current, 'hidden': (the_object.hidden if hasattr(the_object, 'hidden') else False), 'progressive': (the_object.progressive if hasattr(the_object, 'progressive') else True)}
     from docassemble.base.util import DAObject  # pylint: disable=import-outside-toplevel
     if isinstance(the_object, DAObject):
         new_dict = {}
@@ -4951,7 +5077,7 @@ def log(the_message, priority='log'):
     if priority == 'log':
         logmessage(str(the_message))
     else:
-        this_thread.message_log.append(dict(message=str(the_message), priority=priority))
+        this_thread.message_log.append({'message': str(the_message), 'priority': priority})
 
 
 def get_message_log():
@@ -5036,7 +5162,7 @@ def manage_privileges(*pargs):
             return server.get_privileges_list()
         if the_command == 'inspect':
             if len(arglist) != 1:
-                raise Exception("manage_privileges: invalid number of arguments")
+                raise DAError("manage_privileges: invalid number of arguments")
             return server.get_permissions_of_privilege(arglist[0])
         if the_command == 'add':
             for priv in arglist:
@@ -5049,7 +5175,7 @@ def manage_privileges(*pargs):
             if len(arglist) > 0:
                 return True
         else:
-            raise Exception("manage_privileges: invalid command")
+            raise DAError("manage_privileges: invalid command")
     return None
 
 
@@ -5084,6 +5210,18 @@ def create_user(email, password, privileges=None, info=None):
     return server.create_user(email, password, privileges=privileges, info=info)
 
 
+def invite_user(email_address, privilege=None, send=True):
+    """Creates an invitation for a user to create an account. If the
+    send parameter is true, which is the default, then an email
+    invitation is sent and the function returns None. If the send
+    parameter is false, then a URL is returned, which a user can visit
+    in order to create an account. The privilege parameter can be set
+    to a single privilege; if omitted, the new user has the privilege
+    of an ordinary user.
+    """
+    return server.invite_user(email_address, privilege=privilege, send=send)
+
+
 def get_user_secret(username, password):
     """Tests the username and password and if they are valid, returns the
     decryption key for the user account.
@@ -5098,31 +5236,36 @@ def create_session(yaml_filename, secret=None, url_args=None):
         secret = this_thread.current_info.get('secret', None)
     (encrypted, session_id) = server.create_session(yaml_filename, secret, url_args=url_args)  # pylint: disable=assignment-from-none,unpacking-non-sequence
     if secret is None and encrypted:
-        raise Exception("create_session: the interview is encrypted but you did not provide a secret.")
+        raise DAError("create_session: the interview is encrypted but you did not provide a secret.")
     return session_id
 
 
 def get_session_variables(yaml_filename, session_id, secret=None, simplify=True):
     """Returns the interview dictionary for the given interview session."""
     if session_id == get_uid() and yaml_filename == this_thread.current_info.get('yaml_filename', None):
-        raise Exception("You cannot get variables from the current interview session")
+        raise DAError("You cannot get variables from the current interview session")
     if secret is None:
         secret = this_thread.current_info.get('secret', None)
     return server.get_session_variables(yaml_filename, session_id, secret=secret, simplify=simplify)
 
 
-def set_session_variables(yaml_filename, session_id, variables, secret=None, question_name=None, overwrite=False, process_objects=False):
+def set_session_variables(yaml_filename, session_id, variables, secret=None, question_name=None, overwrite=False, process_objects=False, delete=None):
     """Sets variables in the interview dictionary for the given interview session."""
     if session_id == get_uid() and yaml_filename == this_thread.current_info.get('yaml_filename', None):
-        raise Exception("You cannot set variables in the current interview session")
+        raise DAError("You cannot set variables in the current interview session")
     if secret is None:
         secret = this_thread.current_info.get('secret', None)
-    server.set_session_variables(yaml_filename, session_id, variables, secret=secret, question_name=question_name, post_setting=not overwrite, process_objects=process_objects)
+    if delete is not None:
+        if isinstance(delete, str):
+            delete = [delete]
+        else:
+            delete = list(delete)
+    server.set_session_variables(yaml_filename, session_id, variables, secret=secret, del_variables=delete, question_name=question_name, post_setting=not overwrite, process_objects=process_objects)
 
 
 def run_action_in_session(yaml_filename, session_id, action, arguments=None, secret=None, persistent=False, overwrite=False):
     if session_id == get_uid() and yaml_filename == this_thread.current_info.get('yaml_filename', None):
-        raise Exception("You cannot run an action in the current interview session")
+        raise DAError("You cannot run an action in the current interview session")
     if arguments is None:
         arguments = {}
     if secret is None:
@@ -5131,14 +5274,14 @@ def run_action_in_session(yaml_filename, session_id, action, arguments=None, sec
     if isinstance(result, dict):
         if result['status'] == 'success':
             return True
-        raise Exception("run_action_in_session: " + result['message'])
+        raise DAError("run_action_in_session: " + result['message'])
     return True
 
 
 def get_question_data(yaml_filename, session_id, secret=None):
     """Returns data about the current question for the given interview session."""
     if session_id == get_uid() and yaml_filename == this_thread.current_info.get('yaml_filename', None):
-        raise Exception("You cannot get question data from the current interview session")
+        raise DAError("You cannot get question data from the current interview session")
     if secret is None:
         secret = this_thread.current_info.get('secret', None)
     return server.get_question_data(yaml_filename, session_id, secret)
@@ -5147,7 +5290,7 @@ def get_question_data(yaml_filename, session_id, secret=None):
 def go_back_in_session(yaml_filename, session_id, secret=None):
     """Goes back one step in an interview session."""
     if session_id == get_uid() and yaml_filename == this_thread.current_info.get('yaml_filename', None):
-        raise Exception("You cannot go back in the current interview session")
+        raise DAError("You cannot go back in the current interview session")
     if secret is None:
         secret = this_thread.current_info.get('secret', None)
     server.go_back_in_session(yaml_filename, session_id, secret=secret)
@@ -5273,11 +5416,60 @@ def re_run_logic():
     raise ForcedReRun()
 
 
-def reconsider(*pargs):
+def intrinsic_name_of(var_name, the_user_dict=None):
+    if the_user_dict is None:
+        the_user_dict = get_user_dict()
+    from docassemble.base.util import DAObject  # pylint: disable=import-outside-toplevel
+    expression_as_list = [x for x in match_brackets_or_dot.split(var_name) if x != '']
+    n = len(expression_as_list)
+    i = n
+    while i > 0:
+        try:
+            item = eval(var_name, the_user_dict)
+            if isinstance(item, DAObject) and item.has_nonrandom_instance_name:
+                var_name = item.instanceName
+                break
+        except:
+            pass
+        i -= 1
+        var_name = ''.join(expression_as_list[0:i])
+    return var_name + (''.join(expression_as_list[i:n]))
+
+
+def intrinsic_names_of(*pargs, the_user_dict=None):
+    if the_user_dict is None:
+        the_user_dict = get_user_dict()
+    output = []
+    for parg in pargs:
+        if isinstance(parg, str):
+            output.append(intrinsic_name_of(parg, the_user_dict=the_user_dict))
+        elif isinstance(parg, dict):
+            if len(parg) == 1 and ('undefine' in parg or 'invalidate' in parg or 'recompute' in parg or 'follow up' in parg):
+                new_dict = {}
+                for key, item in parg.items():
+                    if isinstance(item, str):
+                        new_dict[key] = intrinsic_name_of(item, the_user_dict=the_user_dict)
+                    if isinstance(item, list):
+                        new_dict[key] = [intrinsic_name_of(subitem, the_user_dict=the_user_dict) if isinstance(subitem, str) else subitem for subitem in item]
+                if len(new_dict):
+                    output.append(new_dict)
+                else:
+                    output.append(parg)
+            else:
+                output.append(parg)
+        else:
+            output.append(parg)
+    return output
+
+
+def reconsider(*pargs, evaluate=False):
     """Ensures that the value of one or more variables is freshly calculated."""
     if 'reconsidered' not in this_thread.misc:
         this_thread.misc['reconsidered'] = set()
-    for var in unpack_pargs(pargs):
+    pargs = unpack_pargs(pargs)
+    if evaluate:
+        pargs = intrinsic_names_of(*pargs)
+    for var in pargs:
         if var in this_thread.misc['reconsidered']:
             continue
         undefine(var)
