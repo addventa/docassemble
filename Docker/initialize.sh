@@ -19,7 +19,7 @@ echo "initialize: config.yml is at" $DA_CONFIG_FILE >&2
 echo "initialize: initialize starting" >&2
 
 echo "--------------------------" >&2
-echo "Docassemble V1.4.92-1" >&2
+echo "Docassemble V1.4.92-2" >&2
 echo "--------------------------" >&2
 
 echo "moving /usr/share/docassemble/certs to /etc/ssl/docassemble" >&2
