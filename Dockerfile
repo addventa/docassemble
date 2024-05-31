@@ -42,11 +42,11 @@ bash -c \
 && cp /tmp/docassemble/Docker/daunoconv /usr/bin/daunoconv \
 && chmod ogu+rx /usr/bin/daunoconv \
 && update-exim4.conf \
-&& chown www-data.www-data /usr/share/docassemble/config \
-&& chown www-data.www-data \
+&& chown www-data:www-data /usr/share/docassemble/config \
+&& chown www-data:www-data \
    /usr/share/docassemble/config/config.yml.dist \
    /usr/share/docassemble/webapp/docassemble.wsgi \
-&& chown -R www-data.www-data \
+&& chown -R www-data:www-data \
    /tmp/docassemble \
    /usr/share/docassemble/local3.10 \
    /usr/share/docassemble/log \
@@ -61,11 +61,11 @@ bash -c \
 && echo \"en_US.UTF-8 UTF-8\" >> /etc/locale.gen \
 && locale-gen \
 && update-locale \
-&& /usr/bin/python3 -m venv --copies /usr/share/docassemble/local3.10 \
+&& python3.10 -m venv --copies /usr/share/docassemble/local3.10 \
 && source /usr/share/docassemble/local3.10/bin/activate \
-&& pip3 install --upgrade wheel==0.37.1 \
-&& pip3 install --upgrade mod_wsgi==4.9.3 \
-&& pip3 install --upgrade \
+&& pip install --upgrade wheel==0.37.1 \
+&& pip install --upgrade mod_wsgi==4.9.3 \
+&& pip install --upgrade \
    acme==1.26.0 \
    certbot-apache==1.15.0 \
    certbot-nginx==1.15.0 \
@@ -100,7 +100,7 @@ bash -c \
    zope.hookable==5.1.0 \
    zope.interface==5.4.0 \
    ./../usr/share/docassemble/packages/s4cmd-2.1.2-py3-none-any.whl \
-&& pip3 install --use-feature=in-tree-build \
+&& pip install --use-feature=in-tree-build \
    /tmp/docassemble/docassemble \
    /tmp/docassemble/docassemble_base \
    /tmp/docassemble/docassemble_demo \
@@ -114,10 +114,10 @@ bash -c \
 && mv /etc/syslog-ng/syslog-ng.conf /usr/share/docassemble/syslogng/syslog-ng.conf \
 && ln -s /usr/share/docassemble/syslogng/syslog-ng.conf /etc/syslog-ng/syslog-ng.conf \
 && cp /usr/share/docassemble/local3.10/lib/python3.10/site-packages/mod_wsgi/server/mod_wsgi-py310.cpython-310-x86_64-linux-gnu.so /usr/lib/apache2/modules/mod_wsgi.so-3.10 \
-&& pip3 uninstall --yes mysqlclient MySQL-python &> /dev/null \
+&& pip uninstall --yes mysqlclient MySQL-python &> /dev/null \
 && python3.10 -m nltk.downloader -d /usr/local/share/nltk_data all \
 && cp /usr/share/docassemble/local3.10/lib/python3.10/site-packages/s4cmd.py /usr/share/s4cmd/ \
-&& chown -R www-data.www-data \
+&& chown -R www-data:www-data \
    /usr/share/docassemble/local3.10 \
    /usr/share/docassemble/log \
    /usr/share/docassemble/files \
