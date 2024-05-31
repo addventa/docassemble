@@ -22,8 +22,8 @@ echo "--------------------------" >&2
 echo "Docassemble V1.4.92-2" >&2
 echo "--------------------------" >&2
 
-echo "moving /usr/share/docassemble/certs to /etc/ssl/docassemble" >&2
-mv "/usr/share/docassemble/certs" "/etc/ssl/docassemble"
+echo "copy /usr/share/docassemble/certs to /etc/ssl/docassemble" >&2
+cp -r "/usr/share/docassemble/certs" "/etc/ssl/docassemble"
 
 RESTOREFROMBACKUP=true
 
